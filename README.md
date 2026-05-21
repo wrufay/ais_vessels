@@ -1,4 +1,4 @@
-# Ocean noise data visualization webpage skeleton 🐠🌊
+# Ocean Noise Data Visualization Webpage
 
 ### Current stack:
 Python3
@@ -28,6 +28,8 @@ OpenLayers to display map
 ### Notes
 - In README, include local development instructions, and overview of project architecture
 - Write documentation as you go
+- Deployed on: https://noiseviz.vercel.app
+- Backend: https://ocean-viz.up.railway.app
 
 
 
