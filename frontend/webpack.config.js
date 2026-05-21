@@ -15,6 +15,7 @@ module.exports = {
     }],
   },
   resolve: {
+    // This allows both JS and JSX file extensions to be tried when resolving imports
     extensions: ['.js', '.jsx'],
   },
   plugins: [
@@ -23,5 +24,6 @@ module.exports = {
   devServer: {
     port: 3000,
     proxy: [{ context: ['/api'], target: 'http://localhost:8000' }],
+    // Edit this link if you deploy the backend
   },
 };

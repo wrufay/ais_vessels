@@ -1,4 +1,7 @@
 from fastapi import FastAPI
+# Command to run the backend server locally: uvicorn main:app --reload
+
+# Initialize FastAPI, register routes and configure middleware*
 
 app = FastAPI()
 
@@ -19,4 +22,3 @@ def get_noise():
         "decibels": 120
     }
 
-# command to run: uvicorn main:app --reload

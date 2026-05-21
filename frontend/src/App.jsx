@@ -1,9 +1,11 @@
 import React from 'react';
 
+
+// Main page for front-end
 function App() {
   return (
     <div>
-      <h1>Noise App</h1>
+      <h1>Ocean Noise Data Visualizer</h1>
     </div>
   );
 }
