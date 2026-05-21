@@ -1,7 +1,7 @@
 import React from 'react';
 import NoiseMap from './Map';
 import githubLogo from './assets/github.png';
-
+import { Analytics } from "@vercel/analytics/react"
 
 // Main page for front-end
 function App() {
@@ -12,6 +12,7 @@ function App() {
       <a href="https://github.com/wrufay/ocean_noise_visualizer" target="_blank" rel="noreferrer" className="absolute bottom-4 left-4 z-10 opacity-67">
         <img src={githubLogo} alt="GitHub" className="w-8 h-8" />
       </a>
+      <Analytics />
     </div>
   );
 }
