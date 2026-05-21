@@ -1,4 +1,5 @@
 const HtmlWebpackPlugin = require("html-webpack-plugin");
+const CopyWebpackPlugin = require("copy-webpack-plugin");
 const path = require("path");
 
 module.exports = {
@@ -27,9 +28,12 @@ module.exports = {
   resolve: {
     extensions: [".js", ".jsx"],
   },
-  plugins: [new HtmlWebpackPlugin({ template: "./index.html" })],
+  plugins: [
+    new HtmlWebpackPlugin({ template: "./index.html" }),
+    new CopyWebpackPlugin({ patterns: [{ from: "public" }] }),
+  ],
   devServer: {
     port: 3000,
-    proxy: [{ context: ["/api"], target: "ocean-viz.up.railway.app" }],
+    proxy: [{ context: ["/api"], target: "https://ocean-viz.up.railway.app" }],
   },
 };

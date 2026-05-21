@@ -18,6 +18,7 @@
         "@tailwindcss/postcss": "^4.3.0",
         "autoprefixer": "^10.5.0",
         "babel-loader": "^10.1.1",
+        "copy-webpack-plugin": "^14.0.0",
         "css-loader": "^7.1.4",
         "html-webpack-plugin": "^5.6.7",
         "postcss": "^8.5.15",
