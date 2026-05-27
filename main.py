@@ -23,7 +23,7 @@ def nq(sql: str, params: list = None) -> list[dict]:
     body = {"query": sql}
     if params:
         body["params"] = params
-    r = httpx.post(NEON_URL, json=body, headers={"Neon-Connection-String": NEON_CONN}, timeout=30)
+    r = httpx.post(NEON_URL, json=body, headers={"Neon-Connection-String": NEON_CONN}, timeout=60)
     r.raise_for_status()
     return r.json()["rows"]
 
@@ -91,16 +91,20 @@ def get_vessels_in_area(
 ):
     ccg = query(
         pg_sql="""
-            SELECT DISTINCT s.mmsi, s.vessel_name, s.ship_type, 'CCG' AS source
+            SELECT s.mmsi, s.vessel_name, s.ship_type, 'CCG' AS source
             FROM ais_202503_static s
-            JOIN ais_202503_dynamic d ON s.mmsi = d.mmsi
-            WHERE d.latitude BETWEEN $1 AND $2 AND d.longitude BETWEEN $3 AND $4
+            WHERE s.mmsi IN (
+                SELECT DISTINCT mmsi FROM ais_202503_dynamic
+                WHERE latitude BETWEEN $1 AND $2 AND longitude BETWEEN $3 AND $4
+            )
         """,
         lite_sql="""
-            SELECT DISTINCT s.mmsi, s.vessel_name, s.ship_type, 'CCG' AS source
+            SELECT s.mmsi, s.vessel_name, s.ship_type, 'CCG' AS source
             FROM ais_202503_static s
-            JOIN ais_202503_dynamic d ON s.mmsi = d.mmsi
-            WHERE d.latitude BETWEEN ? AND ? AND d.longitude BETWEEN ? AND ?
+            WHERE s.mmsi IN (
+                SELECT DISTINCT mmsi FROM ais_202503_dynamic
+                WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
+            )
         """,
         pg_params=[min_lat, max_lat, min_lon, max_lon],
         lite_params=[min_lat, max_lat, min_lon, max_lon],
