@@ -87,6 +87,34 @@ def ingest_ccg():
             )
 
     print("CCG ingestion complete.")
+    trim_ccg_to_scotian_shelf()
+
+
+def trim_ccg_to_scotian_shelf():
+    """
+    After aisdb decodes ALL global CCG messages, delete rows outside
+    the Scotian Shelf bounding box from both dynamic and static tables.
+    Also removes vessels from static that have no dynamic pings in the shelf.
+    """
+    print("Trimming CCG tables to Scotian Shelf bounding box...")
+    with sqlite3.connect(str(SQLITE_PATH)) as conn:
+        # trim dynamic pings outside bounding box
+        cur = conn.execute(f"""
+            DELETE FROM ais_202503_dynamic
+            WHERE latitude  NOT BETWEEN {YMIN} AND {YMAX}
+               OR longitude NOT BETWEEN {XMIN} AND {XMAX}
+        """)
+        print(f"  Removed {cur.rowcount:,} out-of-bounds dynamic rows.")
+
+        # remove static entries for vessels with no shelf pings
+        cur = conn.execute("""
+            DELETE FROM ais_202503_static
+            WHERE mmsi NOT IN (SELECT DISTINCT mmsi FROM ais_202503_dynamic)
+        """)
+        print(f"  Removed {cur.rowcount:,} out-of-bounds static rows.")
+        conn.commit()
+
+    print("Trim complete.")
 
 
 def ingest_satellite():
