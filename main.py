@@ -11,16 +11,17 @@ from fastapi.middleware.cors import CORSMiddleware
 # Set NEON_CONNECTION_STRING env var to use Neon Postgres, otherwise falls back to SQLite.
 
 DB_PATH = Path(__file__).parent / "data" / "ais.db"
-NEON_CONN = os.environ.get("NEON_CONNECTION_STRING")
-NEON_URL = f"https://{re.search(r'@([^/?]+)', NEON_CONN).group(1)}/sql" if NEON_CONN else None
+NEON_CONN: str = os.environ.get("NEON_CONNECTION_STRING", "")
+_neon_host_match = re.search(r'@([^/?]+)', NEON_CONN)
+NEON_URL = f"https://{_neon_host_match.group(1)}/sql" if _neon_host_match else ""
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
-def nq(sql: str, params: list = None) -> list[dict]:
+def nq(sql: str, params: list | None = None) -> list[dict]:
     """Execute SQL via Neon HTTP API."""
-    body = {"query": sql}
+    body: dict = {"query": sql}
     if params:
         body["params"] = params
     r = httpx.post(NEON_URL, json=body, headers={"Neon-Connection-String": NEON_CONN}, timeout=60)
@@ -28,7 +29,7 @@ def nq(sql: str, params: list = None) -> list[dict]:
     return r.json()["rows"]
 
 
-def sq(sql: str, params: list = None) -> list[dict]:
+def sq(sql: str, params: list | None = None) -> list[dict]:
     """Execute SQL via SQLite."""
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
@@ -37,7 +38,7 @@ def sq(sql: str, params: list = None) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def query(pg_sql, lite_sql, pg_params=None, lite_params=None) -> list[dict]:
+def query(pg_sql: str, lite_sql: str, pg_params: list | None = None, lite_params: list | None = None) -> list[dict]:
     return nq(pg_sql, pg_params) if NEON_CONN else sq(lite_sql, lite_params)
 
 
@@ -140,15 +141,16 @@ def get_vessels_in_area(
 @app.get("/api/vessel/{mmsi}/route")
 def get_vessel_route(
     mmsi: int,
-    start: str = Query(None),
-    end:   str = Query(None),
+    start: str | None = Query(None),
+    end:   str | None = Query(None),
 ):
     points = []
 
     # --- CCG (time stored as unix epoch integer) ---
     pg_sql   = "SELECT time, longitude, latitude, sog, cog FROM ais_202503_dynamic WHERE mmsi = $1"
     lite_sql = "SELECT time, longitude, latitude, sog, cog FROM ais_202503_dynamic WHERE mmsi = ?"
-    pg_params, lite_params = [mmsi], [mmsi]
+    pg_params: list = [mmsi]
+    lite_params: list = [mmsi]
 
     if start:
         n = len(pg_params) + 1
@@ -178,7 +180,8 @@ def get_vessel_route(
 
     pg_sat   = "SELECT time, longitude, latitude, sog, cog FROM ais_satellite WHERE mmsi = $1"
     lite_sat = "SELECT time, longitude, latitude, sog, cog FROM ais_satellite WHERE mmsi = ?"
-    pg_sat_params, lite_sat_params = [mmsi], [mmsi]
+    pg_sat_params: list = [mmsi]
+    lite_sat_params: list = [mmsi]
 
     if sat_start:
         n = len(pg_sat_params) + 1
