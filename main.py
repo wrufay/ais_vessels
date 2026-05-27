@@ -34,14 +34,14 @@ def get_vessels():
     with get_db() as conn:
         # CCG dynamic + static joined on mmsi
         ccg = conn.execute("""
-            SELECT DISTINCT
-                d.mmsi,
-                s.shipname   AS vessel_name,
-                s.shiptype   AS ship_type,
-                'CCG'        AS source
-            FROM ais_202503_dynamic d
-            LEFT JOIN ais_202503_static s ON d.mmsi = s.mmsi
-            WHERE d.mmsi IS NOT NULL
+            SELECT
+                s.mmsi,
+                s.vessel_name,
+                s.ship_type,
+                'CCG' AS source
+            FROM ais_202503_static s
+            WHERE s.mmsi IS NOT NULL
+            GROUP BY s.mmsi
         """).fetchall()
 
         # Satellite
