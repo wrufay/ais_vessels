@@ -98,6 +98,9 @@ function ShipMap() {
       view: new View({
         center: fromLonLat([-63.5, 44.5]),
         zoom: 6,
+        minZoom: 5,
+        maxZoom: 14,
+        extent: transformExtent([-70, 41, -54, 48], 'EPSG:4326', 'EPSG:3857'),
       }),
     });
     map.on('click', e => {
@@ -155,6 +158,7 @@ function ShipMap() {
           min_lon: String(min_lon),
           max_lon: String(max_lon),
         });
+        setVessels([]);
         fetch(`${API}/api/vessels/area?${params}`)
           .then(r => r.json())
           .then(d => setVessels(d.vessels || []))
@@ -201,7 +205,7 @@ function ShipMap() {
         });
 
         const extent = sourceRef.current.getExtent();
-        if (extent) mapObj.current!.getView().fit(extent, { padding: [60, 60, 60, 60], maxZoom: 12 });
+        if (extent) mapObj.current!.getView().fit(extent, { padding: [60, 60, 60, 60], maxZoom: 12, duration: 800 });
       })
       .catch(console.error)
       .finally(() => setLoading(false));
