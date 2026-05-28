@@ -74,6 +74,7 @@ function ShipMap() {
     sog: number | null; cog: number | null; source: string;
   }
 
+  const [showIntro, setShowIntro]   = useState(true);
   const [vessels, setVessels]       = useState<Vessel[]>([]);
   const [search, setSearch]         = useState('');
   const [selected, setSelected]     = useState<Vessel | null>(null);
@@ -327,6 +328,32 @@ function ShipMap() {
       {drawMode && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#127475] text-white text-sm px-4 py-2 rounded shadow z-20">
           Draw a box on the map to filter vessels
+        </div>
+      )}
+
+      {showIntro && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h1 className="text-xl font-semibold text-[#127475] mb-1">Scotian Shelf Vessel Tracker</h1>
+            <p className="text-xs text-gray-400 mb-4">DFO · Bedford Institute of Oceanography</p>
+            <p className="text-sm text-gray-600 mb-4">
+              This tool visualizes AIS vessel traffic on the Scotian Shelf using data from Canadian Coast Guard
+              shore stations and exactEarth satellites. It enables researchers to explore vessel movement
+              patterns, routes, and speeds across the region.
+            </p>
+            <div className="text-sm text-gray-600 space-y-2 mb-5">
+              <div className="flex gap-2"><span className="text-[#127475] font-medium">1.</span><span>Search or browse vessels in the sidebar</span></div>
+              <div className="flex gap-2"><span className="text-[#127475] font-medium">2.</span><span>Use <strong>Filter by Area</strong> to draw a box and narrow down vessels in a region</span></div>
+              <div className="flex gap-2"><span className="text-[#127475] font-medium">3.</span><span>Select a vessel, pick a date range, and click <strong>Show Route</strong></span></div>
+              <div className="flex gap-2"><span className="text-[#127475] font-medium">4.</span><span>Click any position point on the map to see time, speed, and coordinates</span></div>
+            </div>
+            <button
+              onClick={() => setShowIntro(false)}
+              className="w-full bg-[#127475] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#0e5f60] transition-colors"
+            >
+              Get Started
+            </button>
+          </div>
         </div>
       )}
 
