@@ -1,2 +1,0 @@
-data/*.db filter=lfs diff=lfs merge=lfs -text
-data/ais.db filter=lfs diff=lfs merge=lfs -text
