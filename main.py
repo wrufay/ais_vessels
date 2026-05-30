@@ -23,7 +23,7 @@ ALLOWED_MMSIS: set[int] = set()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global ALLOWED_MMSIS
-    sql = "SELECT mmsi FROM ais_202503_static WHERE mmsi IS NOT NULL ORDER BY mmsi LIMIT 20"
+    sql = "SELECT DISTINCT mmsi FROM ais_202503_static WHERE mmsi > 100000000 ORDER BY mmsi LIMIT 20"
     try:
         rows = nq(sql) if NEON_CONN else sq(sql)
         ALLOWED_MMSIS = {r["mmsi"] for r in rows}
