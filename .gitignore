@@ -1,8 +1,9 @@
 node_modules/
 venv/
+.venv/
 __pycache__/
 *.pyc
 .env
 frontend/.env
 dist/
-# data/ais.db is safe to commit after pipeline samples down to DEMO_SAMPLE vessels
+pgdata/

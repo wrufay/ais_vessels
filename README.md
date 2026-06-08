@@ -1,123 +1,75 @@
 # Scotian Shelf AIS Vessel Tracker
 
-A web tool for visualizing vessel traffic on the Scotian Shelf using AIS (Automatic Identification System) data from Canadian Coast Guard shore stations.
+Web tool for visualizing vessel traffic on the Scotian Shelf using AIS data from Canadian Coast Guard shore stations. Built for correlating vessel activity with underwater noise levels, marine mammal presence, and other oceanographic observations.
 
-Researchers can explore vessel movement patterns, transit routes, and speeds across the shelf — useful for correlating vessel activity with underwater noise levels, marine mammal presence, or other oceanographic observations.
+## Repo layout
 
-## What's in the demo
+```
+/                        local research tool (Docker + TimescaleDB)
+  main.py                FastAPI backend
+  requirements.txt
+  decode.py              CCG NMEA → SQLite decoder (standalone utility)
+  docker-compose.yml
+  docker/
+    backend.Dockerfile
+    init.sql             DB schema (created automatically on first start)
+  pipeline/
+    ingest_csv.py        bulk CSV loader (resumable)
+  frontend/              React + OpenLayers map
 
-The committed `data/ais.db` contains a small cherry-picked sample of vessels (tugs, ferries, fishing boats, fire boats) operating around Halifax — enough to demonstrate the tool without publishing the full CCG dataset.
-
-## Features
-
-- Browse vessels detected on the Scotian Shelf
-- Search by name, MMSI, or ship type
-- Plot a vessel's full track for a selected date range, with position points colored by speed
-- Click any track point to inspect timestamp, coordinates, speed over ground, and course
+demo/                    deployed public demo (Railway + Vercel, 18 vessels)
+  main.py                SQLite backend
+  data/ais.db            committed demo DB
+  Procfile / railway.json
+  pipeline/ingest.py     aisdb-based ingestion (used to build the demo DB)
+```
 
 ## Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | React + OpenLayers + Tailwind CSS (Vite) |
-| Backend | FastAPI (Python) |
-| Database | SQLite |
-| AIS decoding | [aisdb](https://aisviz.cs.dal.ca/) (Dalhousie University) |
+| Layer    | Technology                        |
+|----------|-----------------------------------|
+| Frontend | React + OpenLayers + Tailwind CSS |
+| Backend  | FastAPI                           |
+| Database | TimescaleDB (Postgres extension)  |
 
 ## Running locally
 
-**Backend:**
+Requires Docker and Docker Compose.
+
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload
+docker compose up -d
 ```
 
-**Frontend** (in a separate terminal):
+Schema is created automatically on first start. Frontend is served at **http://localhost**.
+
+To store Postgres data on external/mounted storage, set `PGDATA_PATH` in `.env`:
+```
+PGDATA_PATH=/mnt/external/pgdata
+```
+
+## Loading data
+
+Input CSVs must be in the CCG decoded format with columns: `mmsi`, `message_type`, `latitude`, `longitude`, `speed`, `course`, `heading`, `name`, `ship_type`, `callsign`, `imo`, `source`, `reception_timestamp`.
+
 ```bash
-cd frontend
-npm install
-npm run dev
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ais \
+python pipeline/ingest_csv.py /path/to/csv/dir --workers 8
 ```
 
-Open <http://localhost:3000>.
+The script is resumable — kill and restart anytime, already-processed files are skipped. Tune `--workers` to match available CPU cores.
 
-By default Vite proxies `/api` requests to `http://localhost:8000`. To point at a deployed backend, set `VITE_API_URL` in `frontend/.env`.
-
-## Running with Docker (scientist workflow)
-
-For researchers loading their own confidential data. Everything runs locally — data never leaves your machine.
-
-**1. Start the stack:**
-```bash
-docker-compose up --build -d
+After the initial bulk load, add the index:
+```sql
+CREATE INDEX ON ais_positions (mmsi, received_at DESC);
 ```
-This starts Postgres, the backend, and the frontend. Open <http://localhost> — it will show no vessels until the pipeline runs.
-
-**2. Install pipeline dependencies:**
-```bash
-source venv/bin/activate
-pip install -r requirements.txt -r pipeline/requirements.txt
-```
-
-**3. Point the pipeline at your CCG files** (`pipeline/ingest.py`):
-```python
-CCG_DIR = "/path/to/your/ccg/data"
-DEMO_SAMPLE = None  # keep all vessels
-```
-
-**4. Run the pipeline** (writes to the Postgres container via the exposed port 5432):
-```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ais python pipeline/ingest.py
-```
-
-**5. Reload <http://localhost>** — all your vessels are now visible.
-
-The backend inside Docker connects to Postgres automatically (`DATABASE_URL` is pre-configured in `docker-compose.yml`). The pipeline runs on your host machine and writes to the same Postgres container through the exposed port.
-
-## Loading your own data
-
-The pipeline (`pipeline/ingest.py`) decodes raw CCG NMEA files into a SQLite database.
-
-0. **Install pipeline dependencies** (in addition to the backend ones):
-   ```bash
-   pip install -r pipeline/requirements.txt
-   ```
-
-1. **Point the pipeline at your CCG files.** Open `pipeline/ingest.py` and set:
-   ```python
-   CCG_DIR = "/path/to/your/ccg/data"  # contains CCG_AIS_UTC_Log_*.csv files
-   ```
-
-2. **Adjust the bounding box** if you are working outside the Scotian Shelf:
-   ```python
-   XMIN, XMAX = -66.0, -57.0  # longitude
-   YMIN, YMAX =  42.0,  47.0  # latitude
-   ```
-
-3. **Choose how to sample the output:**
-   - `DEMO_SAMPLE = 18` keeps only the hand-picked MMSIs in `DEMO_MMSIS` (current demo behavior — safe to commit).
-   - `DEMO_SAMPLE = None` keeps every vessel in the bounding box (for local analysis — do **not** commit the resulting DB).
-
-4. **Run the pipeline:**
-   ```bash
-   source venv/bin/activate
-   python3 pipeline/ingest.py
-   ```
-   The script wipes any existing `data/ais.db`, decodes the first matching CCG file, trims to the bounding box, samples (if configured), and VACUUMs the result.
-
-5. **Start the app** — the backend reads `data/ais.db` automatically.
 
 ## API
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/vessels` | All vessels in the allowed set (MMSI, name, ship type) |
+| `GET /api/vessels` | All vessels (MMSI, name, ship type) |
 | `GET /api/vessel/{mmsi}/route?start&end` | Ordered position track for a vessel |
 
-## Data source
+## Demo
 
-Canadian Coast Guard terrestrial AIS — shore stations along the Scotian Shelf coastline record AIS broadcasts from nearby vessels. Coverage is dense close to shore and drops off in offshore areas.
-
-CCG files arrive as raw NMEA with a `.csv` extension. `pipeline/ingest.py` symlinks them as `.nm4` before handing them to `aisdb`, which detects file type by extension.
+A small public demo (18 hand-picked vessels, March 2025) is deployed separately from the `demo/` directory via Railway (backend) and Vercel (frontend).
