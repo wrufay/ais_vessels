@@ -1,14 +1,15 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  db:
+    image: timescale/timescaledb:latest-pg16
     environment:
       POSTGRES_DB: ais
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ${PGDATA_PATH:-./pgdata}:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"  # exposed so the pipeline can write to it from the host machine
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -20,10 +21,10 @@ services:
       context: .
       dockerfile: docker/backend.Dockerfile
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ais
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ais
       - CORS_ORIGINS=http://localhost
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
     restart: unless-stopped
 
@@ -34,6 +35,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  pgdata:

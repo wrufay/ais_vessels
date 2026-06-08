@@ -5,9 +5,8 @@ __pycache__/
 .gitignore
 frontend/
 pipeline/
+demo/
 node_modules/
 .env
 README.md
 docker-compose.yml
-railway.json
-Procfile
