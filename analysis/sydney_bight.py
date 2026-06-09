@@ -165,50 +165,6 @@ def plot_stacked(daily, out_dir):
     plt.close()
 
 
-def plot_combined(daily_counts, daily_speed, out_dir):
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
-    fig.suptitle("Sydney Bight WEA — Vessel Traffic, August 2025", fontsize=13)
-
-    x = np.arange(len(daily_counts))
-    labels = [d.strftime("%Y%b%d") for d in daily_counts.index]
-    step = max(1, len(labels) // 15)
-
-    # Top: stacked bar
-    bottom = np.zeros(len(daily_counts))
-    for t in ORDERED_TYPES:
-        if t not in daily_counts.columns:
-            continue
-        vals = daily_counts[t].values
-        ax1.bar(x, vals, bottom=bottom, label=t, color=TYPE_COLORS[t], width=0.8)
-        bottom += vals
-    ax1.set_ylabel("Total vessel number")
-    ax1.legend(loc="upper left", fontsize=8, framealpha=0.9)
-    ax1.grid(axis="y", alpha=0.3)
-
-    # Bottom: speed lines
-    for t in ORDERED_TYPES:
-        if t not in daily_speed.columns:
-            continue
-        vals = daily_speed[t].values
-        if np.all(np.isnan(vals)):
-            continue
-        ax2.plot(x, vals, label=t, color=TYPE_COLORS[t],
-                 marker="o", markersize=3, linewidth=1.5)
-    ax2.set_ylabel("Mean speed (knots)")
-    ax2.legend(loc="upper left", fontsize=8, framealpha=0.9)
-    ax2.grid(alpha=0.3)
-
-    ax2.set_xticks(x[::step])
-    ax2.set_xticklabels(labels[::step], rotation=45, ha="right", fontsize=8)
-    ax2.set_xlim(-0.5, len(daily_counts) - 0.5)
-
-    plt.tight_layout()
-    out = Path(out_dir) / "sydney_bight_daily.png"
-    plt.savefig(out, dpi=150)
-    print(f"Saved: {out}")
-    plt.close()
-
-
 def plot_speed(daily_speed, out_dir):
     fig, ax = plt.subplots(figsize=(14, 6))
 
@@ -235,6 +191,58 @@ def plot_speed(daily_speed, out_dir):
 
     plt.tight_layout()
     out = Path(out_dir) / "sydney_bight_speed.png"
+    plt.savefig(out, dpi=150)
+    print(f"Saved: {out}")
+    plt.close()
+
+
+def plot_map(df, polygon, out_dir):
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Draw WEA boundary
+    gpd.GeoSeries([polygon]).plot(ax=ax, facecolor="none", edgecolor="black", linewidth=1.5)
+
+    # Scatter positions by type
+    df["type_label"] = df["ship_type"].apply(classify_ship_type)
+    for t in ORDERED_TYPES:
+        subset = df[df["type_label"] == t]
+        if subset.empty:
+            continue
+        ax.scatter(subset["longitude"], subset["latitude"],
+                   c=TYPE_COLORS[t], label=t, s=4, alpha=0.5, linewidths=0)
+
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_title("Sydney Bight WEA — Vessel Positions, August 2025")
+    ax.legend(loc="upper left", fontsize=8, markerscale=3, framealpha=0.9)
+
+    plt.tight_layout()
+    out = Path(out_dir) / "sydney_bight_map.png"
+    plt.savefig(out, dpi=150)
+    print(f"Saved: {out}")
+    plt.close()
+
+
+def plot_speed_overall(df, out_dir):
+    df["day"] = pd.to_datetime(df["received_at"]).dt.date
+    daily = df.groupby("day")["speed"].mean()
+    daily.index = pd.to_datetime(daily.index)
+
+    x = np.arange(len(daily))
+    labels = [d.strftime("%Y%b%d") for d in daily.index]
+    step = max(1, len(labels) // 15)
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    ax.plot(x, daily.values, color="#0072BD", marker="o", markersize=3, linewidth=1.5)
+    ax.set_xticks(x[::step])
+    ax.set_xticklabels(labels[::step], rotation=45, ha="right", fontsize=8)
+    ax.set_ylabel("Mean speed (knots)")
+    ax.set_title("Sydney Bight WEA — Mean Daily Speed, August 2025")
+    ax.grid(alpha=0.3)
+    ax.set_xlim(-0.5, len(daily) - 0.5)
+
+    plt.tight_layout()
+    out = Path(out_dir) / "sydney_bight_speed_overall.png"
     plt.savefig(out, dpi=150)
     print(f"Saved: {out}")
     plt.close()
@@ -274,7 +282,8 @@ def main():
     print("Generating plots...")
     plot_stacked(daily_counts, out_dir)
     plot_speed(daily_speed, out_dir)
-    plot_combined(daily_counts, daily_speed, out_dir)
+    plot_speed_overall(df, out_dir)
+    plot_map(df, polygon, out_dir)
     print("Done.")
 
 
