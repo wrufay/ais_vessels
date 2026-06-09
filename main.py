@@ -58,10 +58,15 @@ def root():
 @app.get("/api/vessels")
 def get_vessels():
     rows = query("""
-        SELECT mmsi, name AS vessel_name, ship_type, 'CCG' AS source
-        FROM vessels
-        WHERE mmsi BETWEEN 200000000 AND 799999999
-        ORDER BY name
+        SELECT
+            p.mmsi,
+            v.name AS vessel_name,
+            v.ship_type,
+            p.source
+        FROM (SELECT DISTINCT ON (mmsi) mmsi, source FROM ais_positions ORDER BY mmsi, received_at DESC) p
+        LEFT JOIN vessels v USING (mmsi)
+        WHERE p.mmsi BETWEEN 200000000 AND 799999999
+        ORDER BY v.name NULLS LAST, p.mmsi
     """)
     return {"vessels": rows, "count": len(rows)}
 
