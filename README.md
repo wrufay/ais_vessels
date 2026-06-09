@@ -1,12 +1,6 @@
 # AIS data ingestion + UI prototype
 
-Web interface hosted locally using Docker and accessible through DFO network.
-
-Ingests decoded AIS data in form of .csv files. Compatible with exactEarth satellite (tested) and CCG terrestrial (untested)
-
-Uses [DuckDB](https://duckdb.org) Python library to parse the large CSV files, data saved into [PostgreSQL](https://www.postgresql.org) database with [TimescaleDB](https://www.timescale.com) extension for faster querying.
-
-Backend routing via [FastAPI](https://fastapi.tiangolo.com) to access data and relay to frontend, where vessel tracks are visualized with [React.js](https://react.dev) and [OpenLayers](https://openlayers.org) mapping library.
+Web interface to test decoded AIS data ingestion pipeline end-to-end, hosted locally on the DFO network via Docker
 
 
 ## Requirements
@@ -42,18 +36,12 @@ python pipeline/ingest_csv.py /path/to/csv/dir --workers 4
 ```
 Accepts CCG terrestrial and exactEarth satellite CSV formats. Resumable — already-processed files are skipped.
 
-## Architecture
+## Workflow
 
-```
-AIS CSV files (CCG terrestrial + exactEarth satellite)
-    │
-    │  pipeline/ingest_csv.py
-    │  - DuckDB reads and filters CSV to Scotian Shelf bbox
-    │  - bulk inserts into Postgres via COPY
-    ▼
-Postgres / TimescaleDB (Docker)
-    │
-    │  FastAPI backend
-    ▼
-React + OpenLayers UI  →  http://142.2.83.73
-```
+- Ingests decoded AIS data (.csv): compatible with exactEarth satellite and CCG terrestrial (untested)
+
+- Uses [DuckDB](https://duckdb.org) Python library to parse the large CSV files, saves into PostgreSQL database with [TimescaleDB](https://www.timescale.com) extension for faster querying.
+
+- Backend routing via FastAPI to access data and relay to frontend, where vessel tracks are visualized with React.js and [OpenLayers](https://openlayers.org) mapping library.
+
+- Containerized with Docker allowing database, backend and frontend to run as isolated services to keep data and development local to DFO network.
