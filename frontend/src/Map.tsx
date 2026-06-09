@@ -66,8 +66,8 @@ function ShipMap() {
   const [vessels, setVessels]       = useState<Vessel[]>([]);
   const [search, setSearch]         = useState('');
   const [selected, setSelected]     = useState<Vessel | null>(null);
-  const [start, setStart]           = useState('');
-  const [end, setEnd]               = useState('');
+  const [start, setStart]           = useState('2025-08-01');
+  const [end, setEnd]               = useState('2025-08-31');
   const [loading, setLoading]       = useState(false);
   const [pointCount, setPointCount] = useState<number | null>(null);
   const [popup, setPopup]           = useState<Popup | null>(null);
