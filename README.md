@@ -1,6 +1,6 @@
 # AIS data ingestion + UI prototype
 
-Web interface to test decoded AIS data ingestion pipeline end-to-end, hosted locally on the DFO network via Docker
+Web interface to test decoded AIS data ingestion pipeline end-to-end, hosted locally on the DFO network via Docker.
 
 
 ## Requirements
