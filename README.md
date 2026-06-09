@@ -1,27 +1,23 @@
 # Scotian Shelf AIS Vessel Tracker
 
-Web tool for visualizing vessel traffic on the Scotian Shelf using AIS data from Canadian Coast Guard shore stations. Built for correlating vessel activity with underwater noise levels, marine mammal presence, and other oceanographic observations.
+Web tool for visualizing vessel traffic on the Scotian Shelf using AIS data from Canadian Coast Guard shore stations and exactEarth satellite feeds. Built for correlating vessel activity with underwater noise levels, marine mammal presence, and other oceanographic observations.
 
 ## Repo layout
 
 ```
-/                        local research tool (Docker + TimescaleDB)
-  main.py                FastAPI backend
+/
+  main.py                  FastAPI backend
   requirements.txt
-  decode.py              CCG NMEA → SQLite decoder (standalone utility)
   docker-compose.yml
   docker/
     backend.Dockerfile
-    init.sql             DB schema (created automatically on first start)
+    init.sql               DB schema (auto-created on first start)
   pipeline/
-    ingest_csv.py        bulk CSV loader (resumable)
-  frontend/              React + OpenLayers map
-
-demo/                    deployed public demo (Railway + Vercel, 18 vessels)
-  main.py                SQLite backend
-  data/ais.db            committed demo DB
-  Procfile / railway.json
-  pipeline/ingest.py     aisdb-based ingestion (used to build the demo DB)
+    ingest_csv.py          Bulk CSV loader (resumable, DuckDB-accelerated)
+    requirements.txt
+  frontend/                React + OpenLayers map UI
+  analysis/
+    sydney_bight.py        Sydney Bight WEA traffic analysis (August 2025)
 ```
 
 ## Stack
@@ -31,45 +27,72 @@ demo/                    deployed public demo (Railway + Vercel, 18 vessels)
 | Frontend | React + OpenLayers + Tailwind CSS |
 | Backend  | FastAPI                           |
 | Database | TimescaleDB (Postgres extension)  |
+| Ingestion | DuckDB + psycopg2                |
 
-## Running locally
+## Setup (DFO server)
 
-Requires Docker and Docker Compose.
+### 1. Add yourself to the docker group (one-time)
 
 ```bash
-docker compose up -d
+sudo usermod -aG docker $USER
+```
+
+Log out and back in for the group change to take effect. In the current session you can prefix docker commands with `sg docker -c "..."`.
+
+### 2. Start the stack
+
+```bash
+docker compose up --build -d
 ```
 
 Schema is created automatically on first start. Frontend is served at **http://localhost**.
 
-To store Postgres data on external/mounted storage, set `PGDATA_PATH` in `.env`:
+To store Postgres data on external or mounted storage, set `PGDATA_PATH` in `.env`:
+
 ```
 PGDATA_PATH=/mnt/external/pgdata
 ```
 
-## Loading data
-
-Input CSVs must be in the CCG decoded format with columns: `mmsi`, `message_type`, `latitude`, `longitude`, `speed`, `course`, `heading`, `name`, `ship_type`, `callsign`, `imo`, `source`, `reception_timestamp`.
+### 3. Set up the ingestion environment
 
 ```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ais \
-python pipeline/ingest_csv.py /path/to/csv/dir --workers 8
+python -m venv venv
+source venv/bin/activate
+pip install -r pipeline/requirements.txt
 ```
 
-The script is resumable — kill and restart anytime, already-processed files are skipped. Tune `--workers` to match available CPU cores.
+### 4. Load CSV data
 
-After the initial bulk load, add the index:
-```sql
-CREATE INDEX ON ais_positions (mmsi, received_at DESC);
+Accepts both CCG terrestrial and exactEarth satellite CSV formats — columns are detected automatically.
+
+```bash
+python pipeline/ingest_csv.py /path/to/csv/dir --workers 4
 ```
+
+The script is resumable — kill and restart anytime, already-processed files are skipped. Positions are filtered to the Scotian Shelf bounding box (lon -69 to -55, lat 41 to 47) on load.
 
 ## API
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/vessels` | All vessels (MMSI, name, ship type) |
+| `GET /api/vessels` | All vessels with position data (MMSI, name, ship type, source) |
 | `GET /api/vessel/{mmsi}/route?start&end` | Ordered position track for a vessel |
 
-## Demo
+## Analysis
 
-A small public demo (18 hand-picked vessels, March 2025) is deployed separately from the `demo/` directory via Railway (backend) and Vercel (frontend).
+Sydney Bight WEA traffic statistics for August 2025:
+
+```bash
+source venv/bin/activate
+python analysis/sydney_bight.py
+```
+
+Outputs to `analysis/`:
+- `sydney_bight_vessel_types.png` — daily vessel counts by type (stacked bar)
+- `sydney_bight_speed.png` — mean daily speed by vessel type
+- `sydney_bight_speed_overall.png` — mean daily speed across all vessels
+- `sydney_bight_map.png` — vessel positions inside the WEA colored by type
+- `sydney_bight_stats.csv` — raw daily counts per type
+
+Requires the WEA shapefile at `/home/shared/WEA_shapefiles/Designated_WEAs_25_07_29.shp`.
+
