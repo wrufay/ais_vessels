@@ -17,10 +17,19 @@ Start Docker back up - takes a few minutes, new image is larger than the previou
 **sg docker -c "docker compose up -d"**
 
 
+Access the site locally here
+
+http://142.2.83.73
 
 Check if PostGIS is available
 
 **sg docker -c "docker exec ocean_noise_visualizer-db-1 psql -U postgres -d ais -c 'SELECT * FROM pg_available_extensions WHERE name = '"'"'postgis'"'"';'"**
+
+
+Rebuild frontend
+
+**sg docker -c "docker compose up --build frontend -d"**
+
 
 
 - Some issues with PostGIS installation, would need to reingest all the data again to build the new image. Going to stick with Shapely for now, 3 seconds to generate the plot is good enough for a prototype

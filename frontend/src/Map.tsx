@@ -10,6 +10,8 @@ import Point from 'ol/geom/Point';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import { Style, Stroke, Circle as CircleStyle, Fill } from 'ol/style';
+import Draw from 'ol/interaction/Draw';
+import GeoJSON from 'ol/format/GeoJSON';
 import 'ol/ol.css';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -52,9 +54,10 @@ function featureStyle(feature: FeatureLike): Style {
 }
 
 function ShipMap() {
-  const mapRef    = useRef<HTMLDivElement>(null);
-  const mapObj    = useRef<Map | null>(null);
-  const sourceRef = useRef(new VectorSource());
+  const mapRef       = useRef<HTMLDivElement>(null);
+  const mapObj       = useRef<Map | null>(null);
+  const sourceRef    = useRef(new VectorSource());
+  const drawSourceRef = useRef(new VectorSource());
 
   interface Popup {
     x: number; y: number;
@@ -68,9 +71,15 @@ function ShipMap() {
   const [selected, setSelected]     = useState<Vessel | null>(null);
   const [start, setStart]           = useState('2025-08-01');
   const [end, setEnd]               = useState('2025-08-31');
-  const [loading, setLoading]       = useState(false);
-  const [pointCount, setPointCount] = useState<number | null>(null);
-  const [popup, setPopup]           = useState<Popup | null>(null);
+  const [loading, setLoading]             = useState(false);
+  const [pointCount, setPointCount]       = useState<number | null>(null);
+  const [popup, setPopup]                 = useState<Popup | null>(null);
+  const [regionStats, setRegionStats]     = useState<any | null>(null);
+  const [regionLoading, setRegionLoading] = useState(false);
+  const [regionTime, setRegionTime]       = useState<number | null>(null);
+  const [drawnPolygon, setDrawnPolygon]   = useState<any | null>(null);
+  const [drawing, setDrawing]             = useState(false);
+  const drawRef                           = useRef<Draw | null>(null);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -81,6 +90,13 @@ function ShipMap() {
         new VectorLayer({
           source: sourceRef.current,
           style: featureStyle,
+        }),
+        new VectorLayer({
+          source: drawSourceRef.current,
+          style: new Style({
+            stroke: new Stroke({ color: '#e63946', width: 2 }),
+            fill: new Fill({ color: 'rgba(230,57,70,0.1)' }),
+          }),
         }),
       ],
       view: new View({
@@ -158,6 +174,55 @@ function ShipMap() {
       .finally(() => setLoading(false));
   }
 
+  const SYDNEY_BIGHT = {
+    type: "Polygon",
+    coordinates: [[[-60.05,46.38],[-59.45,46.38],[-59.45,46.78],[-60.05,46.78],[-60.05,46.38]]]
+  };
+
+  function startDrawing() {
+    if (!mapObj.current) return;
+    if (drawRef.current) {
+      mapObj.current.removeInteraction(drawRef.current);
+    }
+    setDrawnPolygon(null);
+    setRegionStats(null);
+    setDrawing(true);
+
+    drawSourceRef.current.clear();
+    const draw = new Draw({ source: drawSourceRef.current, type: 'Polygon', stopClick: true });
+    draw.on('drawend', (e) => {
+      const fmt = new GeoJSON();
+      const geojson = fmt.writeGeometryObject(e.feature.getGeometry()!, {
+        dataProjection: 'EPSG:4326',
+        featureProjection: 'EPSG:3857',
+      });
+      setDrawnPolygon(geojson);
+      setDrawing(false);
+      mapObj.current!.removeInteraction(draw);
+      drawRef.current = null;
+    });
+
+    drawRef.current = draw;
+    mapObj.current.addInteraction(draw);
+  }
+
+  function loadRegionStats() {
+    const polygon = drawnPolygon ?? SYDNEY_BIGHT;
+    setRegionLoading(true);
+    setRegionStats(null);
+    setRegionTime(null);
+    const t0 = performance.now();
+    fetch(`${API}/api/analysis/region`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygon, start, end }),
+    })
+      .then(r => r.json())
+      .then(d => { setRegionStats(d); setRegionTime(Math.round(performance.now() - t0)); })
+      .catch(console.error)
+      .finally(() => setRegionLoading(false));
+  }
+
   function resetVessels() {
     sourceRef.current.clear();
     setSelected(null);
@@ -232,6 +297,35 @@ function ShipMap() {
             <p className="text-xs text-gray-400 mt-1 text-center">
               {pointCount === 0 ? 'No data for this period.' : `${pointCount} position points`}
             </p>
+          )}
+
+          <button
+            onClick={startDrawing}
+            disabled={drawing}
+            className="mt-2 w-full border border-[#2a9d8f] text-[#2a9d8f] rounded py-1.5 text-sm disabled:opacity-40"
+          >
+            {drawing ? 'Drawing... (click to finish)' : drawnPolygon ? 'Redraw Region' : 'Draw Region'}
+          </button>
+
+          <button
+            onClick={loadRegionStats}
+            disabled={regionLoading}
+            className="mt-1 w-full bg-[#2a9d8f] text-white rounded py-1.5 text-sm disabled:opacity-40"
+          >
+            {regionLoading ? 'Analysing...' : drawnPolygon ? 'Analyse Region' : 'Sydney Bight Stats'}
+          </button>
+
+          {regionStats && (
+            <div className="mt-2 text-xs text-gray-600 border rounded p-2">
+              <div className="font-medium mb-1">{regionStats.unique_vessels} vessels · {regionStats.total_positions} positions {regionTime !== null && <span className="text-gray-400">· {regionTime}ms</span>}</div>
+              {regionStats.days.slice(0, 5).map((d: any) => (
+                <div key={d.date} className="mb-0.5">
+                  <span className="text-gray-400">{d.date}: </span>
+                  {Object.entries(d.vessel_counts).map(([t, n]) => `${t} ${n}`).join(', ')}
+                </div>
+              ))}
+              {regionStats.days.length > 5 && <div className="text-gray-400">+{regionStats.days.length - 5} more days</div>}
+            </div>
           )}
         </div>
 
