@@ -317,14 +317,16 @@ function ShipMap() {
 
           {regionStats && (
             <div className="mt-2 text-xs text-gray-600 border rounded p-2">
-              <div className="font-medium mb-1">{regionStats.unique_vessels} vessels · {regionStats.total_positions} positions {regionTime !== null && <span className="text-gray-400">· {regionTime}ms</span>}</div>
-              {regionStats.days.slice(0, 5).map((d: any) => (
-                <div key={d.date} className="mb-0.5">
-                  <span className="text-gray-400">{d.date}: </span>
-                  {Object.entries(d.vessel_counts).map(([t, n]) => `${t} ${n}`).join(', ')}
-                </div>
-              ))}
-              {regionStats.days.length > 5 && <div className="text-gray-400">+{regionStats.days.length - 5} more days</div>}
+              <div className="font-medium mb-1">
+                {regionStats.unique_vessels} vessels · {regionStats.total_positions} positions
+                {regionTime !== null && <span className="text-gray-400"> · {regionTime}ms</span>}
+              </div>
+              {regionStats.plots?.vessel_types && (
+                <img src={`data:image/png;base64,${regionStats.plots.vessel_types}`} className="w-full mt-1 rounded" />
+              )}
+              {regionStats.plots?.speed_overall && (
+                <img src={`data:image/png;base64,${regionStats.plots.speed_overall}`} className="w-full mt-1 rounded" />
+              )}
             </div>
           )}
         </div>

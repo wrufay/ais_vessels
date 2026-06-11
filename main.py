@@ -6,15 +6,19 @@ Run locally:  DATABASE_URL=postgresql://... uvicorn main:app --reload
 """
 
 import os
+import sys
 from contextlib import asynccontextmanager
-from typing import List
 
+import pandas as pd
 import psycopg2
 import psycopg2.extras
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from shapely.geometry import Point, shape
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
+from plots import plot_vessel_types, plot_speed_overall, ORDERED_TYPES  # noqa: E402
 
 DATABASE_URL: str = os.environ["DATABASE_URL"]
 
@@ -155,30 +159,44 @@ def analyse_region(req: RegionRequest):
     inside = [r for r in rows if polygon.contains(Point(r["longitude"], r["latitude"]))]
 
     if not inside:
-        return {"days": [], "total_positions": 0, "unique_vessels": 0}
+        return {"days": [], "total_positions": 0, "unique_vessels": 0, "plots": {}}
 
-    # Build daily stats
+    df = pd.DataFrame(inside)
+    df["day"] = df["received_at"].astype(str).str[:10]
+    df["type_label"] = df["ship_type"].apply(classify_ship_type)
+
+    # Daily unique vessel counts by type
+    daily_counts = (
+        df.groupby(["day", "type_label"])["mmsi"]
+        .nunique()
+        .unstack(fill_value=0)
+        .reindex(columns=ORDERED_TYPES, fill_value=0)
+    )
+    daily_counts.index = pd.to_datetime(daily_counts.index)
+
+    # Daily stats for JSON response
     from collections import defaultdict
     daily: dict = defaultdict(lambda: defaultdict(set))
-    daily_speed: dict = defaultdict(lambda: defaultdict(list))
-
     for r in inside:
         day = str(r["received_at"])[:10]
         label = classify_ship_type(r["ship_type"])
         daily[day][label].add(r["mmsi"])
-        if r["speed"] is not None:
-            daily_speed[day][label].append(r["speed"])
 
     days = []
     for day in sorted(daily):
         counts = {t: len(daily[day][t]) for t in daily[day]}
-        speeds = {t: round(sum(v)/len(v), 2) for t, v in daily_speed[day].items() if v}
-        days.append({"date": day, "vessel_counts": counts, "mean_speed": speeds})
+        days.append({"date": day, "vessel_counts": counts})
 
     unique_vessels = len({r["mmsi"] for r in inside})
+
+    plots = {
+        "vessel_types": plot_vessel_types(daily_counts),
+        "speed_overall": plot_speed_overall(df[["day", "speed"]].rename(columns={"speed": "speed"})),
+    }
 
     return {
         "days": days,
         "total_positions": len(inside),
         "unique_vessels": unique_vessels,
+        "plots": plots,
     }

@@ -2,3 +2,5 @@ fastapi
 uvicorn
 psycopg2-binary
 shapely
+pandas
+matplotlib
