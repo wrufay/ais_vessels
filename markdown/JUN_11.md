@@ -68,3 +68,17 @@ Meaning it took 0.7 seconds to get the API response, 16k positions filtered thro
 - Add mooring locations of for year from 2019 to 2023
 - Add an option to load in these information from a csv file. See attached file for mooring location and time of deployment
 - Functions to add (working on right now) run statistics within a certain geographical area, selected on the map (perhaps also be able to upload shapefiles)
+
+
+## How I'm thinking about tackling these
+- All of this is really one direction -> go from drawing rough boxes to analyzing real defined zones, against where the hydrophones actually were. That's the actual noise question.
+
+- Real regions (CHA, Roseway, Grand Manan) + shapefile upload are basically the same feature. The backend already takes a GeoJSON polygon, so predefined zones is mostly: get the real coords -> ship them as GeoJSON the frontend loads -> toggle them on the map -> click to run the analysis we already built. Roseway + Grand Manan are SARA right whale critical habitats, official shapefiles exist on DFO/Open Canada. Hard part is getting accurate boundaries, not the code. Decision: support real .shp (geopandas) or just GeoJSON and convert offline?
+
+- Moorings + CSV loader go together. Plot the hydrophone points from the CSV (lat/lon/name/deploy dates), filter by year. This is the noise half -> overlay where we were listening on top of who was passing. Decision: server reads a known CSV (simpler, better for non-technical users) vs upload in browser. Start server side.
+
+- Start/end markers on a track is a quick win, Jinshan asked for it too. ~1hr of frontend.
+
+- Order I'm thinking: predefined regions first (most value, cheapest, reuses everything), then moorings, then shapefile upload as the power user version. Start/end markers whenever.
+
+- BIG thing to flag: moorings are 2019-2023 and habitat analysis needs multi-year traffic, but we've only ingested August 2025 so far. All of this looks empty until there's years of data in the db, and at ~7h/month over SSHFS that's a long ingestion runway. Need to decide next push = features or data volume.
