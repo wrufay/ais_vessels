@@ -7,11 +7,14 @@ Run locally:  DATABASE_URL=postgresql://... uvicorn main:app --reload
 
 import os
 from contextlib import asynccontextmanager
+from typing import List
 
 import psycopg2
 import psycopg2.extras
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from shapely.geometry import Point, shape
 
 DATABASE_URL: str = os.environ["DATABASE_URL"]
 
@@ -100,3 +103,82 @@ def get_vessel_route(
 
     points = query(sql, params)
     return {"mmsi": mmsi, "points": points, "count": len(points)}
+
+
+TYPE_CATEGORIES = {
+    "cargo":                    range(70, 80),
+    "tanker":                   range(80, 90),
+    "fishing":                  range(30, 31),
+    "passenger":                range(60, 70),
+    "search and rescue vessel": [51],
+    "other":                    list(range(20, 30)) + list(range(31, 51)) +
+                                list(range(52, 60)) + list(range(90, 100)),
+}
+
+def classify_ship_type(code):
+    try:
+        c = int(code)
+    except (TypeError, ValueError):
+        return "unknown"
+    for label, codes in TYPE_CATEGORIES.items():
+        if c in codes:
+            return label
+    return "unknown"
+
+
+class RegionRequest(BaseModel):
+    polygon: dict  # GeoJSON polygon
+    start: str
+    end: str
+
+
+@app.post("/api/analysis/region")
+def analyse_region(req: RegionRequest):
+    try:
+        polygon = shape(req.polygon)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid GeoJSON polygon")
+
+    minx, miny, maxx, maxy = polygon.bounds
+
+    rows = query("""
+        SELECT p.mmsi, p.received_at, p.latitude, p.longitude, p.speed, v.ship_type
+        FROM ais_positions p
+        LEFT JOIN vessels v USING (mmsi)
+        WHERE p.received_at >= %s AND p.received_at < %s
+          AND p.latitude  BETWEEN %s AND %s
+          AND p.longitude BETWEEN %s AND %s
+          AND p.mmsi BETWEEN 200000000 AND 799999999
+    """, [req.start, req.end, miny, maxy, minx, maxx])
+
+    # Filter to exact polygon
+    inside = [r for r in rows if polygon.contains(Point(r["longitude"], r["latitude"]))]
+
+    if not inside:
+        return {"days": [], "total_positions": 0, "unique_vessels": 0}
+
+    # Build daily stats
+    from collections import defaultdict
+    daily: dict = defaultdict(lambda: defaultdict(set))
+    daily_speed: dict = defaultdict(lambda: defaultdict(list))
+
+    for r in inside:
+        day = str(r["received_at"])[:10]
+        label = classify_ship_type(r["ship_type"])
+        daily[day][label].add(r["mmsi"])
+        if r["speed"] is not None:
+            daily_speed[day][label].append(r["speed"])
+
+    days = []
+    for day in sorted(daily):
+        counts = {t: len(daily[day][t]) for t in daily[day]}
+        speeds = {t: round(sum(v)/len(v), 2) for t, v in daily_speed[day].items() if v}
+        days.append({"date": day, "vessel_counts": counts, "mean_speed": speeds})
+
+    unique_vessels = len({r["mmsi"] for r in inside})
+
+    return {
+        "days": days,
+        "total_positions": len(inside),
+        "unique_vessels": unique_vessels,
+    }

@@ -29,4 +29,3 @@ Notes from today's meeting.
 Looking into allowing users to select a region and view vessel traffic + see statistics.
 
 - Consider using PostGIS for faster spatial filtering — instead of pulling positions into Python and checking with Shapely, PostGIS does the polygon containment check inside Postgres directly, returning only matching rows 
-- 
