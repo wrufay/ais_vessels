@@ -155,5 +155,9 @@ npm run dev
 Open http://localhost:5173
 
 
+## TODO — add Sydney Bight as a region overlay
+Sydney Bight polygon exists in `analysis/sydney_bight.py` but is not on the map as a hardcoded overlay like Roseway + Grand Manan. Should add it to the CHA_REGIONS list in Map.tsx.
+
+
 ## TODO — UI/UX review for scientific usability
 Sit down and think about what a researcher actually needs from this tool day-to-day. Not just "does it look good" but "does it help someone answer a scientific question efficiently." Think about: what information do they need at a glance, what workflows are repetitive, what's confusing or buried. Maybe look at existing oceanographic tools or GIS software for inspiration.
