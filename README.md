@@ -45,3 +45,5 @@ Accepts CCG terrestrial and exactEarth satellite CSV formats. Resumable — alre
 - Backend routing via FastAPI to access data and relay to frontend, where vessel tracks are visualized with React.js and [OpenLayers](https://openlayers.org) mapping library.
 
 - Containerized with Docker allowing database, backend and frontend to run as isolated services to keep data and development local to DFO network.
+
+
