@@ -8,3 +8,4 @@ frontend/.env
 dist/
 pgdata/
 pipeline.log
+markdown/Screenshot*
