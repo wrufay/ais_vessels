@@ -82,3 +82,34 @@ Meaning it took 0.7 seconds to get the API response, 16k positions filtered thro
 - Order I'm thinking: predefined regions first (most value, cheapest, reuses everything), then moorings, then shapefile upload as the power user version. Start/end markers whenever.
 
 - BIG thing to flag: moorings are 2019-2023 and habitat analysis needs multi-year traffic, but we've only ingested August 2025 so far. All of this looks empty until there's years of data in the db, and at ~7h/month over SSHFS that's a long ingestion runway. Need to decide next push = features or data volume.
+
+
+## Roseway Basin coordinates
+From Transport Canada Ship Safety Bulletin SSB No. 04/2025 (confirmed by Jinshan). This is a seasonal Area to be Avoided for vessels 300GT+ from June 1 to Dec 31, to protect North Atlantic right whales.
+
+43° 16' N, 064° 55' W
+42° 47' N, 064° 59' W
+42° 39' N, 065° 31' W
+42° 52' N, 066° 05' W
+
+In decimal degrees:
+43.2667, -64.9167
+42.7833, -64.9833
+42.6500, -65.5167
+42.8667, -66.0833
+
+Plan: hardcode as a GeoJSON polygon overlay on the map. Always visible as a labeled boundary. Eventually clickable to trigger region analysis. Still waiting on Jinshan to confirm if he also wants stats triggered.
+
+
+## Grand Manan Basin coordinates
+7-point polygon, Bay of Fundy. Also a critical habitat for North Atlantic right whales.
+
+1  44° 49' N, 66° 27' W  →  44.8167, -66.4500
+2  44° 47' N, 66° 17' W  →  44.7833, -66.2833
+3  44° 40' N, 66° 17' W  →  44.6667, -66.2833
+4  44° 33' N, 66° 22' W  →  44.5500, -66.3667
+5  44° 29' N, 66° 30' W  →  44.4833, -66.5000
+6  44° 29' N, 66° 37' W  →  44.4833, -66.6167
+7  44° 42' N, 66° 37' W  →  44.7000, -66.6167
+
+Both Roseway + Grand Manan are now ready to hardcode as overlays. Waiting on CHA boundary if separate.
