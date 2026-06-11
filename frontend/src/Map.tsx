@@ -32,6 +32,13 @@ interface RoutePoint {
   source: string;
 }
 
+interface RegionStats {
+  total_positions: number;
+  unique_vessels: number;
+  days: { date: string; vessel_counts: Record<string, number> }[];
+  plots: { vessel_types?: string; speed_overall?: string };
+}
+
 function formatTime(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 }
@@ -53,11 +60,21 @@ function featureStyle(feature: FeatureLike): Style {
   });
 }
 
+function downloadPlot(b64: string, name: string) {
+  const a = document.createElement('a');
+  a.href = `data:image/png;base64,${b64}`;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function ShipMap() {
-  const mapRef       = useRef<HTMLDivElement>(null);
-  const mapObj       = useRef<Map | null>(null);
-  const sourceRef    = useRef(new VectorSource());
+  const mapRef        = useRef<HTMLDivElement>(null);
+  const mapObj        = useRef<Map | null>(null);
+  const sourceRef     = useRef(new VectorSource());
   const drawSourceRef = useRef(new VectorSource());
+  const drawRef       = useRef<Draw | null>(null);
 
   interface Popup {
     x: number; y: number;
@@ -74,12 +91,12 @@ function ShipMap() {
   const [loading, setLoading]             = useState(false);
   const [pointCount, setPointCount]       = useState<number | null>(null);
   const [popup, setPopup]                 = useState<Popup | null>(null);
-  const [regionStats, setRegionStats]     = useState<any | null>(null);
+  const [regionStats, setRegionStats]     = useState<RegionStats | null>(null);
   const [regionLoading, setRegionLoading] = useState(false);
   const [regionTime, setRegionTime]       = useState<number | null>(null);
-  const [drawnPolygon, setDrawnPolygon]   = useState<any | null>(null);
+  const [drawnPolygon, setDrawnPolygon]   = useState<object | null>(null);
   const [drawing, setDrawing]             = useState(false);
-  const drawRef                           = useRef<Draw | null>(null);
+  const [showResults, setShowResults]     = useState(false);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -108,7 +125,7 @@ function ShipMap() {
       map.forEachFeatureAtPixel(e.pixel, feature => {
         if (feature.getGeometry()?.getType() !== 'Point') return;
         setPopup({
-          x: e.pixel[0] + 288,
+          x: e.pixel[0],
           y: e.pixel[1],
           time:   feature.get('time'),
           lat:    feature.get('lat'),
@@ -174,16 +191,9 @@ function ShipMap() {
       .finally(() => setLoading(false));
   }
 
-  const SYDNEY_BIGHT = {
-    type: "Polygon",
-    coordinates: [[[-60.05,46.38],[-59.45,46.38],[-59.45,46.78],[-60.05,46.78],[-60.05,46.38]]]
-  };
-
   function startDrawing() {
     if (!mapObj.current) return;
-    if (drawRef.current) {
-      mapObj.current.removeInteraction(drawRef.current);
-    }
+    if (drawRef.current) mapObj.current.removeInteraction(drawRef.current);
     setDrawnPolygon(null);
     setRegionStats(null);
     setDrawing(true);
@@ -206,8 +216,24 @@ function ShipMap() {
     mapObj.current.addInteraction(draw);
   }
 
+  function cancelDrawing() {
+    if (mapObj.current && drawRef.current) {
+      mapObj.current.removeInteraction(drawRef.current);
+      drawRef.current = null;
+    }
+    drawSourceRef.current.clear();
+    setDrawing(false);
+  }
+
+  function clearRegion() {
+    drawSourceRef.current.clear();
+    setDrawnPolygon(null);
+    setRegionStats(null);
+    setRegionTime(null);
+  }
+
   function loadRegionStats() {
-    const polygon = drawnPolygon ?? SYDNEY_BIGHT;
+    if (!drawnPolygon) return;
     setRegionLoading(true);
     setRegionStats(null);
     setRegionTime(null);
@@ -215,10 +241,14 @@ function ShipMap() {
     fetch(`${API}/api/analysis/region`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ polygon, start, end }),
+      body: JSON.stringify({ polygon: drawnPolygon, start, end }),
     })
       .then(r => r.json())
-      .then(d => { setRegionStats(d); setRegionTime(Math.round(performance.now() - t0)); })
+      .then((d: RegionStats) => {
+        setRegionStats(d);
+        setRegionTime(Math.round(performance.now() - t0));
+        setShowResults(true);
+      })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
   }
@@ -227,10 +257,7 @@ function ShipMap() {
     sourceRef.current.clear();
     setSelected(null);
     setPointCount(null);
-    fetch(`${API}/api/vessels`)
-      .then(r => r.json())
-      .then(d => setVessels(d.vessels || []))
-      .catch(console.error);
+    setSearch('');
   }
 
   const filtered = vessels.filter(v => {
@@ -245,41 +272,36 @@ function ShipMap() {
   return (
     <div className="relative w-full h-screen">
 
-      <div className="absolute top-0 left-0 h-full w-72 bg-white shadow-lg z-10 flex flex-col overflow-hidden">
-        <div className="p-4 border-b">
+      {/* ---------------- Sidebar ---------------- */}
+      <div className="absolute top-0 left-0 h-full w-72 bg-white shadow-lg z-20 flex flex-col">
+        {/* Sticky header — vessel search + dates */}
+        <div className="p-4 border-b shrink-0">
           <div className="flex items-baseline justify-between mb-3">
             <h2 className="font-semibold text-[#127475] text-lg">Vessel Tracker</h2>
-            <span className="text-xs text-gray-400">
-              {filtered.length !== vessels.length
-                ? `${filtered.length} / ${vessels.length}`
-                : `${vessels.length} vessels`}
-            </span>
+            <button
+              onClick={resetVessels}
+              title="Clear selection &amp; search"
+              className="text-xs text-gray-400 hover:text-[#127475] transition-colors"
+            >
+              ↺ Reset
+            </button>
           </div>
 
           <input
-            className="w-full border rounded px-2 py-1 text-sm mb-3"
-            placeholder="Search vessel name or MMSI..."
+            className="w-full border rounded px-2 py-1.5 text-sm mb-3 focus:outline-none focus:ring-1 focus:ring-[#2a9d8f]"
+            placeholder="Search name, MMSI, or type…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
 
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={resetVessels}
-              className="flex-1 rounded py-1.5 text-sm border text-gray-500 border-gray-300"
-            >
-              Reset
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-2 text-sm">
+          <div className="grid grid-cols-2 gap-2 text-sm mb-3">
             <label className="flex flex-col gap-0.5">
-              <span className="text-gray-500 text-xs">Start date</span>
+              <span className="text-gray-500 text-xs">Start</span>
               <input type="date" className="border rounded px-2 py-1"
                 value={start} onChange={e => setStart(e.target.value)} />
             </label>
             <label className="flex flex-col gap-0.5">
-              <span className="text-gray-500 text-xs">End date</span>
+              <span className="text-gray-500 text-xs">End</span>
               <input type="date" className="border rounded px-2 py-1"
                 value={end} onChange={e => setEnd(e.target.value)} />
             </label>
@@ -288,53 +310,31 @@ function ShipMap() {
           <button
             onClick={loadRoute}
             disabled={!selected || loading}
-            className="mt-3 w-full bg-[#127475] text-white rounded py-1.5 text-sm disabled:opacity-40"
+            className="w-full bg-[#127475] text-white rounded py-1.5 text-sm font-medium hover:bg-[#0e5f60] disabled:opacity-40 transition-colors"
           >
-            {loading ? 'Loading...' : 'Show Route'}
+            {loading ? 'Loading…' : selected ? `Show Route — ${selected.vessel_name || selected.mmsi}` : 'Select a vessel'}
           </button>
 
           {pointCount !== null && (
-            <p className="text-xs text-gray-400 mt-1 text-center">
+            <p className="text-xs text-gray-400 mt-1.5 text-center">
               {pointCount === 0 ? 'No data for this period.' : `${pointCount} position points`}
             </p>
           )}
-
-          <button
-            onClick={startDrawing}
-            disabled={drawing}
-            className="mt-2 w-full border border-[#2a9d8f] text-[#2a9d8f] rounded py-1.5 text-sm disabled:opacity-40"
-          >
-            {drawing ? 'Drawing... (click to finish)' : drawnPolygon ? 'Redraw Region' : 'Draw Region'}
-          </button>
-
-          <button
-            onClick={loadRegionStats}
-            disabled={regionLoading}
-            className="mt-1 w-full bg-[#2a9d8f] text-white rounded py-1.5 text-sm disabled:opacity-40"
-          >
-            {regionLoading ? 'Analysing...' : drawnPolygon ? 'Analyse Region' : 'Sydney Bight Stats'}
-          </button>
-
-          {regionStats && (
-            <div className="mt-2 text-xs text-gray-600 border rounded p-2">
-              <div className="font-medium mb-1">
-                {regionStats.unique_vessels} vessels · {regionStats.total_positions} positions
-                {regionTime !== null && <span className="text-gray-400"> · {regionTime}ms</span>}
-              </div>
-              {regionStats.plots?.vessel_types && (
-                <img src={`data:image/png;base64,${regionStats.plots.vessel_types}`} className="w-full mt-1 rounded" />
-              )}
-              {regionStats.plots?.speed_overall && (
-                <img src={`data:image/png;base64,${regionStats.plots.speed_overall}`} className="w-full mt-1 rounded" />
-              )}
-            </div>
-          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        {/* Scrollable vessel list */}
+        <div className="flex items-center justify-between px-4 py-2 text-xs text-gray-400 border-b shrink-0">
+          <span>Vessels</span>
+          <span>
+            {filtered.length !== vessels.length
+              ? `${filtered.length} / ${vessels.length}`
+              : `${vessels.length}`}
+          </span>
+        </div>
+        <div className="flex-1 overflow-y-auto min-h-0">
           {filtered.length === 0 && (
             <p className="text-xs text-gray-400 p-4 text-center">
-              {vessels.length === 0 ? 'Loading vessels...' : 'No vessels match.'}
+              {vessels.length === 0 ? 'Loading vessels…' : 'No vessels match.'}
             </p>
           )}
           {filtered.map(v => (
@@ -352,8 +352,59 @@ function ShipMap() {
         </div>
       </div>
 
-      <div ref={mapRef} className="w-full h-full pl-72" />
+      {/* ---------------- Map ---------------- */}
+      <div ref={mapRef} className="absolute inset-0 left-72" />
 
+      {/* ---------------- Region toolbar (floating over map) ---------------- */}
+      <div className="absolute top-4 left-72 right-0 flex justify-center z-20 pointer-events-none">
+        <div className="pointer-events-auto bg-white/95 backdrop-blur rounded-full shadow-lg border border-gray-200 px-2 py-1.5 flex items-center gap-2">
+          {drawing ? (
+            <>
+              <span className="text-xs text-gray-500 pl-2">Click to add points · double-click to finish</span>
+              <button
+                onClick={cancelDrawing}
+                className="text-xs rounded-full px-3 py-1.5 border border-gray-300 text-gray-500 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </>
+          ) : drawnPolygon ? (
+            <>
+              <span className="text-xs text-gray-500 pl-2">Region selected</span>
+              <button
+                onClick={loadRegionStats}
+                disabled={regionLoading}
+                className="text-xs rounded-full px-3 py-1.5 bg-[#2a9d8f] text-white font-medium hover:bg-[#23867a] disabled:opacity-50"
+              >
+                {regionLoading ? 'Analysing…' : 'Analyse Region'}
+              </button>
+              {regionStats && !regionLoading && (
+                <button
+                  onClick={() => setShowResults(true)}
+                  className="text-xs rounded-full px-3 py-1.5 border border-[#2a9d8f] text-[#2a9d8f] hover:bg-teal-50"
+                >
+                  View Results
+                </button>
+              )}
+              <button
+                onClick={clearRegion}
+                className="text-xs rounded-full px-3 py-1.5 border border-gray-300 text-gray-500 hover:bg-gray-50"
+              >
+                Clear
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={startDrawing}
+              className="text-xs rounded-full px-4 py-1.5 bg-[#2a9d8f] text-white font-medium hover:bg-[#23867a]"
+            >
+              ✏ Draw Region to Analyse
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ---------------- Legend ---------------- */}
       <div className="absolute bottom-4 right-4 bg-white rounded shadow px-3 py-2 text-xs z-10">
         <div className="font-medium mb-1 text-gray-600">Speed (knots)</div>
         <div className="flex items-center gap-1.5 mb-0.5"><span className="w-3 h-3 rounded-full bg-[#2a9d8f] inline-block"/>&lt; 3</div>
@@ -361,20 +412,19 @@ function ShipMap() {
         <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-[#e63946] inline-block"/>&gt; 10</div>
       </div>
 
+      {/* ---------------- Intro modal ---------------- */}
       {showIntro && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
             <h1 className="text-xl font-semibold text-[#127475] mb-1">Scotian Shelf AIS Vessel Tracker</h1>
-            <p className="text-xs text-gray-400 mb-4">Canadian Coast Guard · AIS Terrestrial Data</p>
+            <p className="text-xs text-gray-400 mb-4">Canadian Coast Guard · Terrestrial AIS</p>
             <p className="text-sm text-gray-600 mb-4">
-              Visualize vessel traffic on the Scotian Shelf from Canadian Coast Guard shore station AIS data.
-              Explore movement patterns, transit routes, and speeds — useful for correlating vessel activity
-              with underwater noise levels, marine mammal sightings, or other oceanographic observations.
+              Explore vessel traffic on the Scotian Shelf and analyse activity within any area you choose.
             </p>
             <div className="text-sm text-gray-600 space-y-2 mb-5">
-              <div className="flex gap-2"><span className="text-[#127475] font-medium">1.</span><span>Search or browse vessels by name, MMSI, or ship type</span></div>
-              <div className="flex gap-2"><span className="text-[#127475] font-medium">2.</span><span>Select a vessel, set a date range, and click <strong>Show Route</strong> to plot its track</span></div>
-              <div className="flex gap-2"><span className="text-[#127475] font-medium">3.</span><span>Click any point on the track to see timestamp, position, speed, and course</span></div>
+              <div className="flex gap-2"><span className="text-[#127475] font-medium">1.</span><span>Pick a vessel and date range, then <strong>Show Route</strong> to plot its track.</span></div>
+              <div className="flex gap-2"><span className="text-[#127475] font-medium">2.</span><span>Click any point to see its time, position, and speed.</span></div>
+              <div className="flex gap-2"><span className="text-[#127475] font-medium">3.</span><span>Use <strong>Draw Region</strong> (top of map) to outline an area and get traffic stats &amp; charts.</span></div>
             </div>
             <button
               onClick={() => setShowIntro(false)}
@@ -386,10 +436,79 @@ function ShipMap() {
         </div>
       )}
 
+      {/* ---------------- Results modal ---------------- */}
+      {showResults && regionStats && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowResults(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between p-5 border-b shrink-0">
+              <div>
+                <h2 className="text-lg font-semibold text-[#127475]">Region Analysis</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {regionStats.unique_vessels} vessels · {regionStats.total_positions.toLocaleString()} positions · {start} → {end}
+                  {regionTime !== null && <span className="text-gray-400"> · {(regionTime / 1000).toFixed(1)}s</span>}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowResults(false)}
+                className="text-gray-400 hover:text-gray-700 text-xl leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-5 space-y-6">
+              {regionStats.total_positions === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  No vessel activity found in this region for the selected dates.
+                </p>
+              ) : (
+                <>
+                  {regionStats.plots?.vessel_types && (
+                    <figure>
+                      <figcaption className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">Daily vessels by type</span>
+                        <button
+                          onClick={() => downloadPlot(regionStats.plots.vessel_types!, 'vessels_by_type.png')}
+                          className="text-xs text-[#2a9d8f] hover:underline"
+                        >
+                          ↓ Download
+                        </button>
+                      </figcaption>
+                      <img src={`data:image/png;base64,${regionStats.plots.vessel_types}`} className="w-full rounded border" />
+                    </figure>
+                  )}
+                  {regionStats.plots?.speed_overall && (
+                    <figure>
+                      <figcaption className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">Daily mean speed</span>
+                        <button
+                          onClick={() => downloadPlot(regionStats.plots.speed_overall!, 'mean_speed.png')}
+                          className="text-xs text-[#2a9d8f] hover:underline"
+                        >
+                          ↓ Download
+                        </button>
+                      </figcaption>
+                      <img src={`data:image/png;base64,${regionStats.plots.speed_overall}`} className="w-full rounded border" />
+                    </figure>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- Point popup ---------------- */}
       {popup && (
         <div
           className="absolute z-30 bg-white border border-gray-200 rounded shadow-lg px-3 py-2 text-xs pointer-events-none"
-          style={{ left: popup.x + 8, top: popup.y - 8 }}
+          style={{ left: popup.x + 288 + 8, top: popup.y - 8 }}
         >
           <div className="font-semibold text-[#127475] mb-1">{popup.source}</div>
           <div className="text-gray-600 space-y-0.5">
