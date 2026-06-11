@@ -39,23 +39,19 @@ interface RegionStats {
   plots: { vessel_types?: string; speed_overall?: string };
 }
 
-// ---- ship-type classification (mirrors backend categories) ----
 const TYPE_COLORS: Record<string, string> = {
-  cargo:            '#f4a261',
-  tanker:           '#e76f51',
-  fishing:          '#2a9d8f',
-  passenger:        '#8d6cc4',
-  'search & rescue':'#43aa8b',
-  other:            '#9aa5b1',
-  unknown:          '#cbd2d9',
+  cargo:             '#f4a261',
+  tanker:            '#e76f51',
+  fishing:           '#2a9d8f',
+  passenger:         '#8d6cc4',
+  'search & rescue': '#43aa8b',
+  other:             '#9aa5b1',
+  unknown:           '#cbd2d9',
 };
 
 function classifyType(code: string | number | null): string {
   const c = typeof code === 'number' ? code : parseInt(String(code ?? ''), 10);
-  if (Number.isNaN(c)) {
-    // already a text label from the DB — keep it readable, default color
-    return String(code ?? '').trim() ? String(code).toLowerCase() : 'unknown';
-  }
+  if (Number.isNaN(c)) return String(code ?? '').trim() ? String(code).toLowerCase() : 'unknown';
   if (c >= 70 && c < 80) return 'cargo';
   if (c >= 80 && c < 90) return 'tanker';
   if (c === 30) return 'fishing';
@@ -69,21 +65,38 @@ function formatTime(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 }
 
-function featureStyle(feature: FeatureLike): Style {
-  const type = feature.getGeometry()?.getType();
-  if (type === 'LineString') {
-    return new Style({
-      stroke: new Stroke({ color: '#127475', width: 2 }),
-    });
-  }
-  const sog = (feature.get('sog') as number) || 0;
-  const color = sog > 10 ? '#e63946' : sog > 3 ? '#f4a261' : '#2a9d8f';
-  return new Style({
-    image: new CircleStyle({
-      radius: 4,
-      fill: new Fill({ color }),
-    }),
-  });
+function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
+  return function (feature: FeatureLike): Style {
+    const geomType = feature.getGeometry()?.getType();
+    if (geomType === 'LineString') {
+      return new Style({ stroke: new Stroke({ color: '#127475', width: 2 }) });
+    }
+    const isStart = feature.get('isStart') as boolean;
+    const isEnd   = feature.get('isEnd')   as boolean;
+    if (isStart && !showStart) return new Style({});
+    if (isEnd   && !showEnd)   return new Style({});
+    if (isStart) {
+      return new Style({
+        image: new CircleStyle({
+          radius: 7,
+          fill:   new Fill({ color: '#2a9d8f' }),
+          stroke: new Stroke({ color: '#fff', width: 2.5 }),
+        }),
+      });
+    }
+    if (isEnd) {
+      return new Style({
+        image: new CircleStyle({
+          radius: 7,
+          fill:   new Fill({ color: '#e63946' }),
+          stroke: new Stroke({ color: '#fff', width: 2.5 }),
+        }),
+      });
+    }
+    const sog = (feature.get('sog') as number) || 0;
+    const color = sog > 10 ? '#e63946' : sog > 3 ? '#f4a261' : '#2a9d8f';
+    return new Style({ image: new CircleStyle({ radius: 4, fill: new Fill({ color }) }) });
+  };
 }
 
 function downloadPlot(b64: string, name: string) {
@@ -101,6 +114,7 @@ function ShipMap() {
   const sourceRef     = useRef(new VectorSource());
   const drawSourceRef = useRef(new VectorSource());
   const drawRef       = useRef<Draw | null>(null);
+  const routeLayerRef = useRef<VectorLayer | null>(null);
 
   interface Popup {
     x: number; y: number;
@@ -108,6 +122,8 @@ function ShipMap() {
     sog: number | null; cog: number | null; source: string;
   }
 
+  const [showStart, setShowStart]   = useState(true);
+  const [showEnd,   setShowEnd]     = useState(true);
   const [showIntro, setShowIntro]   = useState(true);
   const [vessels, setVessels]       = useState<Vessel[]>([]);
   const [search, setSearch]         = useState('');
@@ -126,19 +142,22 @@ function ShipMap() {
 
   useEffect(() => {
     if (!mapRef.current) return;
+    const routeLayer = new VectorLayer({
+      source: sourceRef.current,
+      style: makeFeatureStyle(true, true),
+    });
+    routeLayerRef.current = routeLayer;
+
     const map = new Map({
       target: mapRef.current,
       layers: [
         new TileLayer({ source: new OSM() }),
-        new VectorLayer({
-          source: sourceRef.current,
-          style: featureStyle,
-        }),
+        routeLayer,
         new VectorLayer({
           source: drawSourceRef.current,
           style: new Style({
             stroke: new Stroke({ color: '#e63946', width: 2 }),
-            fill: new Fill({ color: 'rgba(230,57,70,0.1)' }),
+            fill:   new Fill({ color: 'rgba(230,57,70,0.1)' }),
           }),
         }),
       ],
@@ -175,6 +194,17 @@ function ShipMap() {
       .catch(console.error);
   }, []);
 
+  function toggleStart() {
+    const next = !showStart;
+    setShowStart(next);
+    routeLayerRef.current?.setStyle(makeFeatureStyle(next, showEnd));
+  }
+
+  function toggleEnd() {
+    const next = !showEnd;
+    setShowEnd(next);
+    routeLayerRef.current?.setStyle(makeFeatureStyle(showStart, next));
+  }
 
   function loadRoute() {
     if (!selected) return;
@@ -197,15 +227,17 @@ function ShipMap() {
         const coords = pts.map(p => fromLonLat([p.longitude, p.latitude]));
         sourceRef.current.addFeature(new Feature({ geometry: new LineString(coords) }));
 
-        pts.forEach(p => {
+        pts.forEach((p, i) => {
           const f = new Feature({
             geometry: new Point(fromLonLat([p.longitude, p.latitude])),
-            sog: p.sog,
-            cog: p.cog,
-            time: p.time,
-            lat: p.latitude,
-            lon: p.longitude,
-            source: p.source,
+            sog:     p.sog,
+            cog:     p.cog,
+            time:    p.time,
+            lat:     p.latitude,
+            lon:     p.longitude,
+            source:  p.source,
+            isStart: i === 0,
+            isEnd:   i === pts.length - 1,
           });
           sourceRef.current.addFeature(f);
         });
@@ -300,7 +332,6 @@ function ShipMap() {
 
       {/* ---------------- Sidebar ---------------- */}
       <div className="absolute top-0 left-0 h-full w-80 bg-white z-20 flex flex-col shadow-[8px_0_30px_-12px_rgba(15,23,42,0.15)]">
-        {/* Header — vessel search + dates */}
         <div className="px-5 pt-5 pb-4 shrink-0">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -350,9 +381,37 @@ function ShipMap() {
           </button>
 
           {pointCount !== null && (
-            <p className="text-xs text-slate-400 mt-2 text-center">
-              {pointCount === 0 ? 'No data for this period.' : `${pointCount.toLocaleString()} position points`}
-            </p>
+            <div className="mt-2 text-center">
+              <p className="text-xs text-slate-400 mb-2">
+                {pointCount === 0 ? 'No data for this period.' : `${pointCount.toLocaleString()} position points`}
+              </p>
+              {pointCount > 0 && (
+                <div className="flex justify-center gap-2">
+                  <button
+                    onClick={toggleStart}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
+                      showStart
+                        ? 'bg-[#2a9d8f]/10 text-[#2a9d8f]'
+                        : 'bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-[#2a9d8f]" />
+                    Start
+                  </button>
+                  <button
+                    onClick={toggleEnd}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
+                      showEnd
+                        ? 'bg-[#e63946]/10 text-[#e63946]'
+                        : 'bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-[#e63946]" />
+                    End
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -402,7 +461,7 @@ function ShipMap() {
       {/* ---------------- Map ---------------- */}
       <div ref={mapRef} className="absolute inset-0 left-80" />
 
-      {/* ---------------- Region toolbar (floating over map) ---------------- */}
+      {/* ---------------- Region toolbar ---------------- */}
       <div className="absolute top-5 left-80 right-0 flex justify-center z-20 pointer-events-none">
         <div className="pointer-events-auto bg-white/90 backdrop-blur-md rounded-full shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-2 py-1.5 flex items-center gap-2">
           {drawing ? (
@@ -456,9 +515,9 @@ function ShipMap() {
       {/* ---------------- Legend ---------------- */}
       <div className="absolute bottom-5 right-5 bg-white/90 backdrop-blur-md rounded-2xl shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs z-10">
         <div className="font-semibold mb-2 text-slate-600">Speed (knots)</div>
-        <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2a9d8f] inline-block"/>&lt; 3</div>
-        <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#f4a261] inline-block"/>3 – 10</div>
-        <div className="flex items-center gap-2 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#e63946] inline-block"/>&gt; 10</div>
+        <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2a9d8f] inline-block" />&lt; 3</div>
+        <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#f4a261] inline-block" />3 – 10</div>
+        <div className="flex items-center gap-2 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#e63946] inline-block" />&gt; 10</div>
       </div>
 
       {/* ---------------- Intro modal ---------------- */}
@@ -519,7 +578,6 @@ function ShipMap() {
                 ✕
               </button>
             </div>
-
             <div className="overflow-y-auto px-7 py-6 space-y-7">
               {regionStats.total_positions === 0 ? (
                 <p className="text-sm text-slate-500 text-center py-10">
