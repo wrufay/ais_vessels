@@ -54,3 +54,5 @@ Meaning it took 0.7 seconds to get the API response, 16k positions filtered thro
 
 - Going to work on frontend clean-up next, make it presentable, responsive and maybe even faster/easier to use
 - Also need to allow show ALL the traffic in a certain region after drawing them.
+- Could also generate as a heatmap instead of showing individual tracks. Just an idea.
+- My UX idea: draw a region → sidebar filters to only vessels inside that region → user can select individual vessels or show all, colored by vessel type. Build all options and see what's actually useful 
