@@ -9,7 +9,7 @@
 
 ## Results
 
-- 4,448,747 points plotted
+- 4,498,747 points plotted
 - Initially loaded 4,182 unique MMSI, filtered for MMSI between 200000000 - 799999999 leaving 3368 vessels displayed in the UI
 - Now when Docker is running (setup instructions in README), anyone on the DFO server can access the user interface on [http://142.2.83.73](http://142.2.83.73) - likely the same architecture we will use for the final project
 - When you open the UI, you should see all 3368 vessels loaded in, and be able to select them to see their tracks from 08/01/25 to 08/31/25.
