@@ -113,3 +113,47 @@ Plan: hardcode as a GeoJSON polygon overlay on the map. Always visible as a labe
 7  44° 42' N, 66° 37' W  →  44.7000, -66.6167
 
 Both Roseway + Grand Manan are now ready to hardcode as overlays. Waiting on CHA boundary if separate.
+
+
+## Unknown vessels / partial info
+4,182 unique MMSIs in position data, but 2,489 (~60%) have no vessel name/info. AIS has two message types — position reports (type 1/2/3) send lat/lon/speed, vessel info messages (type 5/24) send name, callsign etc. A vessel can send thousands of position pings and never broadcast a type 5/24, so we have their track but no name. Nothing we can do about it data-side, that's just AIS.
+
+It's not binary either — vessels can have partial info (name but no ship type/callsign). Example, PINK PENGUIN (MMSI 316001216) has a name, moves around the Scotian Shelf, but no ship type or callsign:
+
+```
+   mmsi    |     name     | ship_type | callsign |      received_at       | latitude  | longitude  | speed
+-----------+--------------+-----------+----------+------------------------+-----------+------------+-------
+ 203439200 | PINK PENGUIN |           |          | 2025-08-01 01:20:17+00 |  45.08995 | -61.763226 |     0
+ 203439200 | PINK PENGUIN |           |          | 2025-08-01 21:42:14+00 | 44.736263 |  -62.67029 |   4.3
+ 203439200 | PINK PENGUIN |           |          | 2025-08-02 04:33:49+00 |   44.7326 | -62.781284 |     0
+```
+
+Filtered out in the backend with `WHERE mmsi BETWEEN 200000000 AND 799999999` to remove garbage MMSIs (e.g. MMSI = 25, fishing buoys etc.).
+
+Jinshan mentioned vessels like Pink Penguin can be found online (MarineTraffic etc.), so the info exists — it's just not in our data. Two possible reasons:
+1. The exactEarth CSVs we ingested only contain position report messages (type 1/2/3) and the vessel info messages (type 5/24) were in a separate file or format that didn't get ingested.
+2. The source data is just incomplete.
+
+Need to check: do the raw CSVs on echowind contain type 5/24 messages at all? If not, ~60% unknown vessels is a real data quality issue worth flagging.
+
+
+## Local frontend dev (mock API)
+To work on the UI from a laptop without DFO access, there's a mock API (`mock_api.py`) that returns fake vessels, routes, and region stats with plots. No database needed.
+
+```bash
+# terminal 1 — mock backend
+pip install fastapi uvicorn matplotlib
+uvicorn mock_api:app --reload --port 8000
+
+# terminal 2 — frontend
+cd frontend
+echo "VITE_API_URL=http://localhost:8000" > .env
+npm install
+npm run dev
+```
+
+Open http://localhost:5173
+
+
+## TODO — UI/UX review for scientific usability
+Sit down and think about what a researcher actually needs from this tool day-to-day. Not just "does it look good" but "does it help someone answer a scientific question efficiently." Think about: what information do they need at a glance, what workflows are repetitive, what's confusing or buried. Maybe look at existing oceanographic tools or GIS software for inspiration.

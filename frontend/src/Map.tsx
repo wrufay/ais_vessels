@@ -7,14 +7,53 @@ import { fromLonLat } from 'ol/proj';
 import Feature, { type FeatureLike } from 'ol/Feature';
 import LineString from 'ol/geom/LineString';
 import Point from 'ol/geom/Point';
+import OLPolygon from 'ol/geom/Polygon';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
-import { Style, Stroke, Circle as CircleStyle, Fill } from 'ol/style';
+import { Style, Stroke, Circle as CircleStyle, Fill, Text } from 'ol/style';
 import Draw from 'ol/interaction/Draw';
 import GeoJSON from 'ol/format/GeoJSON';
 import 'ol/ol.css';
 
 const API = import.meta.env.VITE_API_URL ?? '';
+
+// ---- Critical Habitat Areas ----
+interface ChaRegion {
+  name: string;
+  geojson: object;
+}
+
+const CHA_REGIONS: ChaRegion[] = [
+  {
+    name: 'Roseway Basin',
+    geojson: {
+      type: 'Polygon',
+      coordinates: [[
+        [-64.9167, 43.2667],
+        [-64.9833, 42.7833],
+        [-65.5167, 42.6500],
+        [-66.0833, 42.8667],
+        [-64.9167, 43.2667],
+      ]],
+    },
+  },
+  {
+    name: 'Grand Manan Basin',
+    geojson: {
+      type: 'Polygon',
+      coordinates: [[
+        [-66.4500, 44.8167],
+        [-66.2833, 44.7833],
+        [-66.2833, 44.6667],
+        [-66.3667, 44.5500],
+        [-66.5000, 44.4833],
+        [-66.6167, 44.4833],
+        [-66.6167, 44.7000],
+        [-66.4500, 44.8167],
+      ]],
+    },
+  },
+];
 
 interface Vessel {
   mmsi: number;
@@ -99,6 +138,36 @@ function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
   };
 }
 
+function chaStyle(feature: FeatureLike): Style {
+  const name = feature.get('name') as string;
+  return new Style({
+    stroke: new Stroke({ color: '#6366f1', width: 2 }),
+    fill:   new Fill({ color: 'rgba(99,102,241,0.07)' }),
+    text:   new Text({
+      text:          name,
+      font:          'bold 11px sans-serif',
+      fill:          new Fill({ color: '#4f46e5' }),
+      stroke:        new Stroke({ color: '#fff', width: 3 }),
+      overflow:      true,
+    }),
+  });
+}
+
+function chaHoverStyle(feature: FeatureLike): Style {
+  const name = feature.get('name') as string;
+  return new Style({
+    stroke: new Stroke({ color: '#4f46e5', width: 2.5 }),
+    fill:   new Fill({ color: 'rgba(99,102,241,0.15)' }),
+    text:   new Text({
+      text:   name,
+      font:   'bold 11px sans-serif',
+      fill:   new Fill({ color: '#4f46e5' }),
+      stroke: new Stroke({ color: '#fff', width: 3 }),
+      overflow: true,
+    }),
+  });
+}
+
 function downloadPlot(b64: string, name: string) {
   const a = document.createElement('a');
   a.href = `data:image/png;base64,${b64}`;
@@ -113,8 +182,10 @@ function ShipMap() {
   const mapObj        = useRef<Map | null>(null);
   const sourceRef     = useRef(new VectorSource());
   const drawSourceRef = useRef(new VectorSource());
+  const chaSourceRef  = useRef(new VectorSource());
   const drawRef       = useRef<Draw | null>(null);
   const routeLayerRef = useRef<VectorLayer | null>(null);
+  const chaLayerRef   = useRef<VectorLayer | null>(null);
 
   interface Popup {
     x: number; y: number;
@@ -136,12 +207,29 @@ function ShipMap() {
   const [regionStats, setRegionStats]     = useState<RegionStats | null>(null);
   const [regionLoading, setRegionLoading] = useState(false);
   const [regionTime, setRegionTime]       = useState<number | null>(null);
+  const [regionName, setRegionName]       = useState<string | null>(null);
   const [drawnPolygon, setDrawnPolygon]   = useState<object | null>(null);
   const [drawing, setDrawing]             = useState(false);
   const [showResults, setShowResults]     = useState(false);
+  const [hoveredCha, setHoveredCha]       = useState<string | null>(null);
 
   useEffect(() => {
     if (!mapRef.current) return;
+
+    // build CHA features
+    const fmt = new GeoJSON();
+    CHA_REGIONS.forEach(r => {
+      const geom = fmt.readGeometry(r.geojson, {
+        dataProjection: 'EPSG:4326',
+        featureProjection: 'EPSG:3857',
+      }) as OLPolygon;
+      const f = new Feature({ geometry: geom, name: r.name, chaRegion: r });
+      chaSourceRef.current.addFeature(f);
+    });
+
+    const chaLayer = new VectorLayer({ source: chaSourceRef.current, style: chaStyle });
+    chaLayerRef.current = chaLayer;
+
     const routeLayer = new VectorLayer({
       source: sourceRef.current,
       style: makeFeatureStyle(true, true),
@@ -152,6 +240,7 @@ function ShipMap() {
       target: mapRef.current,
       layers: [
         new TileLayer({ source: new OSM() }),
+        chaLayer,
         routeLayer,
         new VectorLayer({
           source: drawSourceRef.current,
@@ -166,9 +255,24 @@ function ShipMap() {
         zoom: 6,
       }),
     });
+
     map.on('click', e => {
+      // check CHA click first
+      let chaClicked = false;
+      map.forEachFeatureAtPixel(e.pixel, feature => {
+        const cha = feature.get('chaRegion') as ChaRegion | undefined;
+        if (cha) {
+          chaClicked = true;
+          runChaAnalysis(cha);
+          return true;
+        }
+      });
+      if (chaClicked) return;
+
+      // then vessel point click
       map.forEachFeatureAtPixel(e.pixel, feature => {
         if (feature.getGeometry()?.getType() !== 'Point') return;
+        if (feature.get('chaRegion')) return;
         setPopup({
           x: e.pixel[0],
           y: e.pixel[1],
@@ -183,6 +287,25 @@ function ShipMap() {
       }) ?? setPopup(null);
     });
 
+    // hover cursor on CHA polygons
+    map.on('pointermove', e => {
+      let overCha = false;
+      map.forEachFeatureAtPixel(e.pixel, feature => {
+        if (feature.get('chaRegion')) {
+          overCha = true;
+          const name = feature.get('name') as string;
+          setHoveredCha(name);
+          (feature as Feature).setStyle(chaHoverStyle(feature));
+          return true;
+        }
+      });
+      if (!overCha) {
+        setHoveredCha(null);
+        chaSourceRef.current.getFeatures().forEach(f => f.setStyle(undefined));
+      }
+      map.getTargetElement().style.cursor = overCha ? 'pointer' : '';
+    });
+
     mapObj.current = map;
     return () => map.setTarget(undefined);
   }, []);
@@ -193,6 +316,29 @@ function ShipMap() {
       .then(d => setVessels(d.vessels || []))
       .catch(console.error);
   }, []);
+
+  function runChaAnalysis(cha: ChaRegion) {
+    setRegionLoading(true);
+    setRegionStats(null);
+    setRegionTime(null);
+    setRegionName(cha.name);
+    setDrawnPolygon(null);
+    drawSourceRef.current.clear();
+    const t0 = performance.now();
+    fetch(`${API}/api/analysis/region`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygon: cha.geojson, start, end }),
+    })
+      .then(r => r.json())
+      .then((d: RegionStats) => {
+        setRegionStats(d);
+        setRegionTime(Math.round(performance.now() - t0));
+        setShowResults(true);
+      })
+      .catch(console.error)
+      .finally(() => setRegionLoading(false));
+  }
 
   function toggleStart() {
     const next = !showStart;
@@ -254,6 +400,7 @@ function ShipMap() {
     if (drawRef.current) mapObj.current.removeInteraction(drawRef.current);
     setDrawnPolygon(null);
     setRegionStats(null);
+    setRegionName(null);
     setDrawing(true);
 
     drawSourceRef.current.clear();
@@ -288,6 +435,7 @@ function ShipMap() {
     setDrawnPolygon(null);
     setRegionStats(null);
     setRegionTime(null);
+    setRegionName(null);
   }
 
   function loadRegionStats() {
@@ -295,6 +443,7 @@ function ShipMap() {
     setRegionLoading(true);
     setRegionStats(null);
     setRegionTime(null);
+    setRegionName('Custom Region');
     const t0 = performance.now();
     fetch(`${API}/api/analysis/region`, {
       method: 'POST',
@@ -390,29 +539,29 @@ function ShipMap() {
                   <button
                     onClick={toggleStart}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
-                      showStart
-                        ? 'bg-[#2a9d8f]/10 text-[#2a9d8f]'
-                        : 'bg-slate-100 text-slate-400'
+                      showStart ? 'bg-[#2a9d8f]/10 text-[#2a9d8f]' : 'bg-slate-100 text-slate-400'
                     }`}
                   >
-                    <span className="w-2 h-2 rounded-full bg-[#2a9d8f]" />
-                    Start
+                    <span className="w-2 h-2 rounded-full bg-[#2a9d8f]" />Start
                   </button>
                   <button
                     onClick={toggleEnd}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
-                      showEnd
-                        ? 'bg-[#e63946]/10 text-[#e63946]'
-                        : 'bg-slate-100 text-slate-400'
+                      showEnd ? 'bg-[#e63946]/10 text-[#e63946]' : 'bg-slate-100 text-slate-400'
                     }`}
                   >
-                    <span className="w-2 h-2 rounded-full bg-[#e63946]" />
-                    End
+                    <span className="w-2 h-2 rounded-full bg-[#e63946]" />End
                   </button>
                 </div>
               )}
             </div>
           )}
+
+          {/* CHA hint */}
+          <div className="mt-3 flex items-center gap-2 px-1">
+            <span className="w-3 h-3 rounded-sm border-2 border-[#6366f1] bg-[#6366f1]/10 shrink-0" />
+            <span className="text-[11px] text-slate-400">Click a habitat area on the map to analyse it</span>
+          </div>
         </div>
 
         {/* Scrollable vessel list */}
@@ -461,23 +610,35 @@ function ShipMap() {
       {/* ---------------- Map ---------------- */}
       <div ref={mapRef} className="absolute inset-0 left-80" />
 
+      {/* CHA hover tooltip */}
+      {hoveredCha && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 bg-[#4f46e5] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
+          {hoveredCha} — click to analyse
+        </div>
+      )}
+
+      {/* CHA loading indicator */}
+      {regionLoading && regionName && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 bg-white/90 backdrop-blur-md rounded-full shadow-lg ring-1 ring-slate-900/5 px-4 py-2 text-xs text-slate-600 flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full border-2 border-[#6366f1] border-t-transparent animate-spin" />
+          Analysing {regionName}…
+        </div>
+      )}
+
       {/* ---------------- Region toolbar ---------------- */}
       <div className="absolute top-5 left-80 right-0 flex justify-center z-20 pointer-events-none">
         <div className="pointer-events-auto bg-white/90 backdrop-blur-md rounded-full shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-2 py-1.5 flex items-center gap-2">
           {drawing ? (
             <>
               <span className="text-xs text-slate-500 pl-3">Click to add points · double-click to finish</span>
-              <button
-                onClick={cancelDrawing}
-                className="text-xs rounded-full px-3.5 py-1.5 text-slate-500 hover:bg-slate-100 transition"
-              >
+              <button onClick={cancelDrawing} className="text-xs rounded-full px-3.5 py-1.5 text-slate-500 hover:bg-slate-100 transition">
                 Cancel
               </button>
             </>
           ) : drawnPolygon ? (
             <>
               <span className="text-xs text-slate-500 pl-3 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#e63946]" /> Region selected
+                <span className="w-2 h-2 rounded-full bg-[#e63946]" /> Custom region
               </span>
               <button
                 onClick={loadRegionStats}
@@ -487,17 +648,11 @@ function ShipMap() {
                 {regionLoading ? 'Analysing…' : 'Analyse Region'}
               </button>
               {regionStats && !regionLoading && (
-                <button
-                  onClick={() => setShowResults(true)}
-                  className="text-xs rounded-full px-3.5 py-1.5 text-[#2a9d8f] hover:bg-[#2a9d8f]/10 font-medium transition"
-                >
+                <button onClick={() => setShowResults(true)} className="text-xs rounded-full px-3.5 py-1.5 text-[#2a9d8f] hover:bg-[#2a9d8f]/10 font-medium transition">
                   View Results
                 </button>
               )}
-              <button
-                onClick={clearRegion}
-                className="text-xs rounded-full px-3.5 py-1.5 text-slate-500 hover:bg-slate-100 transition"
-              >
+              <button onClick={clearRegion} className="text-xs rounded-full px-3.5 py-1.5 text-slate-500 hover:bg-slate-100 transition">
                 Clear
               </button>
             </>
@@ -517,7 +672,14 @@ function ShipMap() {
         <div className="font-semibold mb-2 text-slate-600">Speed (knots)</div>
         <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2a9d8f] inline-block" />&lt; 3</div>
         <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#f4a261] inline-block" />3 – 10</div>
-        <div className="flex items-center gap-2 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#e63946] inline-block" />&gt; 10</div>
+        <div className="flex items-center gap-2 mb-3 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#e63946] inline-block" />&gt; 10</div>
+        <div className="font-semibold mb-2 text-slate-600 border-t border-slate-100 pt-3">Habitat Areas</div>
+        {CHA_REGIONS.map(r => (
+          <div key={r.name} className="flex items-center gap-2 mb-1 text-slate-500">
+            <span className="w-2.5 h-2.5 rounded-sm border-2 border-[#6366f1] bg-[#6366f1]/10 inline-block shrink-0" />
+            {r.name}
+          </div>
+        ))}
       </div>
 
       {/* ---------------- Intro modal ---------------- */}
@@ -528,13 +690,13 @@ function ShipMap() {
             <h1 className="text-2xl font-semibold text-slate-800 tracking-tight mb-1">Scotian Shelf AIS Tracker</h1>
             <p className="text-xs text-slate-400 mb-5">Canadian Coast Guard · Terrestrial AIS</p>
             <p className="text-sm text-slate-600 leading-relaxed mb-6">
-              Explore vessel traffic on the Scotian Shelf and analyse activity within any area you draw.
+              Explore vessel traffic on the Scotian Shelf and analyse activity within any area you choose.
             </p>
             <div className="space-y-3 mb-7">
               {[
                 ['Pick a vessel and date range, then ', 'Show Route', ' to plot its track.'],
                 ['Click any point to see its time, position, and speed.', '', ''],
-                ['Use ', 'Draw Region', ' (top of map) to outline an area and get traffic stats & charts.'],
+                ['Click a ', 'habitat area', ' on the map, or draw your own region, to run traffic analysis.'],
               ].map(([a, b, c], i) => (
                 <div key={i} className="flex gap-3 text-sm text-slate-600">
                   <span className="shrink-0 w-6 h-6 rounded-full bg-[#127475]/10 text-[#127475] font-semibold text-xs flex items-center justify-center">{i + 1}</span>
@@ -564,7 +726,7 @@ function ShipMap() {
           >
             <div className="flex items-start justify-between px-7 pt-6 pb-5 border-b border-slate-100 shrink-0">
               <div>
-                <h2 className="text-xl font-semibold text-slate-800 tracking-tight">Region Analysis</h2>
+                <h2 className="text-xl font-semibold text-slate-800 tracking-tight">{regionName ?? 'Region Analysis'}</h2>
                 <p className="text-sm text-slate-500 mt-1">
                   <span className="font-medium text-slate-700">{regionStats.unique_vessels}</span> vessels ·{' '}
                   <span className="font-medium text-slate-700">{regionStats.total_positions.toLocaleString()}</span> positions · {start} → {end}
@@ -592,9 +754,7 @@ function ShipMap() {
                         <button
                           onClick={() => downloadPlot(regionStats.plots.vessel_types!, 'vessels_by_type.png')}
                           className="text-xs font-medium text-[#2a9d8f] hover:bg-[#2a9d8f]/10 rounded-full px-3 py-1 transition"
-                        >
-                          ↓ Download
-                        </button>
+                        >↓ Download</button>
                       </figcaption>
                       <img src={`data:image/png;base64,${regionStats.plots.vessel_types}`} className="w-full rounded-xl ring-1 ring-slate-100" />
                     </figure>
@@ -606,9 +766,7 @@ function ShipMap() {
                         <button
                           onClick={() => downloadPlot(regionStats.plots.speed_overall!, 'mean_speed.png')}
                           className="text-xs font-medium text-[#2a9d8f] hover:bg-[#2a9d8f]/10 rounded-full px-3 py-1 transition"
-                        >
-                          ↓ Download
-                        </button>
+                        >↓ Download</button>
                       </figcaption>
                       <img src={`data:image/png;base64,${regionStats.plots.speed_overall}`} className="w-full rounded-xl ring-1 ring-slate-100" />
                     </figure>
