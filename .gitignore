@@ -7,8 +7,12 @@ __pycache__/
 frontend/.env
 dist/
 pgdata/
+pgdata_backup/
+pgdata_backup*.tar.gz
+*.tar.gz
+*.db
+*.sqlite
 pipeline.log
 markdown/Screenshot*
 ideas.md
 random.md
-pgdata_backup/

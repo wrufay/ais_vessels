@@ -56,3 +56,15 @@ Meaning it took 0.7 seconds to get the API response, 16k positions filtered thro
 - Also need to allow show ALL the traffic in a certain region after drawing them.
 - Could also generate as a heatmap instead of showing individual tracks. Just an idea.
 - My UX idea: draw a region → sidebar filters to only vessels inside that region → user can select individual vessels or show all, colored by vessel type. Build all options and see what's actually useful 
+- Prompted Claude to refactor the UI, much better UX now. Going to continue tweaking this
+
+- I think being able to save a history of regions analyzed and starred vessels, tracks etc could be very useful.
+
+
+## Next things to do
+- Write detailed setup instructions
+- Add option of showing the start to end from one track
+- Add Critical Habitat Area (CHA), Roseway Basin, Grand Manan Basin
+- Add mooring locations of for year from 2019 to 2023
+- Add an option to load in these information from a csv file. See attached file for mooring location and time of deployment
+- Functions to add (working on right now) run statistics within a certain geographical area, selected on the map (perhaps also be able to upload shapefiles)
