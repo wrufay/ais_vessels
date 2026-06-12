@@ -1,4 +1,4 @@
-Thursday, June 11th
+# June 11, 2026
 
 - Currently trying to determine if it is worth migrating to use PostGIS instead of Shapely to generate the plots based on the shapefiles.
 - Time the current script: Generated all four plots for the Sydney Bight region in ~3 seconds using the *time* command
