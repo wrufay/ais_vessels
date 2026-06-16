@@ -1,19 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Stack+Sans+Headline:wght@200..700&family=Vend+Sans:ital,wght@0,300..700;1,300..700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 html, body {
   overflow: hidden;
+  font-family: "Vend Sans", sans-serif;
+  font-optical-sizing: auto;
 }
-@import url('https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap');
 
-
-.work-sans {
-    font-family: "Work Sans", sans-serif;
-    font-optical-sizing: auto;
-    font-weight: 400;
-    font-style: normal;
-  }
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Stack Sans Headline", sans-serif;
+  font-optical-sizing: auto;
+}
 
 /* colour scheme
 3d5a80 - dusk blue
