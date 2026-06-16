@@ -83,12 +83,12 @@ interface RegionStats {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  cargo: "#f4a261",
-  tanker: "#e76f51",
-  fishing: "#2a9d8f",
-  passenger: "#8d6cc4",
-  "search & rescue": "#43aa8b",
-  other: "#9aa5b1",
+  cargo: "#ee6c4d",
+  tanker: "#3d5a80",
+  fishing: "#639fab",
+  passenger: "#293241",
+  "search & rescue": "#e0fbfc",
+  other: "#afa98d",
   unknown: "#cbd2d9",
 };
 
@@ -122,7 +122,7 @@ function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
   return function (feature: FeatureLike): Style {
     const geomType = feature.getGeometry()?.getType();
     if (geomType === "LineString") {
-      return new Style({ stroke: new Stroke({ color: "#127475", width: 2 }) });
+      return new Style({ stroke: new Stroke({ color: "#3d5a80", width: 2 }) });
     }
     const isStart = feature.get("isStart") as boolean;
     const isEnd = feature.get("isEnd") as boolean;
@@ -132,7 +132,7 @@ function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
       return new Style({
         image: new CircleStyle({
           radius: 7,
-          fill: new Fill({ color: "#2a9d8f" }),
+          fill: new Fill({ color: "#98c1d9" }),
           stroke: new Stroke({ color: "#fff", width: 2.5 }),
         }),
       });
@@ -141,13 +141,13 @@ function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
       return new Style({
         image: new CircleStyle({
           radius: 7,
-          fill: new Fill({ color: "#e63946" }),
+          fill: new Fill({ color: "#ee6c4d" }),
           stroke: new Stroke({ color: "#fff", width: 2.5 }),
         }),
       });
     }
     const sog = (feature.get("sog") as number) || 0;
-    const color = sog > 10 ? "#e63946" : sog > 3 ? "#f4a261" : "#2a9d8f";
+    const color = sog > 10 ? "#ee6c4d" : sog > 3 ? "#ffc857" : "#0a8754";
     return new Style({
       image: new CircleStyle({ radius: 4, fill: new Fill({ color }) }),
     });
@@ -157,12 +157,12 @@ function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
 function chaStyle(feature: FeatureLike): Style {
   const name = feature.get("name") as string;
   return new Style({
-    stroke: new Stroke({ color: "#6366f1", width: 2 }),
-    fill: new Fill({ color: "rgba(99,102,241,0.07)" }),
+    stroke: new Stroke({ color: "#3d5a80", width: 2 }),
+    fill: new Fill({ color: "rgba(61,90,128,0.07)" }),
     text: new Text({
       text: name,
       font: "bold 11px sans-serif",
-      fill: new Fill({ color: "#4f46e5" }),
+      fill: new Fill({ color: "#293241" }),
       stroke: new Stroke({ color: "#fff", width: 3 }),
       overflow: true,
     }),
@@ -172,12 +172,12 @@ function chaStyle(feature: FeatureLike): Style {
 function chaHoverStyle(feature: FeatureLike): Style {
   const name = feature.get("name") as string;
   return new Style({
-    stroke: new Stroke({ color: "#4f46e5", width: 2.5 }),
-    fill: new Fill({ color: "rgba(99,102,241,0.15)" }),
+    stroke: new Stroke({ color: "#293241", width: 2.5 }),
+    fill: new Fill({ color: "rgba(61,90,128,0.15)" }),
     text: new Text({
       text: name,
       font: "bold 11px sans-serif",
-      fill: new Fill({ color: "#4f46e5" }),
+      fill: new Fill({ color: "#293241" }),
       stroke: new Stroke({ color: "#fff", width: 3 }),
       overflow: true,
     }),
@@ -273,8 +273,8 @@ function ShipMap() {
         new VectorLayer({
           source: drawSourceRef.current,
           style: new Style({
-            stroke: new Stroke({ color: "#e63946", width: 2 }),
-            fill: new Fill({ color: "rgba(230,57,70,0.1)" }),
+            stroke: new Stroke({ color: "#ee6c4d", width: 2 }),
+            fill: new Fill({ color: "rgba(238,108,77,0.1)" }),
           }),
         }),
       ],
@@ -520,7 +520,7 @@ function ShipMap() {
 
       {/* CHA hover tooltip */}
       {hoveredCha && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#4f46e5] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
           {hoveredCha} — click to analyse
         </div>
       )}
@@ -528,7 +528,7 @@ function ShipMap() {
       {/* Region loading indicator */}
       {regionLoading && regionName && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur-md rounded-full shadow-lg ring-1 ring-slate-900/5 px-4 py-2 text-xs text-slate-600 flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full border-2 border-[#6366f1] border-t-transparent animate-spin" />
+          <span className="w-3 h-3 rounded-full border-2 border-[#3d5a80] border-t-transparent animate-spin" />
           Analysing {regionName}…
         </div>
       )}
@@ -541,8 +541,8 @@ function ShipMap() {
             onClick={() => setShowVesselPanel((p) => !p)}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showVesselPanel
-                ? "bg-[#0e5f60] ring-2 ring-white/60"
-                : "bg-[#127475] hover:bg-[#0e5f60]"
+                ? "bg-[#293241] ring-2 ring-white/60"
+                : "bg-[#3d5a80] hover:bg-[#293241]"
             } text-white`}
           >
             <svg
@@ -572,8 +572,8 @@ function ShipMap() {
             onClick={drawing ? cancelDrawing : startDrawing}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
               drawing
-                ? "bg-[#e63946] hover:bg-[#c1121f]"
-                : "bg-[#127475] hover:bg-[#0e5f60]"
+                ? "bg-[#ee6c4d] hover:bg-[#c4462a]"
+                : "bg-[#3d5a80] hover:bg-[#293241]"
             }`}
           >
             <svg
@@ -599,7 +599,7 @@ function ShipMap() {
             <button
               onClick={loadRegionStats}
               disabled={regionLoading}
-              className="w-12 h-12 rounded-full bg-[#2a9d8f] text-white shadow-lg flex items-center justify-center hover:bg-[#23867a] disabled:opacity-50 transition"
+              className="w-12 h-12 rounded-full bg-[#98c1d9] text-white shadow-lg flex items-center justify-center hover:bg-[#7aadca] disabled:opacity-50 transition"
             >
               {regionLoading ? (
                 <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
@@ -630,7 +630,7 @@ function ShipMap() {
           <div className="group relative">
             <button
               onClick={() => setShowResults(true)}
-              className="w-12 h-12 rounded-full bg-[#6366f1] text-white shadow-lg flex items-center justify-center hover:bg-[#4f46e5] transition"
+              className="w-12 h-12 rounded-full bg-[#3d5a80] text-white shadow-lg flex items-center justify-center hover:bg-[#293241] transition"
             >
               <svg
                 className="w-5 h-5"
@@ -691,7 +691,7 @@ function ShipMap() {
               </span>
               <input
                 type="date"
-                className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#2a9d8f] focus:ring-2 focus:ring-[#2a9d8f]/20 transition"
+                className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
@@ -702,7 +702,7 @@ function ShipMap() {
               </span>
               <input
                 type="date"
-                className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#2a9d8f] focus:ring-2 focus:ring-[#2a9d8f]/20 transition"
+                className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
               />
@@ -723,7 +723,7 @@ function ShipMap() {
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <input
-              className="w-full bg-slate-50 border border-transparent rounded-xl pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-[#2a9d8f] focus:ring-2 focus:ring-[#2a9d8f]/20 transition"
+              className="w-full bg-slate-50 border border-transparent rounded-xl pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
               placeholder="Search name, MMSI, or type…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -762,13 +762,13 @@ function ShipMap() {
                 }}
                 className={`w-full text-left px-3 py-2.5 rounded-xl mb-0.5 transition ${
                   active
-                    ? "bg-[#127475]/8 ring-1 ring-[#127475]/20"
+                    ? "bg-[#3d5a80]/8 ring-1 ring-[#3d5a80]/20"
                     : "hover:bg-slate-50"
                 }`}
               >
                 <div
                   className={`font-medium truncate ${
-                    active ? "text-[#0e5f60]" : "text-slate-700"
+                    active ? "text-[#293241]" : "text-slate-700"
                   }`}
                 >
                   {v.vessel_name || "Unknown vessel"}
@@ -802,15 +802,15 @@ function ShipMap() {
       <div className="absolute bottom-5 left-5 z-10 bg-white/90 backdrop-blur-md rounded-2xl shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs">
         <div className="font-semibold mb-2 text-slate-600">Speed (knots)</div>
         <div className="flex items-center gap-2 mb-1 text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#2a9d8f] inline-block" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[#0a8754] inline-block" />
           &lt; 3
         </div>
         <div className="flex items-center gap-2 mb-1 text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#f4a261] inline-block" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[#ffc857] inline-block" />
           3 – 10
         </div>
         <div className="flex items-center gap-2 text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#e63946] inline-block" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[#ee6c4d] inline-block" />
           &gt; 10
         </div>
       </div>
@@ -875,7 +875,7 @@ function ShipMap() {
                               "vessels_by_type.png"
                             )
                           }
-                          className="text-xs font-medium text-[#2a9d8f] hover:bg-[#2a9d8f]/10 rounded-full px-3 py-1 transition"
+                          className="text-xs font-medium text-[#98c1d9] hover:bg-[#98c1d9]/10 rounded-full px-3 py-1 transition"
                         >
                           ↓ Download
                         </button>
@@ -899,7 +899,7 @@ function ShipMap() {
                               "mean_speed.png"
                             )
                           }
-                          className="text-xs font-medium text-[#2a9d8f] hover:bg-[#2a9d8f]/10 rounded-full px-3 py-1 transition"
+                          className="text-xs font-medium text-[#98c1d9] hover:bg-[#98c1d9]/10 rounded-full px-3 py-1 transition"
                         >
                           ↓ Download
                         </button>
@@ -923,7 +923,7 @@ function ShipMap() {
           className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-2xl shadow-xl px-4 py-3 text-xs pointer-events-none"
           style={{ left: popup.x + 12, top: popup.y - 8 }}
         >
-          <div className="font-semibold text-[#127475] mb-1.5">
+          <div className="font-semibold text-[#3d5a80] mb-1.5">
             {popup.isStart ? "Start" : popup.isEnd ? "End" : popup.source}
           </div>
           <div className="text-slate-600 space-y-1 tabular-nums">
