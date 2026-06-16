@@ -17,13 +17,13 @@ import "ol/ol.css";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
-// ---- Critical Habitat Areas ----
-interface ChaRegion {
+// ---- Preset Regions ----
+interface PresetRegion {
   name: string;
   geojson: object;
 }
 
-const CHA_REGIONS: ChaRegion[] = [
+const CHA_REGIONS: PresetRegion[] = [
   {
     name: "Roseway Basin",
     geojson: {
@@ -58,6 +58,9 @@ const CHA_REGIONS: ChaRegion[] = [
     },
   },
 ];
+
+// TODO: add WEA coordinates when available
+const WEA_REGIONS: PresetRegion[] = [];
 
 interface Vessel {
   mmsi: number;
@@ -122,7 +125,8 @@ function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
   return function (feature: FeatureLike): Style {
     const geomType = feature.getGeometry()?.getType();
     if (geomType === "LineString") {
-      return new Style({ stroke: new Stroke({ color: "#3d5a80", width: 2 }) });
+      // can change the colour of connecting line here (currently powder blue)
+      return new Style({ stroke: new Stroke({ color: "#98c1d9", width: 2 }) });
     }
     const isStart = feature.get("isStart") as boolean;
     const isEnd = feature.get("isEnd") as boolean;
@@ -154,11 +158,18 @@ function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
   };
 }
 
+function regionColor(type: string) {
+  if (type === "WEA") return { stroke: "#ee6c4d", fill: "rgba(238,108,77,0.07)", hoverFill: "rgba(238,108,77,0.15)" };
+  if (type === "Uploaded") return { stroke: "#9b59b6", fill: "rgba(155,89,182,0.07)", hoverFill: "rgba(155,89,182,0.15)" };
+  return { stroke: "#3d5a80", fill: "rgba(61,90,128,0.07)", hoverFill: "rgba(61,90,128,0.15)" };
+}
+
 function chaStyle(feature: FeatureLike): Style {
   const name = feature.get("name") as string;
+  const c = regionColor(feature.get("regionType") as string);
   return new Style({
-    stroke: new Stroke({ color: "#3d5a80", width: 2 }),
-    fill: new Fill({ color: "rgba(61,90,128,0.07)" }),
+    stroke: new Stroke({ color: c.stroke, width: 2 }),
+    fill: new Fill({ color: c.fill }),
     text: new Text({
       text: name,
       font: "bold 11px sans-serif",
@@ -171,9 +182,10 @@ function chaStyle(feature: FeatureLike): Style {
 
 function chaHoverStyle(feature: FeatureLike): Style {
   const name = feature.get("name") as string;
+  const c = regionColor(feature.get("regionType") as string);
   return new Style({
-    stroke: new Stroke({ color: "#293241", width: 2.5 }),
-    fill: new Fill({ color: "rgba(61,90,128,0.15)" }),
+    stroke: new Stroke({ color: c.stroke, width: 2.5 }),
+    fill: new Fill({ color: c.hoverFill }),
     text: new Text({
       text: name,
       font: "bold 11px sans-serif",
@@ -232,20 +244,32 @@ function ShipMap() {
   const [showResults, setShowResults] = useState(false);
   const [hoveredCha, setHoveredCha] = useState<string | null>(null);
   const [showVesselPanel, setShowVesselPanel] = useState(false);
+  const [showRegionPanel, setShowRegionPanel] = useState(false);
+  const [selectedRegionNames, setSelectedRegionNames] = useState<Set<string>>(new Set());
+  const [uploadedRegions, setUploadedRegions] = useState<PresetRegion[]>([]);
+
+  useEffect(() => {
+    const fmt = new GeoJSON();
+    chaSourceRef.current.clear();
+    const allRegions = [
+      ...CHA_REGIONS.map((r) => ({ ...r, regionType: "CHA" })),
+      ...WEA_REGIONS.map((r) => ({ ...r, regionType: "WEA" })),
+      ...uploadedRegions.map((r) => ({ ...r, regionType: "Uploaded" })),
+    ];
+    allRegions
+      .filter((r) => selectedRegionNames.has(r.name))
+      .forEach((r) => {
+        const geom = fmt.readGeometry(r.geojson, {
+          dataProjection: "EPSG:4326",
+          featureProjection: "EPSG:3857",
+        }) as OLPolygon;
+        const f = new Feature({ geometry: geom, name: r.name, chaRegion: r, regionType: r.regionType });
+        chaSourceRef.current.addFeature(f);
+      });
+  }, [selectedRegionNames, uploadedRegions]);
 
   useEffect(() => {
     if (!mapRef.current) return;
-
-    // build CHA features
-    const fmt = new GeoJSON();
-    CHA_REGIONS.forEach((r) => {
-      const geom = fmt.readGeometry(r.geojson, {
-        dataProjection: "EPSG:4326",
-        featureProjection: "EPSG:3857",
-      }) as OLPolygon;
-      const f = new Feature({ geometry: geom, name: r.name, chaRegion: r });
-      chaSourceRef.current.addFeature(f);
-    });
 
     const chaLayer = new VectorLayer({
       source: chaSourceRef.current,
@@ -288,7 +312,7 @@ function ShipMap() {
       // check CHA click first
       let chaClicked = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
-        const cha = feature.get("chaRegion") as ChaRegion | undefined;
+        const cha = feature.get("chaRegion") as PresetRegion | undefined;
         if (cha) {
           chaClicked = true;
           runChaAnalysis(cha);
@@ -349,7 +373,37 @@ function ShipMap() {
       .catch(console.error);
   }, []);
 
-  function runChaAnalysis(cha: ChaRegion) {
+  function toggleRegion(name: string) {
+    setSelectedRegionNames((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const raw = JSON.parse(evt.target?.result as string);
+        let geometry = raw;
+        if (raw.type === "FeatureCollection") geometry = raw.features[0]?.geometry;
+        else if (raw.type === "Feature") geometry = raw.geometry;
+        const name = file.name.replace(/\.(geojson|json)$/i, "");
+        setUploadedRegions((prev) => [...prev, { name, geojson: geometry }]);
+        setSelectedRegionNames((prev) => new Set([...prev, name]));
+      } catch {
+        alert("Invalid GeoJSON file");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  function runChaAnalysis(cha: PresetRegion) {
     setRegionLoading(true);
     setRegionStats(null);
     setRegionTime(null);
@@ -538,7 +592,7 @@ function ShipMap() {
         {/* Vessels */}
         <div className="group relative">
           <button
-            onClick={() => setShowVesselPanel((p) => !p)}
+            onClick={() => { setShowVesselPanel((p) => !p); setShowRegionPanel(false); }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showVesselPanel
                 ? "bg-[#293241] ring-2 ring-white/60"
@@ -563,6 +617,28 @@ function ShipMap() {
           </button>
           <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
             Vessels
+          </div>
+        </div>
+
+        {/* Regions */}
+        <div className="group relative">
+          <button
+            onClick={() => {
+              setShowRegionPanel((p) => !p);
+              setShowVesselPanel(false);
+            }}
+            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
+              showRegionPanel
+                ? "bg-[#293241] ring-2 ring-white/60"
+                : "bg-[#3d5a80] hover:bg-[#293241]"
+            } text-white`}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21" />
+            </svg>
+          </button>
+          <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+            Regions
           </div>
         </div>
 
@@ -795,6 +871,98 @@ function ShipMap() {
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* Regions panel — slides in from the right */}
+      <div
+        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-200 ${
+          showRegionPanel ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="px-5 pt-8 pb-4 shrink-0">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Regions</h2>
+
+          {/* Shapefile / GeoJSON upload */}
+          <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-xl py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#98c1d9] hover:text-[#3d5a80] transition">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>Upload GeoJSON</span>
+            <input type="file" accept=".geojson,.json" className="hidden" onChange={handleFileUpload} />
+          </label>
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+          {/* CHA section */}
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">CHA</div>
+          {CHA_REGIONS.map((r) => (
+            <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedRegionNames.has(r.name)}
+                onChange={() => toggleRegion(r.name)}
+                className="accent-[#3d5a80] w-4 h-4 rounded"
+              />
+              <div>
+                <div className="text-sm font-medium text-slate-700">{r.name}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="w-2 h-2 rounded-full bg-[#3d5a80] inline-block" />
+                  <span className="text-[11px] text-slate-400">Critical Habitat Area</span>
+                </div>
+              </div>
+            </label>
+          ))}
+
+          {/* WEA section */}
+          <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">WEA</div>
+          {WEA_REGIONS.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-slate-400 italic">Coordinates coming soon</p>
+          ) : (
+            WEA_REGIONS.map((r) => (
+              <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedRegionNames.has(r.name)}
+                  onChange={() => toggleRegion(r.name)}
+                  className="accent-[#ee6c4d] w-4 h-4 rounded"
+                />
+                <div>
+                  <div className="text-sm font-medium text-slate-700">{r.name}</div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="w-2 h-2 rounded-full bg-[#ee6c4d] inline-block" />
+                    <span className="text-[11px] text-slate-400">Wind Energy Area</span>
+                  </div>
+                </div>
+              </label>
+            ))
+          )}
+
+          {/* Uploaded regions */}
+          {uploadedRegions.length > 0 && (
+            <>
+              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Uploaded</div>
+              {uploadedRegions.map((r) => (
+                <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedRegionNames.has(r.name)}
+                    onChange={() => toggleRegion(r.name)}
+                    className="accent-[#9b59b6] w-4 h-4 rounded"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-slate-700">{r.name}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="w-2 h-2 rounded-full bg-[#9b59b6] inline-block" />
+                      <span className="text-[11px] text-slate-400">Custom region</span>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
