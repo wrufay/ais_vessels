@@ -195,7 +195,6 @@ function ShipMap() {
 
   const [showStart, setShowStart]   = useState(true);
   const [showEnd,   setShowEnd]     = useState(true);
-  const [showIntro, setShowIntro]   = useState(true);
   const [vessels, setVessels]       = useState<Vessel[]>([]);
   const [search, setSearch]         = useState('');
   const [selected, setSelected]     = useState<Vessel | null>(null);
@@ -682,37 +681,6 @@ function ShipMap() {
         ))}
       </div>
 
-      {/* ---------------- Intro modal ---------------- */}
-      {showIntro && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8">
-            <div className="w-12 h-12 rounded-2xl bg-[#127475]/10 flex items-center justify-center text-2xl mb-4">🌊</div>
-            <h1 className="text-2xl font-semibold text-slate-800 tracking-tight mb-1">Scotian Shelf AIS Tracker</h1>
-            <p className="text-xs text-slate-400 mb-5">Canadian Coast Guard · Terrestrial AIS</p>
-            <p className="text-sm text-slate-600 leading-relaxed mb-6">
-              Explore vessel traffic on the Scotian Shelf and analyse activity within any area you choose.
-            </p>
-            <div className="space-y-3 mb-7">
-              {[
-                ['Pick a vessel and date range, then ', 'Show Route', ' to plot its track.'],
-                ['Click any point to see its time, position, and speed.', '', ''],
-                ['Click a ', 'habitat area', ' on the map, or draw your own region, to run traffic analysis.'],
-              ].map(([a, b, c], i) => (
-                <div key={i} className="flex gap-3 text-sm text-slate-600">
-                  <span className="shrink-0 w-6 h-6 rounded-full bg-[#127475]/10 text-[#127475] font-semibold text-xs flex items-center justify-center">{i + 1}</span>
-                  <span className="leading-relaxed pt-0.5">{a}{b && <strong className="text-slate-800">{b}</strong>}{c}</span>
-                </div>
-              ))}
-            </div>
-            <button
-              onClick={() => setShowIntro(false)}
-              className="w-full bg-[#127475] text-white rounded-xl py-3 text-sm font-semibold shadow-sm shadow-[#127475]/20 hover:bg-[#0e5f60] active:scale-[0.99] transition"
-            >
-              Get Started
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ---------------- Results modal ---------------- */}
       {showResults && regionStats && (
