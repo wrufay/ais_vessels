@@ -193,13 +193,13 @@ function ShipMap() {
     sog: number | null; cog: number | null; source: string;
   }
 
-  const [showStart, setShowStart]   = useState(true);
-  const [showEnd,   setShowEnd]     = useState(true);
-  const [vessels, setVessels]       = useState<Vessel[]>([]);
-  const [search, setSearch]         = useState('');
-  const [selected, setSelected]     = useState<Vessel | null>(null);
-  const [start, setStart]           = useState('2025-08-01');
-  const [end, setEnd]               = useState('2025-08-31');
+  const [showStart, setShowStart]         = useState(true);
+  const [showEnd,   setShowEnd]           = useState(true);
+  const [vessels, setVessels]             = useState<Vessel[]>([]);
+  const [search, setSearch]               = useState('');
+  const [selected, setSelected]           = useState<Vessel | null>(null);
+  const [start, setStart]                 = useState('2025-08-01');
+  const [end, setEnd]                     = useState('2025-08-31');
   const [loading, setLoading]             = useState(false);
   const [pointCount, setPointCount]       = useState<number | null>(null);
   const [popup, setPopup]                 = useState<Popup | null>(null);
@@ -211,6 +211,7 @@ function ShipMap() {
   const [drawing, setDrawing]             = useState(false);
   const [showResults, setShowResults]     = useState(false);
   const [hoveredCha, setHoveredCha]       = useState<string | null>(null);
+  const [showVesselPanel, setShowVesselPanel] = useState(false);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -476,27 +477,152 @@ function ShipMap() {
   });
 
   return (
-    <div className="relative w-full h-screen bg-slate-50 text-slate-700">
+    <div className="relative w-full h-screen">
 
-      {/* ---------------- Sidebar ---------------- */}
-      <div className="absolute top-0 left-0 h-full w-80 bg-white z-20 flex flex-col shadow-[8px_0_30px_-12px_rgba(15,23,42,0.15)]">
+      {/* Map — full screen */}
+      <div ref={mapRef} className="absolute inset-0" />
+
+      {/* Drawing hint */}
+      {drawing && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur-md rounded-full shadow-lg ring-1 ring-slate-900/5 px-5 py-2.5 text-xs text-slate-600 flex items-center gap-3">
+          <span>Click to add points · double-click to finish</span>
+          <button onClick={cancelDrawing} className="text-slate-400 hover:text-slate-700 font-medium transition">Cancel</button>
+        </div>
+      )}
+
+      {/* CHA hover tooltip */}
+      {hoveredCha && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#4f46e5] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
+          {hoveredCha} — click to analyse
+        </div>
+      )}
+
+      {/* Region loading indicator */}
+      {regionLoading && regionName && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur-md rounded-full shadow-lg ring-1 ring-slate-900/5 px-4 py-2 text-xs text-slate-600 flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full border-2 border-[#6366f1] border-t-transparent animate-spin" />
+          Analysing {regionName}…
+        </div>
+      )}
+
+      {/* Right icon bar */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-3">
+
+        {/* Vessels */}
+        <div className="group relative">
+          <button
+            onClick={() => setShowVesselPanel(p => !p)}
+            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
+              showVesselPanel ? 'bg-[#0e5f60] ring-2 ring-white/60' : 'bg-[#127475] hover:bg-[#0e5f60]'
+            } text-white`}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              <circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+          <div className="absolute right-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+            Vessels
+          </div>
+        </div>
+
+        {/* Draw Region */}
+        <div className="group relative">
+          <button
+            onClick={drawing ? cancelDrawing : startDrawing}
+            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
+              drawing ? 'bg-[#e63946] hover:bg-[#c1121f]' : 'bg-[#127475] hover:bg-[#0e5f60]'
+            }`}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12,3 20.5,8.5 20.5,15.5 12,21 3.5,15.5 3.5,8.5"/>
+            </svg>
+          </button>
+          <div className="absolute right-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+            {drawing ? 'Cancel Drawing' : 'Draw Region'}
+          </div>
+        </div>
+
+        {/* Analyse (contextual) */}
+        {drawnPolygon && !drawing && (
+          <div className="group relative">
+            <button
+              onClick={loadRegionStats}
+              disabled={regionLoading}
+              className="w-12 h-12 rounded-full bg-[#2a9d8f] text-white shadow-lg flex items-center justify-center hover:bg-[#23867a] disabled:opacity-50 transition"
+            >
+              {regionLoading ? (
+                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              ) : (
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                  <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+                </svg>
+              )}
+            </button>
+            <div className="absolute right-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+              Analyse Region
+            </div>
+          </div>
+        )}
+
+        {/* View Results (contextual) */}
+        {regionStats && !regionLoading && (
+          <div className="group relative">
+            <button
+              onClick={() => setShowResults(true)}
+              className="w-12 h-12 rounded-full bg-[#6366f1] text-white shadow-lg flex items-center justify-center hover:bg-[#4f46e5] transition"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+            <div className="absolute right-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+              View Results
+            </div>
+          </div>
+        )}
+
+        {/* Clear Region (contextual) */}
+        {drawnPolygon && (
+          <div className="group relative">
+            <button
+              onClick={clearRegion}
+              className="w-12 h-12 rounded-full bg-slate-500 text-white shadow-lg flex items-center justify-center hover:bg-slate-600 transition"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+              </svg>
+            </button>
+            <div className="absolute right-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+              Clear Region
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* Vessel panel — slides in from the left */}
+      <div className={`absolute left-0 top-0 h-full w-80 bg-white z-20 flex flex-col shadow-xl transition-transform duration-200 ${showVesselPanel ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="px-5 pt-5 pb-4 shrink-0">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="font-semibold text-slate-800 text-xl tracking-tight">Vessel Tracker</h2>
+              <h2 className="font-semibold text-slate-800 text-base tracking-tight">Vessel Tracker</h2>
               <p className="text-xs text-slate-400 mt-0.5">Scotian Shelf · AIS</p>
             </div>
             <button
               onClick={resetVessels}
-              title="Clear selection &amp; search"
+              title="Clear selection & search"
               className="text-xs text-slate-400 hover:text-[#127475] rounded-full px-2.5 py-1 hover:bg-slate-50 transition-colors"
-            >
-              ↺ Reset
-            </button>
+            >↺ Reset</button>
           </div>
 
           <div className="relative mb-4">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
             <input
               className="w-full bg-slate-50 border border-transparent rounded-xl pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-[#2a9d8f] focus:ring-2 focus:ring-[#2a9d8f]/20 transition"
               placeholder="Search name, MMSI, or type…"
@@ -505,18 +631,14 @@ function ShipMap() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5 mb-4">
+          <div className="grid grid-cols-2 gap-2 mb-4">
             <label className="flex flex-col gap-1">
               <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">Start</span>
-              <input type="date"
-                className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#2a9d8f] focus:ring-2 focus:ring-[#2a9d8f]/20 transition"
-                value={start} onChange={e => setStart(e.target.value)} />
+              <input type="date" className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#2a9d8f] focus:ring-2 focus:ring-[#2a9d8f]/20 transition" value={start} onChange={e => setStart(e.target.value)} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">End</span>
-              <input type="date"
-                className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#2a9d8f] focus:ring-2 focus:ring-[#2a9d8f]/20 transition"
-                value={end} onChange={e => setEnd(e.target.value)} />
+              <input type="date" className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#2a9d8f] focus:ring-2 focus:ring-[#2a9d8f]/20 transition" value={end} onChange={e => setEnd(e.target.value)} />
             </label>
           </div>
 
@@ -535,20 +657,10 @@ function ShipMap() {
               </p>
               {pointCount > 0 && (
                 <div className="flex justify-center gap-2">
-                  <button
-                    onClick={toggleStart}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
-                      showStart ? 'bg-[#2a9d8f]/10 text-[#2a9d8f]' : 'bg-slate-100 text-slate-400'
-                    }`}
-                  >
+                  <button onClick={toggleStart} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${showStart ? 'bg-[#2a9d8f]/10 text-[#2a9d8f]' : 'bg-slate-100 text-slate-400'}`}>
                     <span className="w-2 h-2 rounded-full bg-[#2a9d8f]" />Start
                   </button>
-                  <button
-                    onClick={toggleEnd}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
-                      showEnd ? 'bg-[#e63946]/10 text-[#e63946]' : 'bg-slate-100 text-slate-400'
-                    }`}
-                  >
+                  <button onClick={toggleEnd} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${showEnd ? 'bg-[#e63946]/10 text-[#e63946]' : 'bg-slate-100 text-slate-400'}`}>
                     <span className="w-2 h-2 rounded-full bg-[#e63946]" />End
                   </button>
                 </div>
@@ -556,20 +668,16 @@ function ShipMap() {
             </div>
           )}
 
-          {/* CHA hint */}
           <div className="mt-3 flex items-center gap-2 px-1">
             <span className="w-3 h-3 rounded-sm border-2 border-[#6366f1] bg-[#6366f1]/10 shrink-0" />
             <span className="text-[11px] text-slate-400">Click a habitat area on the map to analyse it</span>
           </div>
         </div>
 
-        {/* Scrollable vessel list */}
         <div className="flex items-center justify-between px-5 py-2.5 text-xs font-medium text-slate-400 border-t border-slate-100 shrink-0">
           <span className="uppercase tracking-wide">Vessels</span>
           <span className="tabular-nums">
-            {filtered.length !== vessels.length
-              ? `${filtered.length} / ${vessels.length}`
-              : `${vessels.length}`}
+            {filtered.length !== vessels.length ? `${filtered.length} / ${vessels.length}` : `${vessels.length}`}
           </span>
         </div>
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2">
@@ -586,9 +694,7 @@ function ShipMap() {
               <button
                 key={v.mmsi}
                 onClick={() => { setSelected(v); sourceRef.current.clear(); setPointCount(null); }}
-                className={`w-full text-left px-3 py-2.5 rounded-xl mb-0.5 transition ${
-                  active ? 'bg-[#127475]/8 ring-1 ring-[#127475]/20' : 'hover:bg-slate-50'
-                }`}
+                className={`w-full text-left px-3 py-2.5 rounded-xl mb-0.5 transition ${active ? 'bg-[#127475]/8 ring-1 ring-[#127475]/20' : 'hover:bg-slate-50'}`}
               >
                 <div className={`font-medium truncate ${active ? 'text-[#0e5f60]' : 'text-slate-700'}`}>
                   {v.vessel_name || 'Unknown vessel'}
@@ -606,85 +712,18 @@ function ShipMap() {
         </div>
       </div>
 
-      {/* ---------------- Map ---------------- */}
-      <div ref={mapRef} className="absolute inset-0 left-80" />
-
-      {/* CHA hover tooltip */}
-      {hoveredCha && (
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 bg-[#4f46e5] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
-          {hoveredCha} — click to analyse
-        </div>
-      )}
-
-      {/* CHA loading indicator */}
-      {regionLoading && regionName && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 bg-white/90 backdrop-blur-md rounded-full shadow-lg ring-1 ring-slate-900/5 px-4 py-2 text-xs text-slate-600 flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full border-2 border-[#6366f1] border-t-transparent animate-spin" />
-          Analysing {regionName}…
-        </div>
-      )}
-
-      {/* ---------------- Region toolbar ---------------- */}
-      <div className="absolute top-5 left-80 right-0 flex justify-center z-20 pointer-events-none">
-        <div className="pointer-events-auto bg-white/90 backdrop-blur-md rounded-full shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-2 py-1.5 flex items-center gap-2">
-          {drawing ? (
-            <>
-              <span className="text-xs text-slate-500 pl-3">Click to add points · double-click to finish</span>
-              <button onClick={cancelDrawing} className="text-xs rounded-full px-3.5 py-1.5 text-slate-500 hover:bg-slate-100 transition">
-                Cancel
-              </button>
-            </>
-          ) : drawnPolygon ? (
-            <>
-              <span className="text-xs text-slate-500 pl-3 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#e63946]" /> Custom region
-              </span>
-              <button
-                onClick={loadRegionStats}
-                disabled={regionLoading}
-                className="text-xs rounded-full px-4 py-1.5 bg-[#2a9d8f] text-white font-semibold shadow-sm hover:bg-[#23867a] active:scale-[0.98] disabled:opacity-50 transition"
-              >
-                {regionLoading ? 'Analysing…' : 'Analyse Region'}
-              </button>
-              {regionStats && !regionLoading && (
-                <button onClick={() => setShowResults(true)} className="text-xs rounded-full px-3.5 py-1.5 text-[#2a9d8f] hover:bg-[#2a9d8f]/10 font-medium transition">
-                  View Results
-                </button>
-              )}
-              <button onClick={clearRegion} className="text-xs rounded-full px-3.5 py-1.5 text-slate-500 hover:bg-slate-100 transition">
-                Clear
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={startDrawing}
-              className="text-xs rounded-full px-4 py-1.5 bg-[#2a9d8f] text-white font-semibold shadow-sm hover:bg-[#23867a] active:scale-[0.98] transition flex items-center gap-1.5"
-            >
-              ✏️ Draw Region to Analyse
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ---------------- Legend ---------------- */}
-      <div className="absolute bottom-5 right-5 bg-white/90 backdrop-blur-md rounded-2xl shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs z-10">
+      {/* Legend */}
+      <div className="absolute bottom-5 left-5 z-10 bg-white/90 backdrop-blur-md rounded-2xl shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs">
         <div className="font-semibold mb-2 text-slate-600">Speed (knots)</div>
         <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2a9d8f] inline-block" />&lt; 3</div>
         <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#f4a261] inline-block" />3 – 10</div>
-        <div className="flex items-center gap-2 mb-3 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#e63946] inline-block" />&gt; 10</div>
+        <div className="flex items-center gap-2 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#e63946] inline-block" />&gt; 10</div>
       </div>
 
-
-      {/* ---------------- Results modal ---------------- */}
+      {/* Results modal */}
       {showResults && regionStats && (
-        <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
-          onClick={() => setShowResults(false)}
-        >
-          <div
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={() => setShowResults(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between px-7 pt-6 pb-5 border-b border-slate-100 shrink-0">
               <div>
                 <h2 className="text-xl font-semibold text-slate-800 tracking-tight">{regionName ?? 'Region Analysis'}</h2>
@@ -694,28 +733,18 @@ function ShipMap() {
                   {regionTime !== null && <span className="text-slate-400"> · {(regionTime / 1000).toFixed(1)}s</span>}
                 </p>
               </div>
-              <button
-                onClick={() => setShowResults(false)}
-                className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full w-8 h-8 flex items-center justify-center transition shrink-0"
-              >
-                ✕
-              </button>
+              <button onClick={() => setShowResults(false)} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full w-8 h-8 flex items-center justify-center transition shrink-0">✕</button>
             </div>
             <div className="overflow-y-auto px-7 py-6 space-y-7">
               {regionStats.total_positions === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-10">
-                  No vessel activity found in this region for the selected dates.
-                </p>
+                <p className="text-sm text-slate-500 text-center py-10">No vessel activity found in this region for the selected dates.</p>
               ) : (
                 <>
                   {regionStats.plots?.vessel_types && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
                         <span className="text-sm font-semibold text-slate-700">Daily vessels by type</span>
-                        <button
-                          onClick={() => downloadPlot(regionStats.plots.vessel_types!, 'vessels_by_type.png')}
-                          className="text-xs font-medium text-[#2a9d8f] hover:bg-[#2a9d8f]/10 rounded-full px-3 py-1 transition"
-                        >↓ Download</button>
+                        <button onClick={() => downloadPlot(regionStats.plots.vessel_types!, 'vessels_by_type.png')} className="text-xs font-medium text-[#2a9d8f] hover:bg-[#2a9d8f]/10 rounded-full px-3 py-1 transition">↓ Download</button>
                       </figcaption>
                       <img src={`data:image/png;base64,${regionStats.plots.vessel_types}`} className="w-full rounded-xl ring-1 ring-slate-100" />
                     </figure>
@@ -724,10 +753,7 @@ function ShipMap() {
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
                         <span className="text-sm font-semibold text-slate-700">Daily mean speed</span>
-                        <button
-                          onClick={() => downloadPlot(regionStats.plots.speed_overall!, 'mean_speed.png')}
-                          className="text-xs font-medium text-[#2a9d8f] hover:bg-[#2a9d8f]/10 rounded-full px-3 py-1 transition"
-                        >↓ Download</button>
+                        <button onClick={() => downloadPlot(regionStats.plots.speed_overall!, 'mean_speed.png')} className="text-xs font-medium text-[#2a9d8f] hover:bg-[#2a9d8f]/10 rounded-full px-3 py-1 transition">↓ Download</button>
                       </figcaption>
                       <img src={`data:image/png;base64,${regionStats.plots.speed_overall}`} className="w-full rounded-xl ring-1 ring-slate-100" />
                     </figure>
@@ -739,11 +765,11 @@ function ShipMap() {
         </div>
       )}
 
-      {/* ---------------- Point popup ---------------- */}
+      {/* Point popup */}
       {popup && (
         <div
           className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-2xl shadow-xl px-4 py-3 text-xs pointer-events-none"
-          style={{ left: popup.x + 320 + 12, top: popup.y - 8 }}
+          style={{ left: popup.x + 12, top: popup.y - 8 }}
         >
           <div className="font-semibold text-[#127475] mb-1.5">{popup.source}</div>
           <div className="text-slate-600 space-y-1 tabular-nums">
