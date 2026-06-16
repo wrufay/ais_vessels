@@ -672,13 +672,6 @@ function ShipMap() {
         <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2a9d8f] inline-block" />&lt; 3</div>
         <div className="flex items-center gap-2 mb-1 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#f4a261] inline-block" />3 – 10</div>
         <div className="flex items-center gap-2 mb-3 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-[#e63946] inline-block" />&gt; 10</div>
-        <div className="font-semibold mb-2 text-slate-600 border-t border-slate-100 pt-3">Habitat Areas</div>
-        {CHA_REGIONS.map(r => (
-          <div key={r.name} className="flex items-center gap-2 mb-1 text-slate-500">
-            <span className="w-2.5 h-2.5 rounded-sm border-2 border-[#6366f1] bg-[#6366f1]/10 inline-block shrink-0" />
-            {r.name}
-          </div>
-        ))}
       </div>
 
 
