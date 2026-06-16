@@ -6,7 +6,7 @@
 
 ### Notes and findings
 - Each of the .db files are SQLite. We can query them in the same way we query from the CSV*
-- Years 2022-2024 are not there in the directory (still uploading or just not there?)
+- Years 2022-2024 are not there in the directory (still uploading or just not there?) (NOT THERE)
 - Potential solution:  Get all MMSIs from Postgres with null ship_type; look them up in the SQLite static tables (or the vessel metadata csv)
 
 

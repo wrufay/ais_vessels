@@ -13,6 +13,7 @@ import VectorSource from "ol/source/Vector";
 import { Style, Stroke, Circle as CircleStyle, Fill } from "ol/style";
 import Draw from "ol/interaction/Draw";
 import GeoJSON from "ol/format/GeoJSON";
+import shp from "shpjs";
 import "ol/ol.css";
 
 const API = import.meta.env.VITE_API_URL ?? "";
@@ -398,20 +399,23 @@ function ShipMap() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
-        const raw = JSON.parse(evt.target?.result as string);
-        let geometry = raw;
-        if (raw.type === "FeatureCollection") geometry = raw.features[0]?.geometry;
-        else if (raw.type === "Feature") geometry = raw.geometry;
-        const name = file.name.replace(/\.(geojson|json)$/i, "");
-        setUploadedRegions((prev) => [...prev, { name, geojson: geometry }]);
-        setSelectedRegionNames((prev) => new Set([...prev, name]));
+        const buffer = evt.target?.result as ArrayBuffer;
+        const fc = await shp(buffer);
+        const features = Array.isArray(fc) ? fc.flatMap((f) => f.features) : fc.features;
+        const name = file.name.replace(/\.zip$/i, "");
+        features.forEach((feat, i) => {
+          const regionName = feat.properties?.Name || feat.properties?.name || (features.length === 1 ? name : `${name} ${i + 1}`);
+          const geometry = feat.geometry;
+          setUploadedRegions((prev) => [...prev, { name: regionName, geojson: geometry }]);
+          setSelectedRegionNames((prev) => new Set([...prev, regionName]));
+        });
       } catch {
-        alert("Invalid GeoJSON file");
+        alert("Invalid shapefile. Upload a .zip containing .shp, .dbf, and .prj files.");
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
     e.target.value = "";
   }
 
@@ -902,14 +906,14 @@ function ShipMap() {
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <span>Upload GeoJSON</span>
-            <input type="file" accept=".geojson,.json" className="hidden" onChange={handleFileUpload} />
+            <span>Upload Shapefile (.zip)</span>
+            <input type="file" accept=".zip" className="hidden" onChange={handleFileUpload} />
           </label>
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
           {/* CHA section */}
-          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">CHA</div>
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Critical Habitat Areas</div>
           {CHA_REGIONS.map((r) => (
             <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
               <input
@@ -922,17 +926,17 @@ function ShipMap() {
                 <div className="text-sm font-medium text-slate-700">{r.name}</div>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="w-2 h-2 rounded-full bg-[#3d5a80] inline-block" />
-                  <span className="text-[11px] text-slate-400">Critical Habitat Area</span>
+                  <span className="text-[11px] text-slate-400">CHA</span>
                 </div>
               </div>
             </label>
           ))}
 
           {/* WEA section */}
-          <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">WEA</div>
-          {WEA_REGIONS.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-slate-400 italic">Coordinates coming soon</p>
-          ) : (
+          {/* Title for the region */}
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Wind Energy Areas</div>
+          {
+            // Text display for each region
             WEA_REGIONS.map((r) => (
               <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
                 <input
@@ -945,12 +949,12 @@ function ShipMap() {
                   <div className="text-sm font-medium text-slate-700">{r.name}</div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="w-2 h-2 rounded-full bg-[#ee6c4d] inline-block" />
-                    <span className="text-[11px] text-slate-400">Wind Energy Area</span>
+                    <span className="text-[11px] text-slate-400">WEA</span>
                   </div>
                 </div>
               </label>
             ))
-          )}
+          }
 
           {/* Uploaded regions */}
           {uploadedRegions.length > 0 && (

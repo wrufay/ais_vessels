@@ -10,6 +10,8 @@ pgdata/
 pgdata_backup/
 pgdata_backup*.tar.gz
 *.tar.gz
+*.sql
+*backup*
 *.db
 *.sqlite
 pipeline.log
