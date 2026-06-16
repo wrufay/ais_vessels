@@ -1,6 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+html, body {
+  overflow: hidden;
+}
 @import url('https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap');
 
 
@@ -12,8 +16,13 @@
   }
 
 /* colour scheme
-562c2c - espresso
-f2542d - fiery terracotta
-f5dfbb - wheat
-0E9594 - dark cyan
-127475 - stormy teal */
+3d5a80 - dusk blue
+98c1d9 - powder blue
+e0fbfc - light cyan
+ee6c4d - burnt peach
+293241 - jet black
+afa98d - khaki beige
+639fab - pacific blue
+0a8754 - sea green
+004f2d - dark spruce
+ffc857 - golden pollen */
