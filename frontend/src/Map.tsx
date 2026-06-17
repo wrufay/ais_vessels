@@ -209,6 +209,36 @@ function chaHoverStyle(feature: FeatureLike): Style {
   });
 }
 
+// ---- Moorings ----
+interface Mooring {
+  name: string;
+  lat: number;
+  lon: number;
+  depth: number;
+  deployment: string;
+  recovery: string;
+}
+
+const AMAR_MOORINGS: Mooring[] = [
+  { name: "201804ROB",  lat: 43.0026, lon: -65.5653, depth: 101, deployment: "2018-04-30", recovery: "2018-09-16" },
+  { name: "201805EMBS", lat: 43.4976, lon: -62.8700, depth: 98,  deployment: "2018-05-01", recovery: "2018-09-23" },
+  { name: "201809ROB",  lat: 43.0014, lon: -65.5660, depth: 119, deployment: "2018-09-16", recovery: "2019-10-07" },
+  { name: "201809EMBS", lat: 43.4973, lon: -62.8699, depth: 120, deployment: "2018-09-23", recovery: "2019-10-06" },
+  { name: "201809GMB",  lat: 44.6925, lon: -66.5311, depth: 175, deployment: "2018-09-21", recovery: "2019-04-08" },
+  { name: "201904GMB",  lat: 44.6916, lon: -66.5299, depth: 179, deployment: "2019-04-08", recovery: "2019-11-07" },
+  { name: "201904JOBW", lat: 43.3001, lon: -67.4999, depth: 179, deployment: "2019-04-09", recovery: "2019-10-07" },
+  { name: "201910ROB",  lat: 43.0014, lon: -65.5648, depth: 105, deployment: "2019-10-07", recovery: "2020-08-31" },
+  { name: "201910EMBS", lat: 43.4966, lon: -62.8694, depth: 96,  deployment: "2019-10-06", recovery: "2020-09-07" },
+  { name: "201910JOBW", lat: 43.3025, lon: -67.4990, depth: 173, deployment: "2019-10-07", recovery: "2020-09-01" },
+  { name: "202008ROB",  lat: 42.9996, lon: -65.5673, depth: 98,  deployment: "2020-08-31", recovery: "2021-08-19" },
+  { name: "202009EMBS", lat: 43.4966, lon: -62.8696, depth: 98,  deployment: "2020-09-07", recovery: "2021-08-26" },
+  { name: "202009GMB",  lat: 44.6965, lon: -66.5306, depth: 170, deployment: "2020-09-01", recovery: "2021-04-11" },
+  { name: "202009JOBW", lat: 43.3031, lon: -67.4991, depth: 184, deployment: "2020-09-01", recovery: "2021-08-22" },
+  { name: "202104GMB",  lat: 44.6995, lon: -66.5300, depth: 173, deployment: "2021-04-11", recovery: "2021-08-23" },
+  { name: "202108EMBD", lat: 43.6085, lon: -62.8686, depth: 179, deployment: "2021-08-26", recovery: "2022-09-13" },
+  { name: "202108GMB",  lat: 44.6923, lon: -66.5314, depth: 172, deployment: "2021-08-23", recovery: "2022-10-03" },
+];
+
 function downloadPlot(b64: string, name: string) {
   const a = document.createElement("a");
   a.href = `data:image/png;base64,${b64}`;
@@ -224,6 +254,7 @@ function ShipMap() {
   const sourceRef = useRef(new VectorSource());
   const drawSourceRef = useRef(new VectorSource());
   const chaSourceRef = useRef(new VectorSource());
+  const mooringSourceRef = useRef(new VectorSource());
   const drawRef = useRef<Draw | null>(null);
   const routeLayerRef = useRef<VectorLayer | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
@@ -258,8 +289,11 @@ function ShipMap() {
   const [hoveredCha, setHoveredCha] = useState<string | null>(null);
   const [showVesselPanel, setShowVesselPanel] = useState(false);
   const [showRegionPanel, setShowRegionPanel] = useState(false);
+  const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [selectedRegionNames, setSelectedRegionNames] = useState<Set<string>>(new Set());
   const [uploadedRegions, setUploadedRegions] = useState<PresetRegion[]>([]);
+  const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
+  const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -281,6 +315,21 @@ function ShipMap() {
       });
   }, [selectedRegionNames, uploadedRegions]);
 
+  // rebuild mooring points when date range or uploaded moorings change
+  useEffect(() => {
+    mooringSourceRef.current.clear();
+    const allMoorings = [...AMAR_MOORINGS, ...uploadedMoorings];
+    allMoorings
+      .filter((m) => m.deployment <= end && m.recovery >= start)
+      .forEach((m) => {
+        const f = new Feature({
+          geometry: new Point(fromLonLat([m.lon, m.lat])),
+          mooring: m,
+        });
+        mooringSourceRef.current.addFeature(f);
+      });
+  }, [start, end, uploadedMoorings]);
+
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -289,6 +338,17 @@ function ShipMap() {
       style: chaStyle,
     });
     chaLayerRef.current = chaLayer;
+
+    const mooringLayer = new VectorLayer({
+      source: mooringSourceRef.current,
+      style: new Style({
+        image: new CircleStyle({
+          radius: 7,
+          fill: new Fill({ color: "#293241" }),
+          stroke: new Stroke({ color: "#fff", width: 2 }),
+        }),
+      }),
+    });
 
     const routeLayer = new VectorLayer({
       source: sourceRef.current,
@@ -306,6 +366,7 @@ function ShipMap() {
           }),
         }),
         chaLayer,
+        mooringLayer,
         routeLayer,
         new VectorLayer({
           source: drawSourceRef.current,
@@ -338,6 +399,7 @@ function ShipMap() {
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         if (feature.getGeometry()?.getType() !== "Point") return;
         if (feature.get("chaRegion")) return;
+        if (feature.get("mooring")) return;
         setPopup({
           x: e.pixel[0],
           y: e.pixel[1],
@@ -354,9 +416,10 @@ function ShipMap() {
       }) ?? setPopup(null);
     });
 
-    // hover cursor on CHA polygons
+    // hover cursor on CHA polygons and moorings
     map.on("pointermove", (e) => {
       let overCha = false;
+      let overMooring = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         if (feature.get("chaRegion")) {
           overCha = true;
@@ -365,14 +428,18 @@ function ShipMap() {
           (feature as Feature).setStyle(chaHoverStyle(feature));
           return true;
         }
+        if (feature.get("mooring")) {
+          overMooring = true;
+          setHoveredMooring(feature.get("mooring") as Mooring);
+          return true;
+        }
       });
       if (!overCha) {
         setHoveredCha(null);
-        chaSourceRef.current
-          .getFeatures()
-          .forEach((f) => f.setStyle(undefined));
+        chaSourceRef.current.getFeatures().forEach((f) => f.setStyle(undefined));
       }
-      map.getTargetElement().style.cursor = overCha ? "pointer" : "";
+      if (!overMooring) setHoveredMooring(null);
+      map.getTargetElement().style.cursor = overCha || overMooring ? "pointer" : "";
     });
 
     mapObj.current = map;
@@ -385,6 +452,35 @@ function ShipMap() {
       .then((d) => setVessels(d.vessels || []))
       .catch(console.error);
   }, []);
+
+  function handleMooringUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const lines = (evt.target?.result as string).trim().split("\n");
+        const header = lines[0].toLowerCase().split(",").map((h) => h.trim());
+        const idx = (col: string) => header.indexOf(col);
+        const parsed: Mooring[] = lines.slice(1).map((line) => {
+          const cols = line.split(",").map((c) => c.trim());
+          return {
+            name: cols[idx("name")],
+            lat: parseFloat(cols[idx("lat")]),
+            lon: parseFloat(cols[idx("lon")]),
+            depth: parseFloat(cols[idx("depth")] ?? "0"),
+            deployment: cols[idx("deployment")],
+            recovery: cols[idx("recovery")],
+          };
+        }).filter((m) => m.name && !isNaN(m.lat) && !isNaN(m.lon));
+        setUploadedMoorings((prev) => [...prev, ...parsed]);
+      } catch {
+        alert("Invalid CSV. Expected columns: name, lat, lon, depth, deployment, recovery");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
 
   function toggleRegion(name: string) {
     setSelectedRegionNames((prev) => {
@@ -588,6 +684,13 @@ function ShipMap() {
         </div>
       )}
 
+      {/* Mooring hover tooltip */}
+      {hoveredMooring && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
+          {hoveredMooring.name} · {hoveredMooring.depth}m · {hoveredMooring.deployment} → {hoveredMooring.recovery}
+        </div>
+      )}
+
       {/* CHA hover tooltip */}
       {hoveredCha && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
@@ -608,7 +711,7 @@ function ShipMap() {
         {/* Vessels */}
         <div className="group relative">
           <button
-            onClick={() => { setShowVesselPanel((p) => !p); setShowRegionPanel(false); }}
+            onClick={() => { setShowVesselPanel((p) => !p); setShowRegionPanel(false); setShowMooringPanel(false); }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showVesselPanel
                 ? "bg-[#293241] ring-2 ring-white/60"
@@ -636,12 +739,33 @@ function ShipMap() {
           </div>
         </div>
 
+        {/* Moorings */}
+        <div className="group relative">
+          <button
+            onClick={() => { setShowMooringPanel((p) => !p); setShowVesselPanel(false); setShowRegionPanel(false); }}
+            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
+              showMooringPanel ? "bg-[#293241] ring-2 ring-white/60" : "bg-[#3d5a80] hover:bg-[#293241]"
+            } text-white`}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="5" r="2" />
+              <line x1="12" y1="7" x2="12" y2="19" />
+              <path d="M8 11h8" />
+              <path d="M5 19h6" /><path d="M13 19h6" />
+            </svg>
+          </button>
+          <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+            Moorings
+          </div>
+        </div>
+
         {/* Regions */}
         <div className="group relative">
           <button
             onClick={() => {
               setShowRegionPanel((p) => !p);
               setShowVesselPanel(false);
+              setShowMooringPanel(false);
             }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showRegionPanel
@@ -887,6 +1011,73 @@ function ShipMap() {
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* Moorings panel — slides in from the right */}
+      <div
+        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-200 ${
+          showMooringPanel ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="px-5 pt-8 pb-4 shrink-0">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Moorings</h2>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">Start</span>
+              <input type="date" className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={start} onChange={(e) => setStart(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">End</span>
+              <input type="date" className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={end} onChange={(e) => setEnd(e.target.value)} />
+            </label>
+          </div>
+          <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-xl py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#293241] hover:text-[#293241] transition">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>Upload CSV</span>
+            <span className="text-[10px] text-slate-300">name, lat, lon, depth, deployment, recovery</span>
+            <input type="file" accept=".csv" className="hidden" onChange={handleMooringUpload} />
+          </label>
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+          {/* AMAR section */}
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">AMAR</div>
+          {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
+            <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+          )}
+          {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
+            <div key={m.name} className="px-3 py-2.5 rounded-xl hover:bg-slate-50">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                <span className="text-sm font-medium text-slate-700">{m.name}</span>
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+            </div>
+          ))}
+
+          {/* Uploaded section */}
+          {uploadedMoorings.length > 0 && (
+            <>
+              <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Uploaded</div>
+              {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
+                <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+              )}
+              {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
+                <div key={m.name} className="px-3 py-2.5 rounded-xl hover:bg-slate-50">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                    <span className="text-sm font-medium text-slate-700">{m.name}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
 

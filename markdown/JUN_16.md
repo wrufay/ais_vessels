@@ -12,3 +12,7 @@
 - Would definitely need to include error handling, since user is uploading things
 
 - Perhaps allow renaming your own uploaded shapefile (thinking about user auth and stuff again lol)
+
+- Mooring data: work with the time ranges again. Right now thinking they could change state to be synced with the vessel time range, currently did that but make sure it's working as expected.
+
+- Crashes when you click the moorings. Also the add by CSV feature is untested
