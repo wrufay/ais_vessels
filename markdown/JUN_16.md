@@ -15,4 +15,4 @@
 
 - Mooring data: work with the time ranges again. Right now thinking they could change state to be synced with the vessel time range, currently did that but make sure it's working as expected.
 
-- Crashes when you click the moorings. Also the add by CSV feature is untested
+- Crashes when you click the moorings. (FIXED) Also the add by CSV feature is untested

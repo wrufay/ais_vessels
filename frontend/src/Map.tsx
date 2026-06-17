@@ -453,6 +453,19 @@ function ShipMap() {
       .catch(console.error);
   }, []);
 
+  function downloadMooringTemplate() {
+    const csv = [
+      "name,lat,lon,depth,deployment,recovery",
+      "MY_MOORING_01,43.0026,-65.5653,101,2023-05-01,2023-10-15",
+      "MY_MOORING_02,43.4976,-62.8700,98,2023-06-01,2023-11-01",
+    ].join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "mooring_template.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   function handleMooringUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1042,6 +1055,12 @@ function ShipMap() {
             <span className="text-[10px] text-slate-300">name, lat, lon, depth, deployment, recovery</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleMooringUpload} />
           </label>
+          <button
+            onClick={downloadMooringTemplate}
+            className="mt-2 w-full text-[11px] text-slate-400 hover:text-[#3d5a80] text-center transition"
+          >
+            Download template
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
