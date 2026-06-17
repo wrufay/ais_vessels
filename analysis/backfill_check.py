@@ -2,7 +2,12 @@ import duckdb, psycopg2
 
 conn = psycopg2.connect("postgresql://postgres:postgres@localhost:5432/ais")
 with conn.cursor() as cur:
-    cur.execute("SELECT mmsi FROM vessels WHERE ship_type IS NULL")
+    cur.execute("""
+        SELECT DISTINCT v.mmsi FROM vessels v
+        JOIN ais_positions p ON v.mmsi = p.mmsi
+        WHERE v.ship_type IS NULL
+          AND v.mmsi BETWEEN 200000000 AND 799999999
+    """)
     mmsis = [r[0] for r in cur.fetchall()]
 conn.close()
 
