@@ -168,10 +168,6 @@ def load_file(csv_path: str) -> tuple[str, int]:
             FROM STDIN WITH (FORMAT CSV, NULL '')
         """, buf)
 
-    # Only keep vessels that have positions in the bbox
-    loaded_mmsis = {row[0] for row in pos_rows}
-    ves_rows = [r for r in ves_rows if r[0] in loaded_mmsis]
-
     # Upsert vessels
     if ves_rows:
         with conn.cursor() as cur:
