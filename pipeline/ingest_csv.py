@@ -1,14 +1,33 @@
 #!/usr/bin/env python3
 """
-Bulk load decoded AIS CSVs into TimescaleDB using DuckDB for fast filtering.
+This script acts as the pipeline between our source data and SQL database.
 
-Usage:
+Input:
+Given as a command line argument; runs on CSV files containing pre-decoded AIS data.
+
+Currently using exactEarth satellite datasets found in
+/mnt/echowind/csa_ais/csa_satellite_ais_2025_11_17/SAISData/CSV/old/
+on the CSRF Linux computer.
+
+Column names are case-insensitive; script works on any CSV with standard AIS field names, such as exactEarth or CCG terrestrial data.
+
+Output:
+Tables are created once by docker/init.sql first time the container is set up.
+Stores the data by writing to a PostgreSQL database containing two tables:
+
+    - ais_positions: a hypertable converted using TimescaleDB extension with one row per position ping within the bounding box
+    - vessels: regular Postgres table with one row per unique MMSI with static information such as name, ship type, callsign, IMO
+
+
+How it works:
+Bulk loads decoded AIS CSVs into TimescaleDB using DuckDB for fast filtering.
+Processed filenames are tracked in ingestion_log table, allowing for resumability.
+
+Use these commands to run:
     python pipeline/ingest_csv.py /path/to/file.csv
     python pipeline/ingest_csv.py /path/to/csv/dir
     python pipeline/ingest_csv.py /path/to/csv/dir --workers 8
 
-Handles any CSV format — column names are matched case-insensitively.
-Resumable: processed filenames tracked in ingestion_log table.
 """
 
 import io
@@ -26,6 +45,8 @@ DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/ais"
 )
 
+# Coordinate values used for the Scotian Shelf bounding box
+# Remove to display global data, or adjust to focus on region of your choice - speeds up processing
 LON_MIN, LON_MAX = -69.0, -55.0
 LAT_MIN, LAT_MAX =  41.0,  47.0
 
