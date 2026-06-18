@@ -63,18 +63,29 @@ def root():
 
 
 @app.get("/api/vessels")
-def get_vessels():
-    rows = query("""
+def get_vessels(start: str | None = Query(None), end: str | None = Query(None)):
+    params: list = []
+    date_filter = ""
+    if start and end:
+        date_filter = "AND received_at >= %s AND received_at <= %s"
+        params = [start, end]
+
+    rows = query(f"""
         SELECT
             p.mmsi,
             v.name AS vessel_name,
             v.ship_type,
             p.source
-        FROM (SELECT DISTINCT ON (mmsi) mmsi, source FROM ais_positions ORDER BY mmsi, received_at DESC) p
+        FROM (
+            SELECT DISTINCT ON (mmsi) mmsi, source
+            FROM ais_positions
+            WHERE mmsi BETWEEN 200000000 AND 799999999
+            {date_filter}
+            ORDER BY mmsi, received_at DESC
+        ) p
         LEFT JOIN vessels v USING (mmsi)
-        WHERE p.mmsi BETWEEN 200000000 AND 799999999
         ORDER BY v.name NULLS LAST, p.mmsi
-    """)
+    """, params or None)
     return {"vessels": rows, "count": len(rows)}
 
 
@@ -84,9 +95,6 @@ def get_vessel_route(
     start: str | None = Query(None),
     end: str | None = Query(None),
 ):
-    if ALLOWED_MMSIS and mmsi not in ALLOWED_MMSIS:
-        raise HTTPException(status_code=404, detail="Vessel not found")
-
     sql = """
         SELECT
             EXTRACT(EPOCH FROM received_at)::BIGINT AS time,

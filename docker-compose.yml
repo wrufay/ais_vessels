@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: docker/backend.Dockerfile
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ais
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ais_v2
       - CORS_ORIGINS=http://localhost
     depends_on:
       db:

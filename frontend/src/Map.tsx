@@ -447,11 +447,11 @@ function ShipMap() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API}/api/vessels`)
+    fetch(`${API}/api/vessels?start=${start}T00:00:00&end=${end}T23:59:59`)
       .then((r) => r.json())
       .then((d) => setVessels(d.vessels || []))
       .catch(console.error);
-  }, []);
+  }, [start, end]);
 
   function downloadMooringTemplate() {
     const csv = [
