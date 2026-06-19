@@ -3,6 +3,7 @@ import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import XYZ from "ol/source/XYZ";
+
 import { fromLonLat } from "ol/proj";
 import Feature, { type FeatureLike } from "ol/Feature";
 import LineString from "ol/geom/LineString";
@@ -258,6 +259,7 @@ function ShipMap() {
   const drawRef = useRef<Draw | null>(null);
   const routeLayerRef = useRef<VectorLayer | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
+  const bathyLayerRef = useRef<TileLayer | null>(null);
 
   interface Popup {
     x: number;
@@ -290,10 +292,12 @@ function ShipMap() {
   const [showVesselPanel, setShowVesselPanel] = useState(false);
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
+  const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [selectedRegionNames, setSelectedRegionNames] = useState<Set<string>>(new Set());
   const [uploadedRegions, setUploadedRegions] = useState<PresetRegion[]>([]);
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
   const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
+  const [showBathymetry, setShowBathymetry] = useState(false);
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -356,6 +360,9 @@ function ShipMap() {
     });
     routeLayerRef.current = routeLayer;
 
+    const bathyLayer = new TileLayer({ visible: false });
+    bathyLayerRef.current = bathyLayer;
+
     const map = new Map({
       target: mapRef.current,
       layers: [
@@ -365,6 +372,7 @@ function ShipMap() {
             attributions: "Tiles © Esri",
           }),
         }),
+        bathyLayer,
         chaLayer,
         mooringLayer,
         routeLayer,
@@ -445,6 +453,10 @@ function ShipMap() {
     mapObj.current = map;
     return () => map.setTarget(undefined);
   }, []);
+
+  useEffect(() => {
+    bathyLayerRef.current?.setVisible(showBathymetry);
+  }, [showBathymetry]);
 
   useEffect(() => {
     fetch(`${API}/api/vessels?start=${start}T00:00:00&end=${end}T23:59:59`)
@@ -724,7 +736,7 @@ function ShipMap() {
         {/* Vessels */}
         <div className="group relative">
           <button
-            onClick={() => { setShowVesselPanel((p) => !p); setShowRegionPanel(false); setShowMooringPanel(false); }}
+            onClick={() => { setShowVesselPanel((p) => !p); setShowRegionPanel(false); setShowMooringPanel(false); setShowLayerPanel(false); }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showVesselPanel
                 ? "bg-[#293241] ring-2 ring-white/60"
@@ -755,7 +767,7 @@ function ShipMap() {
         {/* Moorings */}
         <div className="group relative">
           <button
-            onClick={() => { setShowMooringPanel((p) => !p); setShowVesselPanel(false); setShowRegionPanel(false); }}
+            onClick={() => { setShowMooringPanel((p) => !p); setShowVesselPanel(false); setShowRegionPanel(false); setShowLayerPanel(false); }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showMooringPanel ? "bg-[#293241] ring-2 ring-white/60" : "bg-[#3d5a80] hover:bg-[#293241]"
             } text-white`}
@@ -779,6 +791,7 @@ function ShipMap() {
               setShowRegionPanel((p) => !p);
               setShowVesselPanel(false);
               setShowMooringPanel(false);
+              setShowLayerPanel(false);
             }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showRegionPanel
@@ -819,6 +832,25 @@ function ShipMap() {
           </button>
           <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
             {drawing ? "Cancel Drawing" : "Draw Region"}
+          </div>
+        </div>
+
+        {/* Layers */}
+        <div className="group relative">
+          <button
+            onClick={() => { setShowLayerPanel((p) => !p); setShowVesselPanel(false); setShowRegionPanel(false); setShowMooringPanel(false); }}
+            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
+              showLayerPanel ? "bg-[#293241] ring-2 ring-white/60" : "bg-[#3d5a80] hover:bg-[#293241]"
+            }`}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+          </button>
+          <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+            Layers
           </div>
         </div>
 
@@ -1189,6 +1221,32 @@ function ShipMap() {
               ))}
             </>
           )}
+        </div>
+      </div>
+
+      {/* Layers panel — slides in from the right */}
+      <div
+        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-200 ${
+          showLayerPanel ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="px-5 pt-8 pb-4 shrink-0">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Layers</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+          <div className="px-3 pt-1 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Ocean</div>
+          <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showBathymetry}
+              onChange={() => setShowBathymetry((p) => !p)}
+              className="accent-[#3d5a80] w-4 h-4 rounded"
+            />
+            <div>
+              <div className="text-sm font-medium text-slate-700">Bathymetry</div>
+              <div className="text-[11px] text-slate-400">Coming soon — awaiting DFO dataset</div>
+            </div>
+          </label>
         </div>
       </div>
 
