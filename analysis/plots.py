@@ -1,7 +1,14 @@
 """
-Shared plotting functions for region analysis.
-Returns base64-encoded PNG strings instead of saving files.
+This script generates plots used by the region analysis API endpoints.
+
+Each function accepts query results as a pandas DataFrame and returns
+a base64-encoded PNG string (ready to embed in a JSON response or <img> tag).
+
+Functions:
+    plot_vessel_types(daily_counts) — stacked bar chart of daily vessel counts by type
+    plot_speed_overall(df)          — line chart of mean daily speed across all vessels
 """
+
 
 import base64
 import io
@@ -10,8 +17,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import pandas as pd # type: ignore
 
+# Maps vessel type label -> consistent hex color across all charts
 TYPE_COLORS = {
     "cargo":                    "#0072BD",
     "tanker":                   "#D95319",
@@ -22,11 +30,13 @@ TYPE_COLORS = {
     "unknown":                  "#A2142F",
 }
 
+# Draw order for stacked bars —> determines legend and layering order
 ORDERED_TYPES = ["cargo", "tanker", "fishing", "passenger",
                  "search and rescue vessel", "other", "unknown"]
 
 
 def _to_b64(fig) -> str:
+    """Renders a matplotlib figure to a base64-encoded PNG string and closes it."""
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -34,6 +44,10 @@ def _to_b64(fig) -> str:
 
 
 def plot_vessel_types(daily_counts: pd.DataFrame) -> str:
+    """Returns a stacked bar chart of daily vessel counts by type as a base64 PNG.
+    daily_counts: DataFrame indexed by date, one column per vessel type (e.g. "cargo", "tanker"),
+              values are daily counts. Missing type columns are skipped."""
+
     fig, ax = plt.subplots(figsize=(12, 5))
     x = np.arange(len(daily_counts))
     bottom = np.zeros(len(daily_counts))
@@ -59,6 +73,9 @@ def plot_vessel_types(daily_counts: pd.DataFrame) -> str:
 
 
 def plot_speed_overall(df: pd.DataFrame) -> str:
+    """Returns a line chart of mean daily speed as a base64 PNG.
+    df: DataFrame with columns "day" (date string) and "speed" (knots)."""
+
     df = df.copy()
     df["day"] = pd.to_datetime(df["day"])
     daily = df.groupby("day")["speed"].mean()

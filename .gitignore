@@ -15,4 +15,4 @@ pgdata_backup*.tar.gz
 *.db
 *.sqlite
 pipeline.log
-markdown
+archive
