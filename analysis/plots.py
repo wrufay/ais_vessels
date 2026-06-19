@@ -98,21 +98,42 @@ def plot_speed_overall(df: pd.DataFrame) -> str:
 
 
 def plot_vessel_density(df: pd.DataFrame) -> str:
-    """Returns a hexbin density map of vessel positions as a base64 PNG.
+    """Returns a vessel traffic density map as a base64 PNG.
 
     df: DataFrame with columns "longitude" and "latitude".
-    Color intensity represents number of AIS pings per hex cell.
+    Density is computed as AIS pings per 0.05° grid cell, plotted over a
+    cartopy coastline with land fill.
     """
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+
     LON_MIN, LON_MAX = -69.0, -55.0
     LAT_MIN, LAT_MAX =  41.0,  47.0
+    GRID_RES = 0.05  # degrees per cell
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    hb = ax.hexbin(df["longitude"], df["latitude"], gridsize=60, cmap="YlOrRd", mincnt=1)
-    fig.colorbar(hb, ax=ax, label="AIS pings")
-    ax.set_xlabel("Longitude")
-    ax.set_ylabel("Latitude")
+    lon_bins = np.arange(LON_MIN, LON_MAX + GRID_RES, GRID_RES)
+    lat_bins = np.arange(LAT_MIN, LAT_MAX + GRID_RES, GRID_RES)
+
+    counts, _, _ = np.histogram2d(
+        df["longitude"], df["latitude"], bins=[lon_bins, lat_bins]
+    )
+    counts = counts.T  # shape: (lat, lon)
+    counts[counts == 0] = np.nan  # hide empty cells
+
+    proj = ccrs.PlateCarree()
+    fig, ax = plt.subplots(figsize=(12, 7), subplot_kw={"projection": proj})
+    ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=proj)
+
+    ax.add_feature(cfeature.LAND, facecolor="#a8a8a8", zorder=1)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=2)
+    ax.add_feature(cfeature.BORDERS, linewidth=0.4, zorder=2)
+    ax.gridlines(draw_labels=True, linewidth=0.4, color="gray", alpha=0.5, zorder=3)
+
+    mesh = ax.pcolormesh(
+        lon_bins, lat_bins, counts,
+        cmap="YlOrRd", transform=proj, zorder=0
+    )
+    fig.colorbar(mesh, ax=ax, label="AIS pings", shrink=0.7)
     ax.set_title("Vessel Traffic Density")
-    ax.set_xlim(LON_MIN, LON_MAX)
-    ax.set_ylim(LAT_MIN, LAT_MAX)
     plt.tight_layout()
     return _to_b64(fig)
