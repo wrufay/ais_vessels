@@ -36,10 +36,10 @@ ORDERED_TYPES = ["cargo", "tanker", "fishing", "passenger",
                  "search and rescue vessel", "other", "unknown"]
 
 
-def _to_b64(fig) -> str:
+def _to_b64(fig, dpi=120) -> str:
     """Renders a matplotlib figure to a base64-encoded PNG string and closes it."""
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode()
 
@@ -97,43 +97,71 @@ def plot_speed_overall(df: pd.DataFrame) -> str:
     return _to_b64(fig)
 
 
-def plot_vessel_density(df: pd.DataFrame) -> str:
+def plot_vessel_density(
+    df: pd.DataFrame,
+    lon_min: float, lon_max: float,
+    lat_min: float, lat_max: float,
+) -> str:
     """Returns a vessel traffic density map as a base64 PNG.
 
     df: DataFrame with columns "longitude" and "latitude".
-    Density is computed as AIS pings per 0.05° grid cell, plotted over a
-    cartopy coastline with land fill.
+    lon_min/max, lat_min/max: bounding box of the analysis region — the map
+    zooms to this area with padding so the region fills the frame.
+
+    Grid resolution adapts to region size (finer for small regions).
+    Uses 10m Natural Earth coastlines for detail.
     """
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
 
-    LON_MIN, LON_MAX = -69.0, -55.0
-    LAT_MIN, LAT_MAX =  41.0,  47.0
-    GRID_RES = 0.05  # degrees per cell
+    # Pad the extent so the region isn't edge-to-edge
+    lon_span = lon_max - lon_min
+    lat_span = lat_max - lat_min
+    pad_lon = max(0.3, lon_span * 0.2)
+    pad_lat = max(0.3, lat_span * 0.2)
+    ext_lon_min = lon_min - pad_lon
+    ext_lon_max = lon_max + pad_lon
+    ext_lat_min = lat_min - pad_lat
+    ext_lat_max = lat_max + pad_lat
 
-    lon_bins = np.arange(LON_MIN, LON_MAX + GRID_RES, GRID_RES)
-    lat_bins = np.arange(LAT_MIN, LAT_MAX + GRID_RES, GRID_RES)
+    # Finer grid for small regions, coarser for large ones — targets ~150 cells across
+    GRID_RES = max(0.01, min(0.05, min(lon_span, lat_span) / 150))
+
+    lon_bins = np.arange(ext_lon_min, ext_lon_max + GRID_RES, GRID_RES)
+    lat_bins = np.arange(ext_lat_min, ext_lat_max + GRID_RES, GRID_RES)
+
+    from scipy.ndimage import gaussian_filter
+    from matplotlib.colors import LogNorm
 
     counts, _, _ = np.histogram2d(
         df["longitude"], df["latitude"], bins=[lon_bins, lat_bins]
     )
-    counts = counts.T  # shape: (lat, lon)
-    counts[counts == 0] = np.nan  # hide empty cells
+    counts = counts.T
+    counts = gaussian_filter(counts, sigma=1.5)  # smooth between cells
+    counts[counts < 0.5] = np.nan  # hide near-zero cells after smoothing
 
     proj = ccrs.PlateCarree()
-    fig, ax = plt.subplots(figsize=(12, 7), subplot_kw={"projection": proj})
-    ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=proj)
+    fig, ax = plt.subplots(figsize=(12, 8), subplot_kw={"projection": proj})
+    ax.set_extent([ext_lon_min, ext_lon_max, ext_lat_min, ext_lat_max], crs=proj)
 
-    ax.add_feature(cfeature.LAND, facecolor="#a8a8a8", zorder=1)
-    ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=2)
+    land = cfeature.NaturalEarthFeature("physical", "land", "10m", facecolor="#b0b0b0")
+    coast = cfeature.NaturalEarthFeature("physical", "coastline", "10m",
+                                          edgecolor="#444444", facecolor="none")
+    ax.add_feature(land, zorder=1)
+    ax.add_feature(coast, linewidth=0.7, zorder=2)
     ax.add_feature(cfeature.BORDERS, linewidth=0.4, zorder=2)
     ax.gridlines(draw_labels=True, linewidth=0.4, color="gray", alpha=0.5, zorder=3)
 
+    vmin = np.nanpercentile(counts, 5)
+    vmax = np.nanpercentile(counts, 99)
+    vmin = max(vmin, 0.5)  # LogNorm requires positive values
+
     mesh = ax.pcolormesh(
         lon_bins, lat_bins, counts,
-        cmap="YlOrRd", transform=proj, zorder=0
+        cmap="YlOrRd", transform=proj, zorder=0,
+        norm=LogNorm(vmin=vmin, vmax=vmax),
     )
-    fig.colorbar(mesh, ax=ax, label="AIS pings", shrink=0.7)
-    ax.set_title("Vessel Traffic Density")
+    fig.colorbar(mesh, ax=ax, label="AIS pings", shrink=0.75, pad=0.08)
+    ax.set_title("Vessel Traffic Density", fontsize=14, pad=10)
     plt.tight_layout()
-    return _to_b64(fig)
+    return _to_b64(fig, dpi=180)

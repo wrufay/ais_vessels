@@ -200,7 +200,7 @@ def analyse_region(req: RegionRequest):
     plots = {
         "vessel_types":    plot_vessel_types(daily_counts),
         "speed_overall":   plot_speed_overall(df[["day", "speed"]].rename(columns={"speed": "speed"})),
-        "vessel_density":  plot_vessel_density(df[["longitude", "latitude"]]),
+        "vessel_density":  plot_vessel_density(df[["longitude", "latitude"]], minx, maxx, miny, maxy),
     }
 
     return {
