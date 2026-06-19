@@ -3,27 +3,19 @@
 This script acts as the pipeline between our source data and SQL database.
 
 Input:
-Given as a command line argument; runs on CSV files containing pre-decoded AIS data.
-
-Currently using exactEarth satellite datasets found in
-/mnt/echowind/csa_ais/csa_satellite_ais_2025_11_17/SAISData/CSV/old/
-on the CSRF Linux computer.
-
-Column names are case-insensitive; script works on any CSV with standard AIS field names, such as exactEarth or CCG terrestrial data.
+Path to a CSV file or a directory of CSVs containing pre-decoded AIS data.
+Script works on any CSV with standard AIS field names (i.e. column names are case-insensitive and can be in any order)
 
 Output:
-Tables are created once by docker/init.sql first time the container is set up.
-Stores the data by writing to a PostgreSQL database containing two tables:
+Writes to a PostgreSQL database containing two tables (initiated by docker/init.sql):
 
-    - ais_positions: a hypertable converted using TimescaleDB extension with one row per position ping within the bounding box
-    - vessels: regular Postgres table with one row per unique MMSI with static information such as name, ship type, callsign, IMO
+    - ais_positions: time-series optimized table (TimescaleDB) with one row per position ping within the bounding box
+    - vessels: regular Postgres table, one row per unique MMSI with static information (e.g. name, ship type, callsign, IMO)
 
-
-How it works:
 Bulk loads decoded AIS CSVs into TimescaleDB using DuckDB for fast filtering.
 Processed filenames are tracked in ingestion_log table, allowing for resumability.
 
-Use these commands to run:
+Commands to run:
     python pipeline/ingest_csv.py /path/to/file.csv
     python pipeline/ingest_csv.py /path/to/csv/dir
     python pipeline/ingest_csv.py /path/to/csv/dir --workers 8
@@ -37,19 +29,20 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-import duckdb
-import psycopg2
-import psycopg2.extras
+import duckdb # type: ignore
+import psycopg2 # type: ignore
+import psycopg2.extras # type: ignore
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/ais"
 )
 
 # Coordinate values used for the Scotian Shelf bounding box
-# Remove to display global data, or adjust to focus on region of your choice - speeds up processing
+# Remove to display global data, or adjust to your focal region of choice.
 LON_MIN, LON_MAX = -69.0, -55.0
 LAT_MIN, LAT_MAX =  41.0,  47.0
 
+# AIS message type IDs - determines which rows go into each table (ais_positions or vessels).
 POSITION_MSG_IDS = (1, 2, 3, 18, 19, 27)
 STATIC_MSG_IDS   = (5, 24)
 
@@ -59,7 +52,8 @@ def parse_timestamp(raw: str) -> str:
     if not raw:
         return ""
     raw = raw.strip()
-    # exactEarth: 20250731T225847Z
+    # exactEarth format: YYYYMMDDTHHMMSSZ
+    # ISO format: YYYY-MM-DDTHH:MM:SS+00:00
     if len(raw) == 16 and "T" in raw and raw.endswith("Z"):
         dt = datetime.strptime(raw, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
         return dt.isoformat()
@@ -67,7 +61,7 @@ def parse_timestamp(raw: str) -> str:
 
 
 def find_col(cols: dict, *options: str) -> str | None:
-    """Case-insensitive column lookup — returns the actual column name or None."""
+    """Case-insensitive column lookup - returns the actual column name or None."""
     for opt in options:
         if opt.lower() in cols:
             return cols[opt.lower()]
@@ -75,12 +69,15 @@ def find_col(cols: dict, *options: str) -> str | None:
 
 
 def already_loaded(conn, filename: str) -> bool:
+    """Returns True if filename exists in ingestion_log."""
     with conn.cursor() as cur:
         cur.execute("SELECT 1 FROM ingestion_log WHERE filename = %s", (filename,))
         return cur.fetchone() is not None
 
 
 def load_file(csv_path: str) -> tuple[str, int]:
+    """Loads one CSV into the database — returns (filename, row_count), or -1 if already ingested."""
+    
     filename = Path(csv_path).name
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = False
@@ -103,7 +100,7 @@ def load_file(csv_path: str) -> tuple[str, int]:
     col_names = [r[0] for r in duck.execute("DESCRIBE raw").fetchall()]
     cols = {c.lower(): c for c in col_names}
 
-    # Flexible column resolution
+    # Flexible column resolution - add new variants when encountered
     mmsi_c    = find_col(cols, "mmsi")
     msg_c     = find_col(cols, "message_id", "message_type")
     lat_c     = find_col(cols, "latitude", "lat")
