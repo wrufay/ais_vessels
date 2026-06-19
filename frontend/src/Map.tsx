@@ -3,7 +3,10 @@ import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import XYZ from "ol/source/XYZ";
-
+import TileWMS from "ol/source/TileWMS";
+import TileGrid from "ol/tilegrid/TileGrid";
+import { get as getProjection } from "ol/proj";
+import { getTopLeft, getWidth } from "ol/extent";
 import { fromLonLat } from "ol/proj";
 import Feature, { type FeatureLike } from "ol/Feature";
 import LineString from "ol/geom/LineString";
@@ -360,7 +363,30 @@ function ShipMap() {
     });
     routeLayerRef.current = routeLayer;
 
-    const bathyLayer = new TileLayer({ visible: false });
+    // DFO bathymetry WMS only supports EPSG:4326 — build a tile grid for it
+    const proj4326 = getProjection("EPSG:4326")!;
+    const proj4326Extent = proj4326.getExtent()!;
+    const proj4326Width = getWidth(proj4326Extent);
+    const resolutions = Array.from({ length: 14 }, (_, z) => proj4326Width / (256 * Math.pow(2, z)));
+    const bathyTileGrid = new TileGrid({
+      extent: proj4326Extent,
+      origin: getTopLeft(proj4326Extent),
+      resolutions,
+      tileSize: 256,
+    });
+
+    const bathyLayer = new TileLayer({
+      source: new TileWMS({
+        url: "https://maps-cartes.services.geo.ca/server_serveur/services/NRCan/GSC_Atlantic_bathymetric_compilation_en/MapServer/WmsServer?",
+        params: { LAYERS: "1", VERSION: "1.3.0", FORMAT: "image/png", CRS: "EPSG:4326" },
+        projection: "EPSG:4326",
+        tileGrid: bathyTileGrid,
+        crossOrigin: "anonymous",
+        attributions: "Bathymetry © NRCan / DFO",
+      }),
+      opacity: 0.75,
+      visible: false,
+    });
     bathyLayerRef.current = bathyLayer;
 
     const map = new Map({
@@ -1244,7 +1270,7 @@ function ShipMap() {
             />
             <div>
               <div className="text-sm font-medium text-slate-700">Bathymetry</div>
-              <div className="text-[11px] text-slate-400">Coming soon — awaiting DFO dataset</div>
+              <div className="text-[11px] text-slate-400">NRCan / DFO — Scotian Shelf &amp; NL Shelves</div>
             </div>
           </label>
         </div>
