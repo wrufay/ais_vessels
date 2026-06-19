@@ -111,7 +111,7 @@ interface RegionStats {
   total_positions: number;
   unique_vessels: number;
   days: { date: string; vessel_counts: Record<string, number> }[];
-  plots: { vessel_types?: string; speed_overall?: string };
+  plots: { vessel_types?: string; speed_overall?: string; vessel_density?: string };
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -1300,6 +1300,30 @@ function ShipMap() {
                       </figcaption>
                       <img
                         src={`data:image/png;base64,${regionStats.plots.speed_overall}`}
+                        className="w-full rounded-xl ring-1 ring-slate-100"
+                      />
+                    </figure>
+                  )}
+                  {regionStats.plots?.vessel_density && (
+                    <figure>
+                      <figcaption className="flex items-center justify-between mb-2.5">
+                        <span className="text-sm font-semibold text-slate-700">
+                          Vessel traffic density
+                        </span>
+                        <button
+                          onClick={() =>
+                            downloadPlot(
+                              regionStats.plots.vessel_density!,
+                              "vessel_density.png"
+                            )
+                          }
+                          className="text-xs font-medium text-[#98c1d9] hover:bg-[#98c1d9]/10 rounded-full px-3 py-1 transition"
+                        >
+                          ↓ Download
+                        </button>
+                      </figcaption>
+                      <img
+                        src={`data:image/png;base64,${regionStats.plots.vessel_density}`}
                         className="w-full rounded-xl ring-1 ring-slate-100"
                       />
                     </figure>

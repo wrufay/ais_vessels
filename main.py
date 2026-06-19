@@ -9,16 +9,16 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-import pandas as pd
-import psycopg2
-import psycopg2.extras
+import pandas as pd # type: ignore
+import psycopg2 # type: ignore
+import psycopg2.extras # type: ignore
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from shapely.geometry import Point, shape
+from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
-from plots import plot_vessel_types, plot_speed_overall, ORDERED_TYPES  # noqa: E402
+from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES  # noqa: E402 # type: ignore
 
 DATABASE_URL: str = os.environ["DATABASE_URL"]
 
@@ -198,8 +198,9 @@ def analyse_region(req: RegionRequest):
     unique_vessels = len({r["mmsi"] for r in inside})
 
     plots = {
-        "vessel_types": plot_vessel_types(daily_counts),
-        "speed_overall": plot_speed_overall(df[["day", "speed"]].rename(columns={"speed": "speed"})),
+        "vessel_types":    plot_vessel_types(daily_counts),
+        "speed_overall":   plot_speed_overall(df[["day", "speed"]].rename(columns={"speed": "speed"})),
+        "vessel_density":  plot_vessel_density(df[["longitude", "latitude"]]),
     }
 
     return {

@@ -7,6 +7,7 @@ a base64-encoded PNG string (ready to embed in a JSON response or <img> tag).
 Functions:
     plot_vessel_types(daily_counts) — stacked bar chart of daily vessel counts by type
     plot_speed_overall(df)          — line chart of mean daily speed across all vessels
+    plot_vessel_density(df)         — hexbin density map of vessel positions
 """
 
 
@@ -92,5 +93,26 @@ def plot_speed_overall(df: pd.DataFrame) -> str:
     ax.set_title("Mean Daily Speed — All Vessels")
     ax.grid(alpha=0.3)
     ax.set_xlim(-0.5, len(daily) - 0.5)
+    plt.tight_layout()
+    return _to_b64(fig)
+
+
+def plot_vessel_density(df: pd.DataFrame) -> str:
+    """Returns a hexbin density map of vessel positions as a base64 PNG.
+
+    df: DataFrame with columns "longitude" and "latitude".
+    Color intensity represents number of AIS pings per hex cell.
+    """
+    LON_MIN, LON_MAX = -69.0, -55.0
+    LAT_MIN, LAT_MAX =  41.0,  47.0
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    hb = ax.hexbin(df["longitude"], df["latitude"], gridsize=60, cmap="YlOrRd", mincnt=1)
+    fig.colorbar(hb, ax=ax, label="AIS pings")
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_title("Vessel Traffic Density")
+    ax.set_xlim(LON_MIN, LON_MAX)
+    ax.set_ylim(LAT_MIN, LAT_MAX)
     plt.tight_layout()
     return _to_b64(fig)
