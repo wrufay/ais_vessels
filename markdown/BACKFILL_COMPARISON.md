@@ -13,9 +13,7 @@ loaded_mmsis = {row[0] for row in pos_rows}
 ves_rows = [r for r in ves_rows if r[0] in loaded_mmsis]
 ```
 
-After this change, I re-ran the ingestion script on a copy of the current `ais` database (`ais_v2`).
-
-_Write how many vessels were recovered with the reingest alone._
+After this change, I re-ran the ingestion script on a copy of the current `ais` database (`ais_v2`), which resulted in recovered ship type over **229** vessels.
 
 However, 7 vessels displayed in the UI were lost in `ais_v2`. The likely cause for this is silent file failures by the parallel workers when running the ingestion script.
 
