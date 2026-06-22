@@ -4,3 +4,5 @@ psycopg2-binary
 shapely
 pandas
 matplotlib
+cartopy
+scipy

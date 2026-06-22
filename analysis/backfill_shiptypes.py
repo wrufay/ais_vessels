@@ -1,7 +1,8 @@
 """
-Backfill missing ship_types in ais_v2 from two sources:
+Backfill missing ship_types in ais_v2 from three sources:
   1. vessel_metadata.csv (marinetraffic scraped, from Dal folder)
-  2. Dal SQLite aggregate tables (static_YYYYMM_aggregate)
+  2. combined_database_xuj.csv (static AIS database)
+  3. Dal SQLite aggregate tables (static_YYYYMM_aggregate)
 
 Only updates rows where ship_type IS NULL — never overwrites existing values.
 """
@@ -12,6 +13,7 @@ import psycopg2.extras
 
 DB_URL = "postgresql://postgres:postgres@localhost:5432/ais_v2"
 METADATA_CSV = "/mnt/echowind/data/finalCleanedSatelliteAisDataFromDal/vessel_metadata.csv"
+STATIC_DB_CSV = "/mnt/echowind/data/static_ais_database/combined_database_xuj.csv"
 
 conn = psycopg2.connect(DB_URL)
 
@@ -80,7 +82,24 @@ try:
 except Exception as e:
     print(f"vessel_metadata.csv skipped: {e}")
 
-# --- source 2: Dal SQLite aggregate tables ---
+# --- source 2: combined_database_xuj.csv ---
+try:
+    rows = duck.execute(f"""
+        SELECT DISTINCT m.mmsi, CAST(s.shiptype_s AS INT)
+        FROM missing m
+        JOIN read_csv('{STATIC_DB_CSV}', ignore_errors=true) s ON m.mmsi = CAST(s.mmsi_s AS BIGINT)
+        WHERE s.shiptype_s IS NOT NULL AND s.shiptype_s > 0
+    """).fetchall()
+    new = 0
+    for mmsi, ship_type in rows:
+        if mmsi not in updates:
+            updates[mmsi] = ship_type
+            new += 1
+    print(f"combined_database_xuj.csv matched: {new:,} new")
+except Exception as e:
+    print(f"combined_database_xuj.csv skipped: {e}")
+
+# --- source 3: Dal SQLite aggregate tables ---
 sqlite_updates: dict[int, int] = {}
 for year in range(2008, 2022):
     if year == 2009:
@@ -100,7 +119,7 @@ for year in range(2008, 2022):
         WHERE s.ship_type IS NOT NULL AND s.ship_type != 0
     """).fetchall()
     for mmsi, ship_type in rows:
-        if mmsi not in updates:  # don't overwrite csv matches
+        if mmsi not in updates:  # don't overwrite higher-priority source matches
             sqlite_updates[mmsi] = ship_type
     duck.execute(f"DETACH y{year}")
     print(f"{year}: {len(sqlite_updates):,} new from SQLite")
