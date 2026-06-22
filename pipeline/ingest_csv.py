@@ -25,6 +25,8 @@ Commands to run:
 import io
 import os
 import sys
+import tempfile
+import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,11 +88,24 @@ def load_file(csv_path: str) -> tuple[str, int]:
         conn.close()
         return filename, -1
 
+    # Extract zip to a temp file if needed
+    tmp_path = None
+    if csv_path.endswith('.zip'):
+        with zipfile.ZipFile(csv_path) as zf:
+            inner = next(n for n in zf.namelist() if n.endswith('.csv'))
+            tmp = tempfile.NamedTemporaryFile(suffix='.csv', delete=False)
+            tmp.write(zf.read(inner))
+            tmp.close()
+            tmp_path = tmp.name
+        read_path = tmp_path
+    else:
+        read_path = csv_path
+
     duck = duckdb.connect()
     duck.execute(f"""
         CREATE VIEW raw AS
         SELECT * FROM read_csv(
-            '{csv_path}',
+            '{read_path}',
             ignore_errors = true,
             null_padding  = true
         )
@@ -180,14 +195,24 @@ def load_file(csv_path: str) -> tuple[str, int]:
     buf.seek(0)
 
     with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TEMP TABLE tmp_positions
+                (LIKE ais_positions INCLUDING DEFAULTS) ON COMMIT DROP
+        """)
         cur.copy_expert("""
-            COPY ais_positions
+            COPY tmp_positions
                 (mmsi, received_at, latitude, longitude, speed, course, heading, source)
             FROM STDIN WITH (FORMAT CSV, NULL '')
         """, buf)
+        cur.execute("""
+            INSERT INTO ais_positions
+            SELECT * FROM tmp_positions
+            ON CONFLICT DO NOTHING
+        """)
 
-    # Upsert vessels
+    # Upsert vessels — sort by mmsi to prevent deadlocks across parallel workers
     if ves_rows:
+        ves_rows = sorted(ves_rows, key=lambda r: r[0])
         with conn.cursor() as cur:
             psycopg2.extras.execute_values(cur, """
                 INSERT INTO vessels (mmsi, name, ship_type, callsign, imo)
@@ -202,12 +227,14 @@ def load_file(csv_path: str) -> tuple[str, int]:
     row_count = len(pos_rows)
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO ingestion_log (filename, rows_loaded) VALUES (%s, %s)",
+            "INSERT INTO ingestion_log (filename, rows_loaded) VALUES (%s, %s) ON CONFLICT DO NOTHING",
             (filename, row_count),
         )
 
     conn.commit()
     conn.close()
+    if tmp_path:
+        os.unlink(tmp_path)
     return filename, row_count
 
 
@@ -221,7 +248,14 @@ def main():
     target  = Path(args[0])
     workers = int(args[args.index("--workers") + 1]) if "--workers" in args else 4
 
-    files = [target] if target.is_file() else sorted(target.rglob("*.csv"))
+    if target.is_file():
+        files = [target]
+    else:
+        csvs = set(target.rglob("*.csv"))
+        zips = set(target.rglob("*.csv.zip"))
+        # skip zips that already have an unzipped counterpart
+        zips = {z for z in zips if z.with_suffix("") not in csvs}
+        files = sorted(csvs | zips)
     if not files:
         print(f"No CSV files found at {target}")
         sys.exit(1)
