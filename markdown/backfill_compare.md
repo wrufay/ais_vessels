@@ -58,4 +58,4 @@ When used together (`analysis/backfill_both.py`, accounting for overlap), **56.5
 
 ## Conclusion
 
-Of all the combinations tested this week, `ais_v2` (three backfill sources + new ingestion fix; missing 7 vessels) achieved the lowest unknown rate at 29.1%. This is the best result found so far, and the full breakdown table is also available to discuss.
+Of all the combinations tested this week, `ais_v2` (three backfill sources + new ingestion fix; missing 7 vessels) achieved the lowest unknown rate at 29.1%. This is the best result found so far, and the full breakdown table is also available to discuss. 
