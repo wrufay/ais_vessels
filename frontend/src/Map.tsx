@@ -259,6 +259,7 @@ function ShipMap() {
   const drawSourceRef = useRef(new VectorSource());
   const chaSourceRef = useRef(new VectorSource());
   const mooringSourceRef = useRef(new VectorSource());
+  const highlightedMooringRef = useRef<string | null>(null);
   const drawRef = useRef<Draw | null>(null);
   const routeLayerRef = useRef<VectorLayer | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
@@ -284,6 +285,7 @@ function ShipMap() {
   const [end, setEnd] = useState("2025-08-31");
   const [pointCount, setPointCount] = useState<number | null>(null);
   const [popup, setPopup] = useState<Popup | null>(null);
+  const [mooringPopup, setMooringPopup] = useState<{ x: number; y: number; mooring: Mooring } | null>(null);
   const [regionStats, setRegionStats] = useState<RegionStats | null>(null);
   const [regionLoading, setRegionLoading] = useState(false);
   const [regionTime, setRegionTime] = useState<number | null>(null);
@@ -348,13 +350,16 @@ function ShipMap() {
 
     const mooringLayer = new VectorLayer({
       source: mooringSourceRef.current,
-      style: new Style({
-        image: new CircleStyle({
-          radius: 7,
-          fill: new Fill({ color: "#293241" }),
-          stroke: new Stroke({ color: "#fff", width: 2 }),
-        }),
-      }),
+      style: (feature) => {
+        const isHighlighted = (feature.get("mooring") as Mooring)?.name === highlightedMooringRef.current;
+        return new Style({
+          image: new CircleStyle({
+            radius: 7,
+            fill: new Fill({ color: "#293241" }),
+            stroke: isHighlighted ? new Stroke({ color: "#fff", width: 2 }) : undefined,
+          }),
+        });
+      },
     });
 
     const routeLayer = new VectorLayer({
@@ -433,7 +438,10 @@ function ShipMap() {
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         if (feature.getGeometry()?.getType() !== "Point") return;
         if (feature.get("chaRegion")) return;
-        if (feature.get("mooring")) return;
+        if (feature.get("mooring")) {
+          setMooringPopup({ x: e.pixel[0], y: e.pixel[1], mooring: feature.get("mooring") as Mooring });
+          return true;
+        }
         setPopup({
           x: e.pixel[0],
           y: e.pixel[1],
@@ -447,7 +455,7 @@ function ShipMap() {
           isEnd: feature.get("isEnd") ?? false,
         });
         return true;
-      }) ?? setPopup(null);
+      }) ?? (setPopup(null), setMooringPopup(null));
     });
 
     // hover cursor on CHA polygons and moorings
@@ -510,18 +518,22 @@ function ShipMap() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const lines = (evt.target?.result as string).trim().split("\n");
+        const lines = (evt.target?.result as string).trim().split(/\r?\n/);
         const header = lines[0].toLowerCase().split(",").map((h) => h.trim());
         const idx = (col: string) => header.indexOf(col);
+        const toISO = (d: string) => {
+          const dt = new Date(d);
+          return isNaN(dt.getTime()) ? d : dt.toISOString().slice(0, 10);
+        };
         const parsed: Mooring[] = lines.slice(1).map((line) => {
-          const cols = line.split(",").map((c) => c.trim());
+          const cols = line.split(",").map((c) => c.trim().replace(/\r/g, ""));
           return {
             name: cols[idx("name")],
             lat: parseFloat(cols[idx("lat")]),
             lon: parseFloat(cols[idx("lon")]),
             depth: parseFloat(cols[idx("depth")] ?? "0"),
-            deployment: cols[idx("deployment")],
-            recovery: cols[idx("recovery")],
+            deployment: toISO(cols[idx("deployment")]),
+            recovery: toISO(cols[idx("recovery")]),
           };
         }).filter((m) => m.name && !isNaN(m.lat) && !isNaN(m.lon));
         setUploadedMoorings((prev) => [...prev, ...parsed]);
@@ -1128,7 +1140,11 @@ function ShipMap() {
             <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
           )}
           {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-            <div key={m.name} className="px-3 py-2.5 rounded-xl hover:bg-slate-50">
+            <div key={m.name} className="px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
+                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
+                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
+                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
+                }}>
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
                 <span className="text-sm font-medium text-slate-700">{m.name}</span>
@@ -1145,7 +1161,11 @@ function ShipMap() {
                 <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
               )}
               {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-                <div key={m.name} className="px-3 py-2.5 rounded-xl hover:bg-slate-50">
+                <div key={m.name} className="px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
+                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
+                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
+                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
+                }}>
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
                     <span className="text-sm font-medium text-slate-700">{m.name}</span>
@@ -1415,6 +1435,23 @@ function ShipMap() {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mooring popup */}
+      {mooringPopup && (
+        <div
+          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-2xl shadow-xl px-4 py-3 text-xs pointer-events-none"
+          style={{ left: mooringPopup.x + 12, top: mooringPopup.y - 8 }}
+        >
+          <div className="font-semibold text-[#3d5a80] mb-1.5">{mooringPopup.mooring.name}</div>
+          <div className="text-slate-600 space-y-1 tabular-nums">
+            <div><span className="text-slate-400 inline-block w-20">Latitude</span>{mooringPopup.mooring.lat.toFixed(4)}°N</div>
+            <div><span className="text-slate-400 inline-block w-20">Longitude</span>{mooringPopup.mooring.lon.toFixed(4)}°</div>
+            <div><span className="text-slate-400 inline-block w-20">Depth</span>{mooringPopup.mooring.depth}m</div>
+            <div><span className="text-slate-400 inline-block w-20">Deployed</span>{mooringPopup.mooring.deployment}</div>
+            <div><span className="text-slate-400 inline-block w-20">Recovered</span>{mooringPopup.mooring.recovery}</div>
           </div>
         </div>
       )}
