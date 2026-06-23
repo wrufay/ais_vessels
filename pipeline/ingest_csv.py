@@ -94,7 +94,9 @@ def load_file(csv_path: str) -> tuple[str, int]:
         with zipfile.ZipFile(csv_path) as zf:
             inner = next(n for n in zf.namelist() if n.endswith('.csv'))
             tmp = tempfile.NamedTemporaryFile(suffix='.csv', delete=False)
-            tmp.write(zf.read(inner))
+            with zf.open(inner) as src:
+                while chunk := src.read(1024 * 1024):
+                    tmp.write(chunk)
             tmp.close()
             tmp_path = tmp.name
         read_path = tmp_path
