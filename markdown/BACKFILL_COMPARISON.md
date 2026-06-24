@@ -52,7 +52,7 @@ When used together (`analysis/backfill_both.py`, accounting for overlap), **56.5
 
 | Database   | Filled | % filled | Unknown remaining | Time taken |
 | ---------- | ------ | -------- | ----------------- | ---------- |
-| `ais_both` | 1,414  | 56.5%    | 1,088 / 3,368     | 40.0s      |
+| `ais_both` | 1,414  | 56.5%    | 1,088 / 3,368     | 34.0s      |
 
 ## Conclusion
 
