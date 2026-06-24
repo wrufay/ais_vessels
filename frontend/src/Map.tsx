@@ -1054,10 +1054,16 @@ function ShipMap() {
               <button
                 key={v.mmsi}
                 onClick={() => {
-                  setSelected(v);
-                  sourceRef.current.clear();
-                  setPointCount(null);
-                  loadRoute(v);
+                  if (active) {
+                    setSelected(null);
+                    sourceRef.current.clear();
+                    setPointCount(null);
+                  } else {
+                    setSelected(v);
+                    sourceRef.current.clear();
+                    setPointCount(null);
+                    loadRoute(v);
+                  }
                 }}
                 className={`w-full text-left px-3 py-2.5 rounded-xl mb-0.5 transition ${
                   active
