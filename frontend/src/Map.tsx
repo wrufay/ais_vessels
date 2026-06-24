@@ -9,12 +9,11 @@ import { get as getProjection } from "ol/proj";
 import { getTopLeft, getWidth } from "ol/extent";
 import { fromLonLat } from "ol/proj";
 import Feature, { type FeatureLike } from "ol/Feature";
-import LineString from "ol/geom/LineString";
 import Point from "ol/geom/Point";
 import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
-import { Style, Stroke, Circle as CircleStyle, Fill } from "ol/style";
+import { Style, Stroke, Fill, Icon } from "ol/style";
 import Draw from "ol/interaction/Draw";
 import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
@@ -154,40 +153,20 @@ function formatTime(epochSeconds: number): string {
   );
 }
 
+const EMPTY_STYLE = new Style({});
+
 function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
   return function (feature: FeatureLike): Style {
     const geomType = feature.getGeometry()?.getType();
-    if (geomType === "LineString") {
-      // can change the colour of connecting line here (currently powder blue)
-      return new Style({ stroke: new Stroke({ color: "#98c1d9", width: 2 }) });
-    }
+    if (geomType === "LineString") return VESSEL_STYLES.line;
     const isStart = feature.get("isStart") as boolean;
     const isEnd = feature.get("isEnd") as boolean;
-    if (isStart && !showStart) return new Style({});
-    if (isEnd && !showEnd) return new Style({});
-    if (isStart) {
-      return new Style({
-        image: new CircleStyle({
-          radius: 7,
-          fill: new Fill({ color: "#98c1d9" }),
-          stroke: new Stroke({ color: "#fff", width: 2.5 }),
-        }),
-      });
-    }
-    if (isEnd) {
-      return new Style({
-        image: new CircleStyle({
-          radius: 7,
-          fill: new Fill({ color: "#ee6c4d" }),
-          stroke: new Stroke({ color: "#fff", width: 2.5 }),
-        }),
-      });
-    }
+    if (isStart && !showStart) return EMPTY_STYLE;
+    if (isEnd && !showEnd) return EMPTY_STYLE;
+    if (isStart) return VESSEL_STYLES.start;
+    if (isEnd) return VESSEL_STYLES.end;
     const sog = (feature.get("sog") as number) || 0;
-    const color = sog > 10 ? "#ee6c4d" : sog > 3 ? "#ffc857" : "#0a8754";
-    return new Style({
-      image: new CircleStyle({ radius: 4, fill: new Fill({ color }) }),
-    });
+    return sog > 10 ? VESSEL_STYLES.fast : sog > 3 ? VESSEL_STYLES.mid : VESSEL_STYLES.slow;
   };
 }
 
@@ -243,6 +222,84 @@ const AMAR_MOORINGS: Mooring[] = [
   { name: "202108GMB",  lat: 44.6923, lon: -66.5314, depth: 172, deployment: "2021-08-23", recovery: "2022-10-03" },
 ];
 
+const _vesselCanvasCache: Record<string, HTMLCanvasElement> = {};
+function makeVesselCanvas(hex: string, radius: number, border?: string): HTMLCanvasElement {
+  const key = `${hex}-${radius}-${border ?? ""}`;
+  if (_vesselCanvasCache[key]) return _vesselCanvasCache[key];
+  const pad = border ? 2 : 1;
+  const size = (radius + pad) * 2;
+  const cx = size / 2;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d")!;
+  if (border) {
+    ctx.beginPath();
+    ctx.arc(cx, cx, radius + 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = border;
+    ctx.fill();
+  }
+  const grad = ctx.createRadialGradient(cx - radius * 0.3, cx - radius * 0.3, 0, cx, cx, radius);
+  // lighten color for highlight
+  grad.addColorStop(0, lighten(hex, 0.45));
+  grad.addColorStop(0.55, hex);
+  grad.addColorStop(1, darken(hex, 0.35));
+  ctx.beginPath();
+  ctx.arc(cx, cx, radius, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  _vesselCanvasCache[key] = c;
+  return c;
+}
+
+function lighten(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, (n >> 16) + Math.round(255 * amt));
+  const g = Math.min(255, ((n >> 8) & 0xff) + Math.round(255 * amt));
+  const b = Math.min(255, (n & 0xff) + Math.round(255 * amt));
+  return `rgb(${r},${g},${b})`;
+}
+
+function darken(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, (n >> 16) - Math.round(255 * amt));
+  const g = Math.max(0, ((n >> 8) & 0xff) - Math.round(255 * amt));
+  const b = Math.max(0, (n & 0xff) - Math.round(255 * amt));
+  return `rgb(${r},${g},${b})`;
+}
+
+const _mooringCanvasCache: Record<string, HTMLCanvasElement> = {};
+function makeMooringCanvas(highlighted: boolean): HTMLCanvasElement {
+  const key = highlighted ? "1" : "0";
+  if (_mooringCanvasCache[key]) return _mooringCanvasCache[key];
+  const r = 10;
+  const size = r * 2 + 2;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d")!;
+  const grad = ctx.createRadialGradient(r - 3, r - 3, 1, r, r, r);
+  grad.addColorStop(0, highlighted ? "#6b8cae" : "#4e6680");
+  grad.addColorStop(0.6, highlighted ? "#3d5a80" : "#293241");
+  grad.addColorStop(1, "#111a22");
+  ctx.beginPath();
+  ctx.arc(r + 1, r + 1, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  _mooringCanvasCache[key] = c;
+  return c;
+}
+
+const iconAnchor = { anchor: [0.5, 0.5] as [number, number], anchorXUnits: "fraction" as const, anchorYUnits: "fraction" as const };
+const VESSEL_STYLES = {
+  fast:  new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", 5), ...iconAnchor }) }),
+  mid:   new Style({ image: new Icon({ img: makeVesselCanvas("#ffc857", 5), ...iconAnchor }) }),
+  slow:  new Style({ image: new Icon({ img: makeVesselCanvas("#0a8754", 5), ...iconAnchor }) }),
+  start: new Style({ image: new Icon({ img: makeVesselCanvas("#98c1d9", 7, "#fff"), ...iconAnchor }) }),
+  end:   new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", 7, "#fff"), ...iconAnchor }) }),
+  line:  new Style({ stroke: new Stroke({ color: "#98c1d9", width: 2 }) }),
+};
+
 function downloadPlot(b64: string, name: string) {
   const a = document.createElement("a");
   a.href = `data:image/png;base64,${b64}`;
@@ -284,6 +341,7 @@ function ShipMap() {
   const [start, setStart] = useState("2025-08-01");
   const [end, setEnd] = useState("2025-08-31");
   const [pointCount, setPointCount] = useState<number | null>(null);
+  const [pointTotal, setPointTotal] = useState<number | null>(null);
   const [popup, setPopup] = useState<Popup | null>(null);
   const [mooringPopup, setMooringPopup] = useState<{ x: number; y: number; mooring: Mooring } | null>(null);
   const [regionStats, setRegionStats] = useState<RegionStats | null>(null);
@@ -293,6 +351,11 @@ function ShipMap() {
   const [drawnPolygon, setDrawnPolygon] = useState<object | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [closingResults, setClosingResults] = useState(false);
+  function closeResults() {
+    setClosingResults(true);
+    setTimeout(() => { setShowResults(false); setClosingResults(false); }, 180);
+  }
   const [hoveredCha, setHoveredCha] = useState<string | null>(null);
   const [showVesselPanel, setShowVesselPanel] = useState(false);
   const [showRegionPanel, setShowRegionPanel] = useState(false);
@@ -353,10 +416,11 @@ function ShipMap() {
       style: (feature) => {
         const isHighlighted = (feature.get("mooring") as Mooring)?.name === highlightedMooringRef.current;
         return new Style({
-          image: new CircleStyle({
-            radius: 7,
-            fill: new Fill({ color: "#293241" }),
-            stroke: isHighlighted ? new Stroke({ color: "#fff", width: 2 }) : undefined,
+          image: new Icon({
+            img: makeMooringCanvas(isHighlighted),
+            anchor: [0.5, 0.5],
+            anchorXUnits: "fraction",
+            anchorYUnits: "fraction",
           }),
         });
       },
@@ -399,8 +463,9 @@ function ShipMap() {
       layers: [
         new TileLayer({
           source: new XYZ({
-            url: "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
-            attributions: "Tiles © Esri",
+            url: `https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}.png?api_key=${import.meta.env.VITE_STADIA_KEY}`,
+            attributions: '© <a href="https://stamen.com">Stamen Design</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            maxZoom: 18,
           }),
         }),
         bathyLayer,
@@ -613,15 +678,11 @@ function ShipMap() {
 
     fetch(`${API}/api/vessel/${vessel.mmsi}/route?${params}`)
       .then((r) => r.json())
-      .then((data: { points: RoutePoint[] }) => {
+      .then((data: { points: RoutePoint[]; total?: number; sampled?: boolean }) => {
         const pts = data.points || [];
         setPointCount(pts.length);
+        setPointTotal(data.sampled ? (data.total ?? null) : null);
         if (pts.length === 0) return;
-
-        const coords = pts.map((p) => fromLonLat([p.longitude, p.latitude]));
-        sourceRef.current.addFeature(
-          new Feature({ geometry: new LineString(coords) })
-        );
 
         pts.forEach((p, i) => {
           const f = new Feature({
@@ -978,7 +1039,7 @@ function ShipMap() {
 
       {/* Vessel panel — slides in from the right */}
       <div
-        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-200 ${
+        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
           showVesselPanel ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -990,7 +1051,7 @@ function ShipMap() {
               </span>
               <input
                 type="date"
-                className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
+                className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
@@ -1001,7 +1062,7 @@ function ShipMap() {
               </span>
               <input
                 type="date"
-                className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
+                className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
               />
@@ -1022,7 +1083,7 @@ function ShipMap() {
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <input
-              className="w-full bg-slate-50 border border-transparent rounded-xl pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
+              className="w-full bg-slate-50 border border-transparent rounded-sm pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
               placeholder="Search name, MMSI, or type…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -1046,13 +1107,14 @@ function ShipMap() {
                 : "No vessels match your search."}
             </p>
           )}
-          {filtered.map((v) => {
+          {filtered.map((v, i) => {
             const type = classifyType(v.ship_type);
             const color = TYPE_COLORS[type] ?? TYPE_COLORS.unknown;
             const active = selected?.mmsi === v.mmsi;
             return (
               <button
                 key={v.mmsi}
+                style={{ animationDelay: `${Math.min(i * 12, 300)}ms` }}
                 onClick={() => {
                   if (active) {
                     setSelected(null);
@@ -1065,7 +1127,7 @@ function ShipMap() {
                     loadRoute(v);
                   }
                 }}
-                className={`w-full text-left px-3 py-2.5 rounded-xl mb-0.5 transition ${
+                className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition animate-slide-up ${
                   active
                     ? "bg-[#3d5a80]/8 ring-1 ring-[#3d5a80]/20"
                     : "hover:bg-slate-50"
@@ -1094,7 +1156,9 @@ function ShipMap() {
                   <p className="text-[11px] text-slate-400 mt-1.5 tabular-nums">
                     {pointCount === 0
                       ? "No data for this period."
-                      : `${pointCount.toLocaleString()} position points in range`}
+                      : pointTotal !== null
+                        ? `Showing 500 of ${pointTotal.toLocaleString()} points (subsampled)`
+                        : `${pointCount.toLocaleString()} position points in range`}
                   </p>
                 )}
               </button>
@@ -1105,7 +1169,7 @@ function ShipMap() {
 
       {/* Moorings panel — slides in from the right */}
       <div
-        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-200 ${
+        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
           showMooringPanel ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -1114,14 +1178,14 @@ function ShipMap() {
           <div className="grid grid-cols-2 gap-2 mb-4">
             <label className="flex flex-col gap-1">
               <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">Start</span>
-              <input type="date" className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={start} onChange={(e) => setStart(e.target.value)} />
+              <input type="date" className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={start} onChange={(e) => setStart(e.target.value)} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">End</span>
-              <input type="date" className="bg-slate-50 border border-transparent rounded-xl px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={end} onChange={(e) => setEnd(e.target.value)} />
+              <input type="date" className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={end} onChange={(e) => setEnd(e.target.value)} />
             </label>
           </div>
-          <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-xl py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#293241] hover:text-[#293241] transition">
+          <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-sm py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#293241] hover:text-[#293241] transition">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
@@ -1146,7 +1210,7 @@ function ShipMap() {
             <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
           )}
           {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-            <div key={m.name} className="px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
+            <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
                   if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
                   const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
                   if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
@@ -1167,7 +1231,7 @@ function ShipMap() {
                 <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
               )}
               {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-                <div key={m.name} className="px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
+                <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
                   if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
                   const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
                   if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
@@ -1186,7 +1250,7 @@ function ShipMap() {
 
       {/* Regions panel — slides in from the right */}
       <div
-        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-200 ${
+        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
           showRegionPanel ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -1194,7 +1258,7 @@ function ShipMap() {
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Regions</h2>
 
           {/* Shapefile / GeoJSON upload */}
-          <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-xl py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#98c1d9] hover:text-[#3d5a80] transition">
+          <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-sm py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#98c1d9] hover:text-[#3d5a80] transition">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
@@ -1209,7 +1273,7 @@ function ShipMap() {
           {/* CHA section */}
           <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Critical Habitat Areas</div>
           {CHA_REGIONS.map((r) => (
-            <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+            <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
               <input
                 type="checkbox"
                 checked={selectedRegionNames.has(r.name)}
@@ -1232,7 +1296,7 @@ function ShipMap() {
           {
             // Text display for each region
             WEA_REGIONS.map((r) => (
-              <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+              <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selectedRegionNames.has(r.name)}
@@ -1255,7 +1319,7 @@ function ShipMap() {
             <>
               <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Uploaded</div>
               {uploadedRegions.map((r) => (
-                <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+                <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedRegionNames.has(r.name)}
@@ -1278,7 +1342,7 @@ function ShipMap() {
 
       {/* Layers panel — slides in from the right */}
       <div
-        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-200 ${
+        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
           showLayerPanel ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -1287,7 +1351,7 @@ function ShipMap() {
         </div>
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
           <div className="px-3 pt-1 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Ocean</div>
-          <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+          <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
             <input
               type="checkbox"
               checked={showBathymetry}
@@ -1303,7 +1367,7 @@ function ShipMap() {
       </div>
 
       {/* Legend */}
-      <div className="absolute bottom-5 left-5 z-10 bg-white/90 backdrop-blur-md rounded-2xl shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs">
+      <div className="absolute bottom-5 left-5 z-10 bg-white/90 backdrop-blur-md rounded-sm shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs">
         <div className="font-semibold mb-2 text-slate-600">Speed (knots)</div>
         <div className="flex items-center gap-2 mb-1 text-slate-500">
           <span className="w-2.5 h-2.5 rounded-full bg-[#0a8754] inline-block" />
@@ -1320,13 +1384,13 @@ function ShipMap() {
       </div>
 
       {/* Results modal */}
-      {showResults && regionStats && (
+      {(showResults || closingResults) && regionStats && (
         <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
-          onClick={() => setShowResults(false)}
+          className={`absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 ${closingResults ? "animate-fade-out" : "animate-fade-in"}`}
+          onClick={() => closeResults()}
         >
           <div
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+            className={`bg-white rounded-sm shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col ${closingResults ? "animate-scale-out" : "animate-scale-in"}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between px-7 pt-6 pb-5 border-b border-slate-100 shrink-0">
@@ -1352,7 +1416,7 @@ function ShipMap() {
                 </p>
               </div>
               <button
-                onClick={() => setShowResults(false)}
+                onClick={() => closeResults()}
                 className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full w-8 h-8 flex items-center justify-center transition shrink-0"
               >
                 ✕
@@ -1386,7 +1450,7 @@ function ShipMap() {
                       </figcaption>
                       <img
                         src={`data:image/png;base64,${regionStats.plots.vessel_types}`}
-                        className="w-full rounded-xl ring-1 ring-slate-100"
+                        className="w-full rounded-sm ring-1 ring-slate-100"
                       />
                     </figure>
                   )}
@@ -1410,7 +1474,7 @@ function ShipMap() {
                       </figcaption>
                       <img
                         src={`data:image/png;base64,${regionStats.plots.speed_overall}`}
-                        className="w-full rounded-xl ring-1 ring-slate-100"
+                        className="w-full rounded-sm ring-1 ring-slate-100"
                       />
                     </figure>
                   )}
@@ -1434,7 +1498,7 @@ function ShipMap() {
                       </figcaption>
                       <img
                         src={`data:image/png;base64,${regionStats.plots.vessel_density}`}
-                        className="w-full rounded-xl ring-1 ring-slate-100"
+                        className="w-full rounded-sm ring-1 ring-slate-100"
                       />
                     </figure>
                   )}
@@ -1448,7 +1512,7 @@ function ShipMap() {
       {/* Mooring popup */}
       {mooringPopup && (
         <div
-          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-2xl shadow-xl px-4 py-3 text-xs pointer-events-none"
+          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-xl px-4 py-3 text-xs pointer-events-none animate-scale-in"
           style={{ left: mooringPopup.x + 12, top: mooringPopup.y - 8 }}
         >
           <div className="font-semibold text-[#3d5a80] mb-1.5">{mooringPopup.mooring.name}</div>
@@ -1465,7 +1529,7 @@ function ShipMap() {
       {/* Point popup */}
       {popup && (
         <div
-          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-2xl shadow-xl px-4 py-3 text-xs pointer-events-none"
+          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-xl px-4 py-3 text-xs pointer-events-none animate-scale-in"
           style={{ left: popup.x + 12, top: popup.y - 8 }}
         >
           <div className="font-semibold text-[#3d5a80] mb-1.5">

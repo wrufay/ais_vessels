@@ -4,7 +4,8 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 # VITE_API_URL is empty so requests go to /api/... (proxied by nginx)
-RUN VITE_API_URL="" npm run build
+ARG VITE_STADIA_KEY
+RUN VITE_API_URL="" VITE_STADIA_KEY=$VITE_STADIA_KEY npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html

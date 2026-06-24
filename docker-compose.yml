@@ -29,7 +29,10 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_STADIA_KEY: ${VITE_STADIA_KEY}
     ports:
       - "80:80"
     depends_on:

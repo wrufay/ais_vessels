@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Stack+Sans+Headline:wght@200..700&family=Vend+Sans:ital,wght@0,300..700;1,300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,12 +6,12 @@
 
 html, body {
   overflow: hidden;
-  font-family: "Vend Sans", sans-serif;
+  font-family: "Inter", sans-serif;
   font-optical-sizing: auto;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: "Stack Sans Headline", sans-serif;
+  font-family: "Fraunces", serif;
   font-optical-sizing: auto;
 }
 

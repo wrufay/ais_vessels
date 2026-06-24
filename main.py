@@ -89,6 +89,8 @@ def get_vessels(start: str | None = Query(None), end: str | None = Query(None)):
     return {"vessels": rows, "count": len(rows)}
 
 
+MAX_ROUTE_POINTS = 500
+
 @app.get("/api/vessel/{mmsi}/route")
 def get_vessel_route(
     mmsi: int,
@@ -114,7 +116,11 @@ def get_vessel_route(
     sql += " ORDER BY received_at"
 
     points = query(sql, params)
-    return {"mmsi": mmsi, "points": points, "count": len(points)}
+    total = len(points)
+    if total > MAX_ROUTE_POINTS:
+        step = total / MAX_ROUTE_POINTS
+        points = [points[int(i * step)] for i in range(MAX_ROUTE_POINTS)]
+    return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS}
 
 
 TYPE_CATEGORIES = {
