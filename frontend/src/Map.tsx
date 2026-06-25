@@ -13,7 +13,7 @@ import Point from "ol/geom/Point";
 import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
-import { Style, Stroke, Fill, Icon } from "ol/style";
+import { Style, Stroke, Fill, Icon, Circle as CircleStyle } from "ol/style";
 import Draw from "ol/interaction/Draw";
 import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
@@ -110,9 +110,13 @@ interface RoutePoint {
   source: string;
 }
 
+interface RegionPosition { mmsi: number; lat: number; lon: number; sog: number | null }
+
 interface RegionStats {
   total_positions: number;
   unique_vessels: number;
+  vessel_mmsis: number[];
+  positions: RegionPosition[];
   days: { date: string; vessel_counts: Record<string, number> }[];
   plots: { vessel_types?: string; speed_overall?: string; vessel_density?: string };
 }
@@ -154,6 +158,14 @@ function formatTime(epochSeconds: number): string {
 }
 
 const EMPTY_STYLE = new Style({});
+
+const GREY_DOT_STYLE = new Style({
+  image: new CircleStyle({
+    radius: 3,
+    fill: new Fill({ color: "rgba(130, 130, 130, 0.28)" }),
+  }),
+});
+
 
 function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
   return function (feature: FeatureLike): Style {
@@ -321,6 +333,12 @@ function ShipMap() {
   const routeLayerRef = useRef<VectorLayer | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const bathyLayerRef = useRef<TileLayer | null>(null);
+  const regionTrackSourceRef = useRef(new VectorSource());
+  const regionTrackLayerRef = useRef<VectorLayer | null>(null);
+  const highlightSourceRef = useRef(new VectorSource());
+  const highlightLayerRef = useRef<VectorLayer | null>(null);
+  const hoveredRegionVesselRef = useRef<number | null>(null);
+  const regionRouteCacheRef = useRef<Map<number, RoutePoint[]>>(new Map());
 
   interface Popup {
     x: number;
@@ -367,6 +385,8 @@ function ShipMap() {
   const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
   const [showBathymetry, setShowBathymetry] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [regionVessels, setRegionVessels] = useState<Vessel[]>([]);
+  const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(null);
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -433,6 +453,18 @@ function ShipMap() {
     });
     routeLayerRef.current = routeLayer;
 
+    const regionTrackLayer = new VectorLayer({
+      source: regionTrackSourceRef.current,
+      style: GREY_DOT_STYLE,
+    });
+    regionTrackLayerRef.current = regionTrackLayer;
+
+    const highlightLayer = new VectorLayer({
+      source: highlightSourceRef.current,
+      style: makeFeatureStyle(true, true),
+    });
+    highlightLayerRef.current = highlightLayer;
+
     // DFO bathymetry WMS only supports EPSG:4326 — build a tile grid for it
     const proj4326 = getProjection("EPSG:4326")!;
     const proj4326Extent = proj4326.getExtent()!;
@@ -472,6 +504,8 @@ function ShipMap() {
         bathyLayer,
         chaLayer,
         mooringLayer,
+        regionTrackLayer,
+        highlightLayer,
         routeLayer,
         new VectorLayer({
           source: drawSourceRef.current,
@@ -665,6 +699,10 @@ function ShipMap() {
         setRegionStats(d);
         setRegionTime(Math.round(performance.now() - t0));
         setShowResults(true);
+        const rv = vessels.filter((v) => d.vessel_mmsis.includes(v.mmsi));
+        setRegionVessels(rv);
+        renderRegionPositions(d.positions);
+        setShowVesselPanel(true);
       })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
@@ -714,6 +752,64 @@ function ShipMap() {
       .catch(console.error);
   }
 
+  function renderRegionPositions(positions: RegionPosition[]) {
+    regionTrackSourceRef.current.clear();
+    highlightSourceRef.current.clear();
+    hoveredRegionVesselRef.current = null;
+    setHoveredRegionVessel(null);
+    regionRouteCacheRef.current.clear();
+    positions.forEach((p) => {
+      regionTrackSourceRef.current.addFeature(new Feature({
+        geometry: new Point(fromLonLat([p.lon, p.lat])),
+        mmsi: p.mmsi,
+        sog: p.sog,
+      }));
+    });
+  }
+
+  function hoverRegionVessel(mmsi: number) {
+    hoveredRegionVesselRef.current = mmsi;
+    setHoveredRegionVessel(mmsi);
+    const cached = regionRouteCacheRef.current.get(mmsi);
+    if (cached) {
+      renderHighlight(mmsi, cached);
+      return;
+    }
+    const params = new URLSearchParams({ start: `${start}T00:00:00`, end: `${end}T23:59:59` });
+    fetch(`${API}/api/vessel/${mmsi}/route?${params}`)
+      .then((r) => r.json())
+      .then((data: { points: RoutePoint[] }) => {
+        const pts = data.points || [];
+        regionRouteCacheRef.current.set(mmsi, pts);
+        if (hoveredRegionVesselRef.current === mmsi) renderHighlight(mmsi, pts);
+      })
+      .catch(() => {});
+  }
+
+  function renderHighlight(mmsi: number, pts: RoutePoint[]) {
+    highlightSourceRef.current.clear();
+    pts.forEach((p, i) => {
+      highlightSourceRef.current.addFeature(new Feature({
+        geometry: new Point(fromLonLat([p.longitude, p.latitude])),
+        mmsi,
+        sog: p.sog,
+        cog: p.cog,
+        time: p.time,
+        lat: p.latitude,
+        lon: p.longitude,
+        source: p.source,
+        isStart: i === 0,
+        isEnd: i === pts.length - 1,
+      }));
+    });
+  }
+
+  function unhoverRegionVessel() {
+    hoveredRegionVesselRef.current = null;
+    setHoveredRegionVessel(null);
+    highlightSourceRef.current.clear();
+  }
+
   function startDrawing() {
     if (!mapObj.current) return;
     if (drawRef.current) mapObj.current.removeInteraction(drawRef.current);
@@ -755,6 +851,12 @@ function ShipMap() {
 
   function clearRegion() {
     drawSourceRef.current.clear();
+    regionTrackSourceRef.current.clear();
+    highlightSourceRef.current.clear();
+    regionRouteCacheRef.current.clear();
+    hoveredRegionVesselRef.current = null;
+    setRegionVessels([]);
+    setHoveredRegionVessel(null);
     setDrawnPolygon(null);
     setRegionStats(null);
     setRegionTime(null);
@@ -778,12 +880,17 @@ function ShipMap() {
         setRegionStats(d);
         setRegionTime(Math.round(performance.now() - t0));
         setShowResults(true);
+        const rv = vessels.filter((v) => d.vessel_mmsis.includes(v.mmsi));
+        setRegionVessels(rv);
+        renderRegionPositions(d.positions);
+        setShowVesselPanel(true);
       })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
   }
 
-  const filtered = vessels.filter((v) => {
+  const activeVesselList = regionVessels.length > 0 ? regionVessels : vessels;
+  const filtered = activeVesselList.filter((v) => {
     const q = search.toLowerCase();
     return (
       String(v.mmsi).includes(q) ||
@@ -1104,12 +1211,27 @@ function ShipMap() {
         </div>
 
         <div className="flex items-center justify-between px-5 py-2.5 text-xs font-medium text-slate-400 border-t border-slate-100 shrink-0">
-          <span className="uppercase tracking-wide">Vessels</span>
-          <span className="tabular-nums">
-            {filtered.length !== vessels.length
-              ? `${filtered.length} / ${vessels.length}`
-              : `${vessels.length}`}
+          <span className="uppercase tracking-wide">
+            {regionVessels.length > 0 ? "Vessels in region" : "Vessels"}
           </span>
+          <div className="flex items-center gap-2">
+            <span className="tabular-nums">
+              {regionVessels.length > 0
+                ? `${filtered.length} / ${regionVessels.length}`
+                : filtered.length !== vessels.length
+                ? `${filtered.length} / ${vessels.length}`
+                : `${vessels.length}`}
+            </span>
+            {regionVessels.length > 0 && (
+              <button
+                onClick={() => { setRegionVessels([]); regionTrackSourceRef.current.clear(); highlightSourceRef.current.clear(); regionRouteCacheRef.current.clear(); hoveredRegionVesselRef.current = null; setHoveredRegionVessel(null); }}
+                className="text-slate-400 hover:text-slate-600 transition"
+                title="Clear region filter"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2 pt-2">
           {filtered.length === 0 && (
@@ -1139,9 +1261,13 @@ function ShipMap() {
                     loadRoute(v);
                   }
                 }}
+                onMouseEnter={() => { if (regionVessels.length > 0) hoverRegionVessel(v.mmsi); }}
+                onMouseLeave={() => { if (regionVessels.length > 0) unhoverRegionVessel(); }}
                 className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition animate-slide-up ${
                   active
                     ? "bg-[#3d5a80]/8 ring-1 ring-[#3d5a80]/20"
+                    : hoveredRegionVessel === v.mmsi
+                    ? "bg-slate-100"
                     : "hover:bg-slate-50"
                 }`}
               >
