@@ -366,6 +366,7 @@ function ShipMap() {
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
   const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
   const [showBathymetry, setShowBathymetry] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -559,9 +560,12 @@ function ShipMap() {
 
   useEffect(() => {
     fetch(`${API}/api/vessels?start=${start}T00:00:00&end=${end}T23:59:59`)
-      .then((r) => r.json())
-      .then((d) => setVessels(d.vessels || []))
-      .catch(console.error);
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
+      .then((d) => { setServerError(null); setVessels(d.vessels || []); })
+      .catch((e: Error) => setServerError(e.message));
   }, [start, end]);
 
   function downloadMooringTemplate() {
@@ -794,6 +798,14 @@ function ShipMap() {
     <div className="relative w-full h-screen overflow-hidden">
       {/* Map — full screen */}
       <div ref={mapRef} className="absolute inset-0" />
+
+      {/* Server error banner */}
+      {serverError && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-red-600 text-white text-xs text-center py-2 px-4 flex items-center justify-center gap-3">
+          <span>Could not reach the server — vessel data unavailable. <span className="opacity-75">({serverError})</span></span>
+          <button onClick={() => setServerError(null)} className="underline opacity-75 hover:opacity-100">Dismiss</button>
+        </div>
+      )}
 
       {/* Drawing hint */}
       {drawing && (
