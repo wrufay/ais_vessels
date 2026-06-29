@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
@@ -207,18 +207,16 @@ function regionColor(type: string) {
 
 let _selectedChaName: string | null = null;
 let _clickedChaNames: Set<string> = new Set();
-let _hoveredSidebarCha: string | null = null;
 
 function chaStyle(feature: FeatureLike): Style {
   const c = regionColor(feature.get("regionType") as string);
   const name = feature.get("name") as string;
   const selected = name === _selectedChaName;
   const clicked = _clickedChaNames.has(name);
-  const sidebarHovered = name === _hoveredSidebarCha;
-  if (!selected && !clicked && !sidebarHovered) return new Style();
+  if (!selected && !clicked) return new Style();
   return new Style({
     stroke: new Stroke({ color: c.stroke, width: selected ? 2.5 : 2 }),
-    fill: new Fill({ color: selected ? c.selectedFill : sidebarHovered && !clicked ? c.hoverFill : c.fill }),
+    fill: new Fill({ color: selected ? c.selectedFill : c.fill }),
   });
 }
 
@@ -612,8 +610,10 @@ function ShipMap() {
       let overMooring = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         if (feature.get("chaRegion")) {
-          overCha = true;
           const name = feature.get("name") as string;
+          const visible = _clickedChaNames.has(name) || name === _selectedChaName;
+          if (!visible) return;
+          overCha = true;
           setHoveredCha(name);
           (feature as Feature).setStyle(chaHoverStyle(feature));
           return true;
@@ -963,16 +963,14 @@ function ShipMap() {
   }
 
   const activeVesselList = regionVessels.length > 0 ? regionVessels : vessels;
-  const filtered = activeVesselList.filter((v) => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return (
+    return activeVesselList.filter((v) =>
       String(v.mmsi).includes(q) ||
       (v.vessel_name || "").toLowerCase().includes(q) ||
-      String(v.ship_type || "")
-        .toLowerCase()
-        .includes(q)
+      String(v.ship_type || "").toLowerCase().includes(q)
     );
-  });
+  }, [activeVesselList, search]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
@@ -995,13 +993,6 @@ function ShipMap() {
         </div>
       )}
 
-      {/* CHA hover tooltip */}
-      {hoveredCha && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
-          {hoveredCha} — click to select
-        </div>
-      )}
-
       {/* Region loading indicator */}
       {regionLoading && regionName && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur-md rounded-full shadow-lg ring-1 ring-slate-900/5 px-4 py-2 text-xs text-slate-600 flex items-center gap-2">
@@ -1011,7 +1002,7 @@ function ShipMap() {
       )}
 
       {/* Left icon bar */}
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-4 bg-white py-5 px-3 rounded-full text-center justify-center items-center">
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-4 bg-white/85 py-5 px-3 rounded-full text-center justify-center items-center">
 
         {/* tracks */}
         <div className="group relative flex flex-col gap-1">
@@ -1289,46 +1280,49 @@ function ShipMap() {
         </button>
         <div className="px-5 pt-8 pb-4 shrink-0">
           
-          <h2 className="text-sm font-semibold text-slate-700 mb-4">Regions</h2>
+          <div className="mb-6">
+            <h2 className="text-sm font-semibold text-slate-700 ">Regions</h2>
+            <p className="text-gray-400 text-xs font-fraunces">View & analyze pre-defined CHA/WEA or custom regions. Click to show on the map.</p>
+          </div>
 
 
           {/* custom select  */}
 
-          <div className="mb-6 flex flex-row justify-between items-center">
+          <div className="mb-2 flex flex-row justify-between items-center">
             <button
               onClick={drawing ? cancelDrawing : startDrawing}
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full">{drawing ? "Cancel" : "Custom select"}
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full">{drawing ? "Cancel" : "Draw region"}
               </button>
-              <label className="font-fraunces text-xs text-gray-400">{drawing ? "Double-click to finish drawing." : "Click map to add points"}.</label>
+              <label className="font-fraunces text-xs text-gray-700">{drawing ? "Double-click to finish drawing." : "Click map to add points"}.</label>
+            </div>
+
+            <div className="mb-6 flex flex-row justify-between items-center">
+            <label
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full cursor-pointer">
+              Upload
+            <input type="file" accept=".zip" className="hidden" onChange={handleFileUpload} />
+              </label>
+              <label className="font-fraunces text-xs text-gray-700">Use your own shapefile (.zip)</label>
             </div>
 
 
           {/* Region action pills */}
-          <div className="flex flex-wrap justify-center gap-2 mb-4">
+          <div className="flex flex-wrap gap-2">
             <button
               title="Generate plots of daily mean spead, types and vessel traffic density heat-map."
               disabled={!drawnPolygon || regionLoading}
               onClick={loadRegionStats}
               className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-            >Analyse</button>
+            >Analyse region</button>
             <button
               title="See all vessel traffic in selected region"
               disabled={!drawnPolygon || regionLoading}
               onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
               className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-            >All traffic</button>
+            >See all traffic</button>
           </div>
 
-          {/* Shapefile / GeoJSON upload */}
-          <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-sm py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#98c1d9] hover:text-[#3d5a80] transition">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            <span>Upload Shapefile (.zip)</span>
-            <input type="file" accept=".zip" className="hidden" onChange={handleFileUpload} />
-          </label>
+  
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
@@ -1346,8 +1340,6 @@ function ShipMap() {
                   _selectedChaName = null; chaSourceRef.current.changed();
                 }
               }}
-              onMouseEnter={() => { _hoveredSidebarCha = r.name; chaSourceRef.current.changed(); }}
-              onMouseLeave={() => { _hoveredSidebarCha = null; chaSourceRef.current.changed(); }}
             >
               <div>
                 <div className="text-sm font-medium text-slate-700">{r.name}</div>
@@ -1372,8 +1364,6 @@ function ShipMap() {
                   _selectedChaName = null; chaSourceRef.current.changed();
                 }
               }}
-              onMouseEnter={() => { _hoveredSidebarCha = r.name; chaSourceRef.current.changed(); }}
-              onMouseLeave={() => { _hoveredSidebarCha = null; chaSourceRef.current.changed(); }}
             >
               <div>
                 <div className="text-sm font-medium text-slate-700">{r.name}</div>
@@ -1393,8 +1383,6 @@ function ShipMap() {
                 <div key={r.name}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
                   onClick={() => toggleClickedRegion(r.name)}
-                  onMouseEnter={() => { _hoveredSidebarCha = r.name; chaSourceRef.current.changed(); }}
-                  onMouseLeave={() => { _hoveredSidebarCha = null; chaSourceRef.current.changed(); }}
                 >
                   <div>
                     <div className="text-sm font-medium text-slate-700">{r.name}</div>
