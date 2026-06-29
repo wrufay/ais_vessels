@@ -200,25 +200,43 @@ function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
 }
 
 function regionColor(type: string) {
-  if (type === "WEA") return { stroke: "#ee6c4d", fill: "rgba(238,108,77,0.07)", hoverFill: "rgba(238,108,77,0.15)" };
-  if (type === "Uploaded") return { stroke: "#9b59b6", fill: "rgba(155,89,182,0.07)", hoverFill: "rgba(155,89,182,0.15)" };
-  return { stroke: "#3d5a80", fill: "rgba(61,90,128,0.07)", hoverFill: "rgba(61,90,128,0.15)" };
+  if (type === "WEA") return { stroke: "#ee6c4d", fill: "rgba(238,108,77,0.07)", hoverFill: "rgba(238,108,77,0.15)", selectedFill: "rgba(238,108,77,0.28)" };
+  if (type === "Uploaded") return { stroke: "#9b59b6", fill: "rgba(155,89,182,0.07)", hoverFill: "rgba(155,89,182,0.15)", selectedFill: "rgba(155,89,182,0.28)" };
+  return { stroke: "#3d5a80", fill: "rgba(61,90,128,0.07)", hoverFill: "rgba(61,90,128,0.15)", selectedFill: "rgba(61,90,128,0.28)" };
 }
+
+let _selectedChaName: string | null = null;
+let _clickedChaNames: Set<string> = new Set();
+let _hoveredSidebarCha: string | null = null;
 
 function chaStyle(feature: FeatureLike): Style {
   const c = regionColor(feature.get("regionType") as string);
+  const name = feature.get("name") as string;
+  const selected = name === _selectedChaName;
+  const clicked = _clickedChaNames.has(name);
+  const sidebarHovered = name === _hoveredSidebarCha;
+  if (!selected && !clicked && !sidebarHovered) return new Style();
   return new Style({
-    stroke: new Stroke({ color: c.stroke, width: 2 }),
-    fill: new Fill({ color: c.fill }),
+    stroke: new Stroke({ color: c.stroke, width: selected ? 2.5 : 2 }),
+    fill: new Fill({ color: selected ? c.selectedFill : sidebarHovered && !clicked ? c.hoverFill : c.fill }),
   });
 }
 
 function chaHoverStyle(feature: FeatureLike): Style {
   const c = regionColor(feature.get("regionType") as string);
+  const selected = feature.get("name") === _selectedChaName;
   return new Style({
     stroke: new Stroke({ color: c.stroke, width: 2.5 }),
-    fill: new Fill({ color: c.hoverFill }),
+    fill: new Fill({ color: selected ? c.selectedFill : c.hoverFill }),
   });
+}
+
+function drawnRegionLabel(geojson: object): string {
+  const coords = (geojson as any)?.coordinates?.[0] as number[][] | undefined;
+  if (!coords?.length) return "Drawn region";
+  return coords.slice(0, -1).slice(0, 3).map(([lon, lat]) =>
+    `${Math.abs(lat).toFixed(1)}°${lat >= 0 ? "N" : "S"} ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? "E" : "W"}`
+  ).join(", ") + (coords.length - 1 > 3 ? "…" : "");
 }
 
 // ---- Moorings ----
@@ -347,6 +365,7 @@ function ShipMap() {
   const mooringSourceRef = useRef(new VectorSource());
   const highlightedMooringRef = useRef<string | null>(null);
   const drawRef = useRef<Draw | null>(null);
+  const regionNameRef = useRef<string | null>(null);
   const routeLayerRef = useRef<VectorLayer | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const bathyLayerRef = useRef<TileLayer | null>(null);
@@ -384,8 +403,10 @@ function ShipMap() {
   const [regionLoading, setRegionLoading] = useState(false);
   const [regionTime, setRegionTime] = useState<number | null>(null);
   const [regionName, setRegionName] = useState<string | null>(null);
+  useEffect(() => { regionNameRef.current = regionName; }, [regionName]);
   const [drawnPolygon, setDrawnPolygon] = useState<object | null>(null);
   const [drawing, setDrawing] = useState(false);
+  const [userSelectedRegions, setUserSelectedRegions] = useState<{ name: string; geojson: object; type: string }[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [closingResults, setClosingResults] = useState(false);
   function closeResults() {
@@ -397,7 +418,7 @@ function ShipMap() {
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [selectedRegionNames, setSelectedRegionNames] = useState<Set<string>>(new Set());
+  const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(new Set());
   const [uploadedRegions, setUploadedRegions] = useState<PresetRegion[]>([]);
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
   const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
@@ -416,17 +437,15 @@ function ShipMap() {
       ...WEA_REGIONS.map((r) => ({ ...r, regionType: "WEA" })),
       ...uploadedRegions.map((r) => ({ ...r, regionType: "Uploaded" })),
     ];
-    allRegions
-      .filter((r) => selectedRegionNames.has(r.name))
-      .forEach((r) => {
-        const geom = fmt.readGeometry(r.geojson, {
-          dataProjection: "EPSG:4326",
-          featureProjection: "EPSG:3857",
-        }) as OLPolygon;
-        const f = new Feature({ geometry: geom, name: r.name, chaRegion: r, regionType: r.regionType });
-        chaSourceRef.current.addFeature(f);
-      });
-  }, [selectedRegionNames, uploadedRegions]);
+    allRegions.forEach((r) => {
+      const geom = fmt.readGeometry(r.geojson, {
+        dataProjection: "EPSG:4326",
+        featureProjection: "EPSG:3857",
+      }) as OLPolygon;
+      const f = new Feature({ geometry: geom, name: r.name, chaRegion: r, regionType: r.regionType });
+      chaSourceRef.current.addFeature(f);
+    });
+  }, [uploadedRegions]);
 
   // rebuild mooring points when date range or uploaded moorings change
   useEffect(() => {
@@ -540,13 +559,24 @@ function ShipMap() {
     });
 
     map.on("click", (e) => {
-      // check CHA click first
+      // check CHA click first — select it as active region
       let chaClicked = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         const cha = feature.get("chaRegion") as PresetRegion | undefined;
         if (cha) {
           chaClicked = true;
-          runChaAnalysis(cha);
+          if (regionNameRef.current === cha.name) {
+            setDrawnPolygon(null);
+            setRegionName(null);
+            _selectedChaName = null;
+          } else {
+            setDrawnPolygon(cha.geojson);
+            setRegionName(cha.name);
+            drawSourceRef.current.clear();
+            _selectedChaName = cha.name;
+            setShowRegionPanel(true);
+          }
+          chaSourceRef.current.changed();
           return true;
         }
       });
@@ -673,11 +703,12 @@ function ShipMap() {
     e.target.value = "";
   }
 
-  function toggleRegion(name: string) {
-    setSelectedRegionNames((prev) => {
+  function toggleClickedRegion(name: string) {
+    setClickedRegionNames((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      _clickedChaNames = next;
+      chaSourceRef.current.changed();
       return next;
     });
   }
@@ -696,7 +727,7 @@ function ShipMap() {
           const regionName = feat.properties?.Name || feat.properties?.name || (features.length === 1 ? name : `${name} ${i + 1}`);
           const geometry = feat.geometry;
           setUploadedRegions((prev) => [...prev, { name: regionName, geojson: geometry }]);
-          setSelectedRegionNames((prev) => new Set([...prev, regionName]));
+          setClickedRegionNames((prev) => { const next = new Set(prev); next.add(regionName); _clickedChaNames = next; return next; });
         });
       } catch {
         alert("Invalid shapefile. Upload a .zip containing .shp, .dbf, and .prj files.");
@@ -706,28 +737,6 @@ function ShipMap() {
     e.target.value = "";
   }
 
-  function runChaAnalysis(cha: PresetRegion) {
-    setRegionLoading(true);
-    setRegionStats(null);
-    setRegionTime(null);
-    setRegionName(cha.name);
-    setDrawnPolygon(null);
-    drawSourceRef.current.clear();
-    const t0 = performance.now();
-    fetch(`${API}/api/analysis/region`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ polygon: cha.geojson, start, end }),
-    })
-      .then((r) => r.json())
-      .then((d: RegionStats) => {
-        setRegionStats(d);
-        setRegionTime(Math.round(performance.now() - t0));
-        setShowResults(true);
-      })
-      .catch(console.error)
-      .finally(() => setRegionLoading(false));
-  }
 
   function loadRoute(vessel = selected) {
     if (!vessel) return;
@@ -856,7 +865,21 @@ function ShipMap() {
         featureProjection: "EPSG:3857",
       });
       setDrawnPolygon(geojson);
+      _selectedChaName = null;
+      chaSourceRef.current.changed();
       setDrawing(false);
+      setUserSelectedRegions((prev) => {
+        const n = prev.filter((r) => r.type === "drawn").length + 1;
+        const name = `Drawn region ${n}`;
+        setRegionName(name);
+        setClickedRegionNames((prevClicked) => {
+          const next = new Set(prevClicked);
+          next.add(name);
+          _clickedChaNames = next;
+          return next;
+        });
+        return [...prev, { name, geojson, type: "drawn" }];
+      });
       mapObj.current!.removeInteraction(draw);
       drawRef.current = null;
     });
@@ -889,6 +912,8 @@ function ShipMap() {
     setRegionStats(null);
     setRegionTime(null);
     setRegionName(null);
+    _selectedChaName = null;
+    chaSourceRef.current.changed();
   }
 
   function loadRegionStats() {
@@ -896,7 +921,7 @@ function ShipMap() {
     setRegionLoading(true);
     setRegionStats(null);
     setRegionTime(null);
-    setRegionName("Custom Region");
+    setRegionName((prev) => prev ?? "Custom Region");
     const t0 = performance.now();
     fetch(`${API}/api/analysis/region`, {
       method: "POST",
@@ -931,6 +956,7 @@ function ShipMap() {
         renderRegionPositions(d.positions ?? []);
         setViewVesselsMode(true);
         setShowVesselPanel(true);
+        setShowRegionPanel(false);
       })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
@@ -961,18 +987,6 @@ function ShipMap() {
         </div>
       )}
 
-      {/* Drawing hint */}
-      {drawing && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur-md rounded-full shadow-lg ring-1 ring-slate-900/5 px-5 py-2.5 text-xs text-slate-600 flex items-center gap-3">
-          <span>Click to add points · double-click to finish</span>
-          <button
-            onClick={cancelDrawing}
-            className="text-slate-400 hover:text-slate-700 font-medium transition"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
 
       {/* Mooring hover tooltip */}
       {hoveredMooring && (
@@ -984,7 +998,7 @@ function ShipMap() {
       {/* CHA hover tooltip */}
       {hoveredCha && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
-          {hoveredCha} — click to analyse
+          {hoveredCha} — click to select
         </div>
       )}
 
@@ -997,7 +1011,7 @@ function ShipMap() {
       )}
 
       {/* Left icon bar */}
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-4 bg-white py-4 px-2 rounded-full text-center justify-center items-center">
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-4 bg-white py-5 px-3 rounded-full text-center justify-center items-center">
 
         {/* tracks */}
         <div className="group relative flex flex-col gap-1">
@@ -1008,7 +1022,7 @@ function ShipMap() {
             onClick={() => { setShowVesselPanel((p) => !p); setShowRegionPanel(false); setShowMooringPanel(false); setShowLayerPanel(false); }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showVesselPanel
-                ? "bg-[#293241] ring-2 ring-white/60"
+                ? "bg-[#293241] ring-2"
                 : "bg-[#3d5a80] hover:bg-[#293241]"
             } text-white`}
           >
@@ -1048,7 +1062,7 @@ function ShipMap() {
             }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showRegionPanel
-                ? "bg-[#293241] ring-2 ring-white/60"
+                ? "bg-[#293241] ring-2"
                 : "bg-[#3d5a80] hover:bg-[#293241]"
             } text-white`}
           >
@@ -1079,7 +1093,7 @@ function ShipMap() {
             title="Display overlaid features on the map (e.g. moorings, bathymetry)"
             onClick={() => { setShowLayerPanel((p) => !p); setShowVesselPanel(false); setShowRegionPanel(false); setShowMooringPanel(false); }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
-              showLayerPanel ? "bg-[#293241] ring-2 ring-white/60" : "bg-[#3d5a80] hover:bg-[#293241]"
+              showLayerPanel ? "bg-[#293241] ring-2" : "bg-[#3d5a80] hover:bg-[#293241]"
             }`}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1277,27 +1291,32 @@ function ShipMap() {
           
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Regions</h2>
 
+
+          {/* custom select  */}
+
+          <div className="mb-6 flex flex-row justify-between items-center">
+            <button
+              onClick={drawing ? cancelDrawing : startDrawing}
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full">{drawing ? "Cancel" : "Custom select"}
+              </button>
+              <label className="font-fraunces text-xs text-gray-400">{drawing ? "Double-click to finish drawing." : "Click map to add points"}.</label>
+            </div>
+
+
           {/* Region action pills */}
           <div className="flex flex-wrap justify-center gap-2 mb-4">
             <button
-              onClick={drawing ? cancelDrawing : startDrawing}
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full"
-            >{drawing ? "Cancel" : "Select"}</button>
-            <button
+              title="Generate plots of daily mean spead, types and vessel traffic density heat-map."
               disabled={!drawnPolygon || regionLoading}
               onClick={loadRegionStats}
               className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
             >Analyse</button>
             <button
+              title="See all vessel traffic in selected region"
               disabled={!drawnPolygon || regionLoading}
               onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
               className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-            >Traffic</button>
-            <button
-              disabled={!drawnPolygon}
-              onClick={clearRegion}
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-            >Clear</button>
+            >All traffic</button>
           </div>
 
           {/* Shapefile / GeoJSON upload */}
@@ -1313,16 +1332,23 @@ function ShipMap() {
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+
           {/* CHA section */}
           <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Critical Habitat Areas</div>
           {CHA_REGIONS.map((r) => (
-            <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={selectedRegionNames.has(r.name)}
-                onChange={() => toggleRegion(r.name)}
-                className="accent-[#3d5a80] w-4 h-4 rounded"
-              />
+            <div key={r.name}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
+              onClick={() => {
+                const hiding = clickedRegionNames.has(r.name);
+                toggleClickedRegion(r.name);
+                if (hiding && regionName === r.name) {
+                  setDrawnPolygon(null); setRegionName(null);
+                  _selectedChaName = null; chaSourceRef.current.changed();
+                }
+              }}
+              onMouseEnter={() => { _hoveredSidebarCha = r.name; chaSourceRef.current.changed(); }}
+              onMouseLeave={() => { _hoveredSidebarCha = null; chaSourceRef.current.changed(); }}
+            >
               <div>
                 <div className="text-sm font-medium text-slate-700">{r.name}</div>
                 <div className="flex items-center gap-1.5 mt-0.5">
@@ -1330,53 +1356,106 @@ function ShipMap() {
                   <span className="text-[11px] text-slate-400">CHA</span>
                 </div>
               </div>
-            </label>
+            </div>
           ))}
 
           {/* WEA section */}
-          {/* Title for the region */}
           <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Wind Energy Areas</div>
-          {
-            // Text display for each region
-            WEA_REGIONS.map((r) => (
-              <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedRegionNames.has(r.name)}
-                  onChange={() => toggleRegion(r.name)}
-                  className="accent-[#ee6c4d] w-4 h-4 rounded"
-                />
-                <div>
-                  <div className="text-sm font-medium text-slate-700">{r.name}</div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="w-2 h-2 rounded-full bg-[#ee6c4d] inline-block" />
-                    <span className="text-[11px] text-slate-400">WEA</span>
-                  </div>
+          {WEA_REGIONS.map((r) => (
+            <div key={r.name}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
+              onClick={() => {
+                const hiding = clickedRegionNames.has(r.name);
+                toggleClickedRegion(r.name);
+                if (hiding && regionName === r.name) {
+                  setDrawnPolygon(null); setRegionName(null);
+                  _selectedChaName = null; chaSourceRef.current.changed();
+                }
+              }}
+              onMouseEnter={() => { _hoveredSidebarCha = r.name; chaSourceRef.current.changed(); }}
+              onMouseLeave={() => { _hoveredSidebarCha = null; chaSourceRef.current.changed(); }}
+            >
+              <div>
+                <div className="text-sm font-medium text-slate-700">{r.name}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="w-2 h-2 rounded-full bg-[#ee6c4d] inline-block" />
+                  <span className="text-[11px] text-slate-400">WEA</span>
                 </div>
-              </label>
-            ))
-          }
+              </div>
+            </div>
+          ))}
 
           {/* Uploaded regions */}
           {uploadedRegions.length > 0 && (
             <>
               <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Uploaded</div>
               {uploadedRegions.map((r) => (
-                <label key={r.name} className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedRegionNames.has(r.name)}
-                    onChange={() => toggleRegion(r.name)}
-                    className="accent-[#9b59b6] w-4 h-4 rounded"
-                  />
+                <div key={r.name}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
+                  onClick={() => toggleClickedRegion(r.name)}
+                  onMouseEnter={() => { _hoveredSidebarCha = r.name; chaSourceRef.current.changed(); }}
+                  onMouseLeave={() => { _hoveredSidebarCha = null; chaSourceRef.current.changed(); }}
+                >
                   <div>
                     <div className="text-sm font-medium text-slate-700">{r.name}</div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="w-2 h-2 rounded-full bg-[#9b59b6] inline-block" />
-                      <span className="text-[11px] text-slate-400">Custom region</span>
+                      <span className="text-[11px] text-slate-400">Uploaded</span>
                     </div>
                   </div>
-                </label>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Your regions (drawn) — at bottom */}
+          {userSelectedRegions.length > 0 && (
+            <>
+              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Your regions</div>
+              {userSelectedRegions.map((r) => (
+                <div key={r.name}
+                  className={`flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
+                  onClick={() => {
+                    const hiding = clickedRegionNames.has(r.name);
+                    toggleClickedRegion(r.name);
+                    if (hiding) {
+                      if (regionName === r.name) { setDrawnPolygon(null); setRegionName(null); }
+                      drawSourceRef.current.clear();
+                    } else {
+                      setDrawnPolygon(r.geojson);
+                      setRegionName(r.name);
+                      const fmt = new GeoJSON();
+                      drawSourceRef.current.clear();
+                      drawSourceRef.current.addFeatures(fmt.readFeatures({ type: "FeatureCollection", features: [{ type: "Feature", geometry: r.geojson, properties: {} }] }, { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" }));
+                      _selectedChaName = null;
+                      chaSourceRef.current.changed();
+                    }
+                  }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-700 truncate">{drawnRegionLabel(r.geojson)}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="w-2 h-2 rounded-full bg-[#98c1d9] inline-block" />
+                      <span className="text-[11px] text-slate-400">Drawn</span>
+                    </div>
+                  </div>
+                  <button className="text-slate-300 hover:text-slate-500 shrink-0 ml-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!window.confirm(`Remove this drawn region?`)) return;
+                      setUserSelectedRegions((prev) => prev.filter((x) => x.name !== r.name));
+                      if (regionName === r.name) {
+                        setDrawnPolygon(null); setRegionName(null);
+                        drawSourceRef.current.clear();
+                        regionTrackSourceRef.current.clear();
+                        highlightSourceRef.current.clear();
+                        setRegionVessels([]); setViewVesselsMode(false); setRegionStats(null);
+                      }
+                    }}
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
               ))}
             </>
           )}
@@ -1521,24 +1600,26 @@ function ShipMap() {
           className={`absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 ${closingResults ? "animate-fade-out" : "animate-fade-in"}`}
           onClick={() => closeResults()}
         >
+
+          {/* actual white area */}
           <div
-            className={`bg-white rounded-sm shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col ${closingResults ? "animate-scale-out" : "animate-scale-in"}`}
+            className={`bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col ${closingResults ? "animate-scale-out" : "animate-scale-in"}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between px-7 pt-6 pb-5 border-b border-slate-100 shrink-0">
               <div>
-                <h2 className="text-xl font-semibold text-slate-800 tracking-tight">
+                <h2 className="text-xl font-inter font-semibold text-slate-800">
                   {regionName ?? "Region Analysis"}
                 </h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  <span className="font-medium text-slate-700">
+                <p className="text-sm text-slate-500 mt-1"> 
+                  <span className="font-medium text-slate-700">Selected: {" "}
                     {regionStats.unique_vessels}
                   </span>{" "}
                   vessels ·{" "}
                   <span className="font-medium text-slate-700">
                     {regionStats.total_positions.toLocaleString()}
                   </span>{" "}
-                  positions · {start} → {end}
+                  positions · {start} to {end}
                   {regionTime !== null && (
                     <span className="text-slate-400">
                       {" "}
@@ -1565,8 +1646,8 @@ function ShipMap() {
                   {regionStats.plots?.vessel_types && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-700">
-                          Daily vessels by type
+                        <span className="text-sm font-semibold text-slate-700 font-fraunces">
+                          Breakdown of vessel types by day.
                         </span>
                         <button
                           onClick={() =>
@@ -1589,8 +1670,8 @@ function ShipMap() {
                   {regionStats.plots?.speed_overall && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-700">
-                          Daily mean speed
+                        <span className="text-sm font-semibold text-slate-700 font-fraunces">
+                          Mean speed of all vessels, daily.
                         </span>
                         <button
                           onClick={() =>
@@ -1613,8 +1694,8 @@ function ShipMap() {
                   {regionStats.plots?.vessel_density && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-700">
-                          Vessel traffic density
+                        <span className="text-sm font-semibold text-slate-700 font-fraunces">
+                          Regional traffic displayed in a heat map.
                         </span>
                         <button
                           onClick={() =>
