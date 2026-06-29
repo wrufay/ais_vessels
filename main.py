@@ -150,6 +150,36 @@ class RegionRequest(BaseModel):
     end: str
 
 
+@app.post("/api/region/vessels")
+def get_region_vessels(req: RegionRequest):
+    """Lightweight endpoint — positions + MMSI list only, no plots."""
+    try:
+        polygon = shape(req.polygon)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid GeoJSON polygon")
+
+    minx, miny, maxx, maxy = polygon.bounds
+    rows = query("""
+        SELECT p.mmsi, p.latitude, p.longitude, p.speed AS sog, v.ship_type
+        FROM ais_positions p
+        LEFT JOIN vessels v USING (mmsi)
+        WHERE p.received_at >= %s AND p.received_at < %s
+          AND p.latitude  BETWEEN %s AND %s
+          AND p.longitude BETWEEN %s AND %s
+          AND p.mmsi BETWEEN 200000000 AND 799999999
+        ORDER BY p.mmsi, p.received_at
+    """, [req.start, req.end, miny, maxy, minx, maxx])
+
+    inside = [r for r in rows if polygon.contains(Point(r["longitude"], r["latitude"]))]
+    return {
+        "vessel_mmsis": sorted({r["mmsi"] for r in inside}),
+        "positions": [
+            {"mmsi": r["mmsi"], "lat": r["latitude"], "lon": r["longitude"], "sog": r["sog"], "ship_type": r["ship_type"]}
+            for r in inside
+        ],
+    }
+
+
 @app.post("/api/analysis/region")
 def analyse_region(req: RegionRequest):
     try:
@@ -213,5 +243,10 @@ def analyse_region(req: RegionRequest):
         "days": days,
         "total_positions": len(inside),
         "unique_vessels": unique_vessels,
+        "vessel_mmsis": sorted({r["mmsi"] for r in inside}),
+        "positions": [
+            {"mmsi": r["mmsi"], "lat": r["latitude"], "lon": r["longitude"], "sog": r["speed"], "ship_type": r["ship_type"]}
+            for r in inside
+        ],
         "plots": plots,
     }

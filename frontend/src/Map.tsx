@@ -12,8 +12,9 @@ import Feature, { type FeatureLike } from "ol/Feature";
 import Point from "ol/geom/Point";
 import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
+import WebGLPointsLayer from "ol/layer/WebGLPoints";
 import VectorSource from "ol/source/Vector";
-import { Style, Stroke, Fill, Icon, Circle as CircleStyle } from "ol/style";
+import { Style, Stroke, Fill, Icon } from "ol/style";
 import Draw from "ol/interaction/Draw";
 import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
@@ -110,7 +111,7 @@ interface RoutePoint {
   source: string;
 }
 
-interface RegionPosition { mmsi: number; lat: number; lon: number; sog: number | null }
+interface RegionPosition { mmsi: number; lat: number; lon: number; sog: number | null; ship_type: number | null }
 
 interface RegionStats {
   total_positions: number;
@@ -122,13 +123,13 @@ interface RegionStats {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  cargo: "#ee6c4d",
-  tanker: "#3d5a80",
-  fishing: "#639fab",
-  passenger: "#293241",
-  "search & rescue": "#e0fbfc",
-  other: "#afa98d",
-  unknown: "#cbd2d9",
+  cargo:            "#0072BD",
+  tanker:           "#D95319",
+  fishing:          "#EDB120",
+  passenger:        "#7E2F8E",
+  "search & rescue":"#77AC30",
+  other:            "#4DBEEE",
+  unknown:          "#A2142F",
 };
 
 function classifyType(code: string | number | null): string {
@@ -159,12 +160,28 @@ function formatTime(epochSeconds: number): string {
 
 const EMPTY_STYLE = new Style({});
 
-const GREY_DOT_STYLE = new Style({
-  image: new CircleStyle({
-    radius: 3,
-    fill: new Fill({ color: "rgba(130, 130, 130, 0.28)" }),
-  }),
-});
+// type_num encoding used in the WebGL region track layer style (0 = unknown)
+const TYPE_NUM: Record<string, number> = {
+  cargo: 1, tanker: 2, fishing: 3, passenger: 4, "search & rescue": 5, other: 6,
+};
+
+// WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed
+const REGION_WEBGL_STYLE = {
+  variables: { mode: 0 },
+  "circle-radius": 4,
+  "circle-fill-color": [
+    "case",
+    ["==", ["var", "mode"], 2],
+    ["case", [">", ["get", "sog"], 10], "#ee6c4d", [">", ["get", "sog"], 3], "#ffc857", "#0a8754"],
+    ["==", ["var", "mode"], 1],
+    ["match", ["get", "type_num"],
+      1, "#0072BD", 2, "#D95319", 3, "#EDB120", 4, "#7E2F8E", 5, "#77AC30", 6, "#4DBEEE",
+      "#A2142F",
+    ],
+    "#5a5a5a",
+  ],
+  "circle-opacity": 0.6,
+};
 
 
 function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
@@ -334,11 +351,12 @@ function ShipMap() {
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const bathyLayerRef = useRef<TileLayer | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
-  const regionTrackLayerRef = useRef<VectorLayer | null>(null);
+  const regionTrackLayerRef = useRef<WebGLPointsLayer | null>(null);
   const highlightSourceRef = useRef(new VectorSource());
   const highlightLayerRef = useRef<VectorLayer | null>(null);
   const hoveredRegionVesselRef = useRef<number | null>(null);
-  const regionRouteCacheRef = useRef<Map<number, RoutePoint[]>>(new Map());
+  const regionRouteCacheRef = useRef<Record<number, RoutePoint[]>>({});
+  const regionDisplayModeRef = useRef<"grey" | "type" | "speed">("grey");
 
   interface Popup {
     x: number;
@@ -387,6 +405,8 @@ function ShipMap() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [regionVessels, setRegionVessels] = useState<Vessel[]>([]);
   const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(null);
+  const [viewVesselsMode, setViewVesselsMode] = useState(false);
+  const [regionDisplayMode, setRegionDisplayMode] = useState<"grey" | "type" | "speed">("grey");
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -453,10 +473,8 @@ function ShipMap() {
     });
     routeLayerRef.current = routeLayer;
 
-    const regionTrackLayer = new VectorLayer({
-      source: regionTrackSourceRef.current,
-      style: GREY_DOT_STYLE,
-    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const regionTrackLayer = new WebGLPointsLayer({ source: regionTrackSourceRef.current, style: REGION_WEBGL_STYLE as any });
     regionTrackLayerRef.current = regionTrackLayer;
 
     const highlightLayer = new VectorLayer({
@@ -581,6 +599,7 @@ function ShipMap() {
         chaSourceRef.current.getFeatures().forEach((f) => f.setStyle(undefined));
       }
       if (!overMooring) setHoveredMooring(null);
+
       map.getTargetElement().style.cursor = overCha || overMooring ? "pointer" : "";
     });
 
@@ -591,6 +610,12 @@ function ShipMap() {
   useEffect(() => {
     bathyLayerRef.current?.setVisible(showBathymetry);
   }, [showBathymetry]);
+
+  useEffect(() => {
+    regionDisplayModeRef.current = regionDisplayMode;
+    const modeNum = regionDisplayMode === "type" ? 1 : regionDisplayMode === "speed" ? 2 : 0;
+    regionTrackLayerRef.current?.updateStyleVariables({ mode: modeNum });
+  }, [regionDisplayMode]);
 
   useEffect(() => {
     fetch(`${API}/api/vessels?start=${start}T00:00:00&end=${end}T23:59:59`)
@@ -699,10 +724,6 @@ function ShipMap() {
         setRegionStats(d);
         setRegionTime(Math.round(performance.now() - t0));
         setShowResults(true);
-        const rv = vessels.filter((v) => d.vessel_mmsis.includes(v.mmsi));
-        setRegionVessels(rv);
-        renderRegionPositions(d.positions);
-        setShowVesselPanel(true);
       })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
@@ -757,20 +778,24 @@ function ShipMap() {
     highlightSourceRef.current.clear();
     hoveredRegionVesselRef.current = null;
     setHoveredRegionVessel(null);
-    regionRouteCacheRef.current.clear();
+    regionRouteCacheRef.current = {};
+    console.log(`[region] rendering ${positions.length} positions`);
     positions.forEach((p) => {
       regionTrackSourceRef.current.addFeature(new Feature({
         geometry: new Point(fromLonLat([p.lon, p.lat])),
         mmsi: p.mmsi,
-        sog: p.sog,
+        sog: p.sog ?? 0,
+        ship_type: p.ship_type,
+        type_num: TYPE_NUM[classifyType(p.ship_type)] ?? 0,
       }));
     });
+    console.log(`[region] source has ${regionTrackSourceRef.current.getFeatures().length} features`);
   }
 
   function hoverRegionVessel(mmsi: number) {
     hoveredRegionVesselRef.current = mmsi;
     setHoveredRegionVessel(mmsi);
-    const cached = regionRouteCacheRef.current.get(mmsi);
+    const cached = regionRouteCacheRef.current[mmsi];
     if (cached) {
       renderHighlight(mmsi, cached);
       return;
@@ -780,7 +805,7 @@ function ShipMap() {
       .then((r) => r.json())
       .then((data: { points: RoutePoint[] }) => {
         const pts = data.points || [];
-        regionRouteCacheRef.current.set(mmsi, pts);
+        regionRouteCacheRef.current[mmsi] = pts;
         if (hoveredRegionVesselRef.current === mmsi) renderHighlight(mmsi, pts);
       })
       .catch(() => {});
@@ -853,10 +878,13 @@ function ShipMap() {
     drawSourceRef.current.clear();
     regionTrackSourceRef.current.clear();
     highlightSourceRef.current.clear();
-    regionRouteCacheRef.current.clear();
+    regionRouteCacheRef.current = {};
     hoveredRegionVesselRef.current = null;
+    regionDisplayModeRef.current = "grey";
     setRegionVessels([]);
     setHoveredRegionVessel(null);
+    setViewVesselsMode(false);
+    setRegionDisplayMode("grey");
     setDrawnPolygon(null);
     setRegionStats(null);
     setRegionTime(null);
@@ -880,9 +908,28 @@ function ShipMap() {
         setRegionStats(d);
         setRegionTime(Math.round(performance.now() - t0));
         setShowResults(true);
-        const rv = vessels.filter((v) => d.vessel_mmsis.includes(v.mmsi));
+      })
+      .catch(console.error)
+      .finally(() => setRegionLoading(false));
+  }
+
+  function viewVesselsInRegion(polygon: object) {
+    if (regionLoading) return;
+    setRegionLoading(true);
+    regionTrackSourceRef.current.clear();
+    highlightSourceRef.current.clear();
+    regionRouteCacheRef.current = {};
+    fetch(`${API}/api/region/vessels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ polygon, start, end }),
+    })
+      .then((r) => r.json())
+      .then((d: { vessel_mmsis: number[]; positions: RegionPosition[] }) => {
+        const rv = vessels.filter((v) => (d.vessel_mmsis ?? []).includes(v.mmsi));
         setRegionVessels(rv);
-        renderRegionPositions(d.positions);
+        renderRegionPositions(d.positions ?? []);
+        setViewVesselsMode(true);
         setShowVesselPanel(true);
       })
       .catch(console.error)
@@ -1104,6 +1151,29 @@ function ShipMap() {
           </div>
         )}
 
+        {/* View Vessels (contextual) */}
+        {drawnPolygon && !drawing && (
+          <div className="group relative">
+            <button
+              onClick={() => viewVesselsInRegion(drawnPolygon)}
+              disabled={regionLoading}
+              className="w-12 h-12 rounded-full bg-[#639fab] text-white shadow-lg flex items-center justify-center hover:bg-[#4e8a92] disabled:opacity-50 transition"
+            >
+              {regionLoading && viewVesselsMode ? (
+                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              ) : (
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
+                </svg>
+              )}
+            </button>
+            <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+              View Vessels
+            </div>
+          </div>
+        )}
+
         {/* View Results (contextual) */}
         {regionStats && !regionLoading && (
           <div className="group relative">
@@ -1210,6 +1280,24 @@ function ShipMap() {
           </div>
         </div>
 
+        {viewVesselsMode && (
+          <div className="px-5 py-2.5 border-t border-slate-100 shrink-0 flex items-center gap-1.5">
+{(["grey", "type", "speed"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setRegionDisplayMode(mode)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
+                  regionDisplayMode === mode
+                    ? "bg-[#3d5a80] text-white"
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                }`}
+              >
+                {mode === "grey" ? "Uniform" : mode === "type" ? "Ship type" : "Speed"}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center justify-between px-5 py-2.5 text-xs font-medium text-slate-400 border-t border-slate-100 shrink-0">
           <span className="uppercase tracking-wide">
             {regionVessels.length > 0 ? "Vessels in region" : "Vessels"}
@@ -1248,6 +1336,7 @@ function ShipMap() {
             return (
               <button
                 key={v.mmsi}
+                id={`vessel-item-${v.mmsi}`}
                 style={{ animationDelay: `${Math.min(i * 12, 300)}ms` }}
                 onClick={() => {
                   if (active) {
