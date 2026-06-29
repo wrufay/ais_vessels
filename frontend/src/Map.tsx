@@ -997,10 +997,14 @@ function ShipMap() {
       )}
 
       {/* Left icon bar */}
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-3">
-        {/* Vessels */}
-        <div className="group relative">
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-4 bg-white py-4 px-2 rounded-full text-center justify-center items-center">
+
+        {/* tracks */}
+        <div className="group relative flex flex-col gap-1">
+          <label className="text-gray-500 text-xs">Tracks</label>
+
           <button
+            title="View individual vessels displayed on the map."
             onClick={() => { setShowVesselPanel((p) => !p); setShowRegionPanel(false); setShowMooringPanel(false); setShowLayerPanel(false); }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
               showVesselPanel
@@ -1008,6 +1012,8 @@ function ShipMap() {
                 : "bg-[#3d5a80] hover:bg-[#293241]"
             } text-white`}
           >
+
+            {/* update this with an actual picture not a generated svg */}
             <svg
               className="w-5 h-5"
               viewBox="0 0 24 24"
@@ -1024,34 +1030,16 @@ function ShipMap() {
               <circle cx="3" cy="18" r="1" fill="currentColor" stroke="none" />
             </svg>
           </button>
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-            Vessels
-          </div>
         </div>
 
-        {/* Moorings */}
-        <div className="group relative">
-          <button
-            onClick={() => { setShowMooringPanel((p) => !p); setShowVesselPanel(false); setShowRegionPanel(false); setShowLayerPanel(false); }}
-            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
-              showMooringPanel ? "bg-[#293241] ring-2 ring-white/60" : "bg-[#3d5a80] hover:bg-[#293241]"
-            } text-white`}
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="5" r="2" />
-              <line x1="12" y1="7" x2="12" y2="19" />
-              <path d="M8 11h8" />
-              <path d="M5 19h6" /><path d="M13 19h6" />
-            </svg>
-          </button>
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-            Moorings
-          </div>
-        </div>
+        {/* Honestly i don't know why this flex and gap-1 works to space it out, but it does */}
 
         {/* Regions */}
-        <div className="group relative">
+        <div className="group relative flex flex-col gap-1">
+          <label className="text-gray-500 text-xs">Regions</label>
+
           <button
+            title="Analyze pre-defined and custom-select regions."
             onClick={() => {
               setShowRegionPanel((p) => !p);
               setShowVesselPanel(false);
@@ -1068,41 +1056,27 @@ function ShipMap() {
               <polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21" />
             </svg>
           </button>
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-            Regions
-          </div>
         </div>
 
-        {/* Draw Region */}
-        <div className="group relative">
-          <button
-            onClick={drawing ? cancelDrawing : startDrawing}
-            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
+
+        {/* Todo with draw region: remove the button, have it be a feature under regions. perhaps next to the regions text */}
+        
+        {/* important logic to carry over to other button:
+        onClick={drawing ? cancelDrawing : startDrawing}
+
+        className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
               drawing
                 ? "bg-[#ee6c4d] hover:bg-[#c4462a]"
                 : "bg-[#3d5a80] hover:bg-[#293241]"
-            }`}
-          >
-            <svg
-              className="w-5 h-5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polygon points="12,3 20.5,8.5 20.5,15.5 12,21 3.5,15.5 3.5,8.5" />
-            </svg>
-          </button>
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-            {drawing ? "Cancel Drawing" : "Draw Region"}
-          </div>
-        </div>
+            }`} */}
+
 
         {/* Layers */}
-        <div className="group relative">
+        <div className="group relative flex flex-col gap-1">
+          <label className="text-gray-500 text-xs">Overlay</label>
+
           <button
+            title="Display overlaid features on the map (e.g. moorings, bathymetry)"
             onClick={() => { setShowLayerPanel((p) => !p); setShowVesselPanel(false); setShowRegionPanel(false); setShowMooringPanel(false); }}
             className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
               showLayerPanel ? "bg-[#293241] ring-2 ring-white/60" : "bg-[#3d5a80] hover:bg-[#293241]"
@@ -1114,116 +1088,8 @@ function ShipMap() {
               <polyline points="2 12 12 17 22 12"/>
             </svg>
           </button>
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-            Layers
-          </div>
         </div>
 
-        {/* Analyse (contextual) */}
-        {drawnPolygon && !drawing && (
-          <div className="group relative">
-            <button
-              onClick={loadRegionStats}
-              disabled={regionLoading}
-              className="w-12 h-12 rounded-full bg-[#98c1d9] text-white shadow-lg flex items-center justify-center hover:bg-[#7aadca] disabled:opacity-50 transition"
-            >
-              {regionLoading ? (
-                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              ) : (
-                <svg
-                  className="w-5 h-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <line x1="18" y1="20" x2="18" y2="10" />
-                  <line x1="12" y1="20" x2="12" y2="4" />
-                  <line x1="6" y1="20" x2="6" y2="14" />
-                  <line x1="2" y1="20" x2="22" y2="20" />
-                </svg>
-              )}
-            </button>
-            <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-              Analyse Region
-            </div>
-          </div>
-        )}
-
-        {/* View Vessels (contextual) */}
-        {drawnPolygon && !drawing && (
-          <div className="group relative">
-            <button
-              onClick={() => viewVesselsInRegion(drawnPolygon)}
-              disabled={regionLoading}
-              className="w-12 h-12 rounded-full bg-[#639fab] text-white shadow-lg flex items-center justify-center hover:bg-[#4e8a92] disabled:opacity-50 transition"
-            >
-              {regionLoading && viewVesselsMode ? (
-                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              ) : (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
-                </svg>
-              )}
-            </button>
-            <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-              View Vessels
-            </div>
-          </div>
-        )}
-
-        {/* View Results (contextual) */}
-        {regionStats && !regionLoading && (
-          <div className="group relative">
-            <button
-              onClick={() => setShowResults(true)}
-              className="w-12 h-12 rounded-full bg-[#3d5a80] text-white shadow-lg flex items-center justify-center hover:bg-[#293241] transition"
-            >
-              <svg
-                className="w-5 h-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </button>
-            <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-              View Results
-            </div>
-          </div>
-        )}
-
-        {/* Clear Region (contextual) */}
-        {drawnPolygon && (
-          <div className="group relative">
-            <button
-              onClick={clearRegion}
-              className="w-12 h-12 rounded-full bg-slate-500 text-white shadow-lg flex items-center justify-center hover:bg-slate-600 transition"
-            >
-              <svg
-                className="w-5 h-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-              </svg>
-            </button>
-            <div className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-              Clear Region
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Vessel panel — slides in from the right */}
@@ -1232,6 +1098,9 @@ function ShipMap() {
           showVesselPanel ? "translate-x-0" : "translate-x-full"
         }`}
       >
+        <button onClick={() => setShowVesselPanel(false)} className="absolute top-3 right-3 text-slate-400">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
         <div className="px-5 pt-8 pb-4 shrink-0">
           <div className="grid grid-cols-2 gap-2 mb-4">
             <label className="flex flex-col gap-1">
@@ -1394,86 +1263,6 @@ function ShipMap() {
         </div>
       </div>
 
-      {/* Moorings panel — slides in from the right */}
-      <div
-        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
-          showMooringPanel ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        <div className="px-5 pt-8 pb-4 shrink-0">
-          <h2 className="text-sm font-semibold text-slate-700 mb-4">Moorings</h2>
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <label className="flex flex-col gap-1">
-              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">Start</span>
-              <input type="date" className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={start} onChange={(e) => setStart(e.target.value)} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">End</span>
-              <input type="date" className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={end} onChange={(e) => setEnd(e.target.value)} />
-            </label>
-          </div>
-          <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-sm py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#293241] hover:text-[#293241] transition">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            <span>Upload CSV</span>
-            <span className="text-[10px] text-slate-300">name, lat, lon, depth, deployment, recovery</span>
-            <input type="file" accept=".csv" className="hidden" onChange={handleMooringUpload} />
-          </label>
-          <button
-            onClick={downloadMooringTemplate}
-            className="mt-2 w-full text-[11px] text-slate-400 hover:text-[#3d5a80] text-center transition"
-          >
-            Download template
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
-          {/* AMAR section */}
-          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">AMAR</div>
-          {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
-            <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
-          )}
-          {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-            <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
-                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
-                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
-                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
-                }}>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                <span className="text-sm font-medium text-slate-700">{m.name}</span>
-              </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
-            </div>
-          ))}
-
-          {/* Uploaded section */}
-          {uploadedMoorings.length > 0 && (
-            <>
-              <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Uploaded</div>
-              {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
-                <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
-              )}
-              {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-                <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
-                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
-                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
-                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
-                }}>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                    <span className="text-sm font-medium text-slate-700">{m.name}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-      </div>
 
       {/* Regions panel — slides in from the right */}
       <div
@@ -1481,8 +1270,35 @@ function ShipMap() {
           showRegionPanel ? "translate-x-0" : "translate-x-full"
         }`}
       >
+        <button onClick={() => setShowRegionPanel(false)} className="absolute top-3 right-3 text-slate-400">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
         <div className="px-5 pt-8 pb-4 shrink-0">
+          
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Regions</h2>
+
+          {/* Region action pills */}
+          <div className="flex flex-wrap justify-center gap-2 mb-4">
+            <button
+              onClick={drawing ? cancelDrawing : startDrawing}
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full"
+            >{drawing ? "Cancel" : "Select"}</button>
+            <button
+              disabled={!drawnPolygon || regionLoading}
+              onClick={loadRegionStats}
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
+            >Analyse</button>
+            <button
+              disabled={!drawnPolygon || regionLoading}
+              onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
+            >Traffic</button>
+            <button
+              disabled={!drawnPolygon}
+              onClick={clearRegion}
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
+            >Clear</button>
+          </div>
 
           {/* Shapefile / GeoJSON upload */}
           <label className="flex flex-col items-center justify-center gap-1.5 w-full border-2 border-dashed border-slate-200 rounded-sm py-4 px-3 text-xs text-slate-400 cursor-pointer hover:border-[#98c1d9] hover:text-[#3d5a80] transition">
@@ -1567,14 +1383,101 @@ function ShipMap() {
         </div>
       </div>
 
-      {/* Layers panel — slides in from the right */}
+      {/* Overlay panel — slides in from the right */}
+
+      {/* DETAIL LAYERS SECTION */}
       <div
         className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
           showLayerPanel ? "translate-x-0" : "translate-x-full"
         }`}
       >
+
+        <button onClick={() => setShowLayerPanel(false)} className="absolute top-3 right-3 text-slate-400">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        {/* MOORINGS */}
         <div className="px-5 pt-8 pb-4 shrink-0">
-          <h2 className="text-sm font-semibold text-slate-700 mb-4">Layers</h2>
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-slate-700 ">Moorings</h2>
+            <p className="text-gray-400 text-xs font-fraunces">Input desired time frame to see locations.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mb-6">
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">Start</span>
+              <input type="date" className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={start} onChange={(e) => setStart(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">End</span>
+              <input type="date" className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={end} onChange={(e) => setEnd(e.target.value)} />
+            </label>
+          </div>
+
+
+          {/* upload onw csv  */}
+          <p className="text-gray-400 text-xs font-fraunces border border-gray-300 rounded-full py-2 px-4">
+            
+            <label className="border-b border-transparent hover:border-gray-800 cursor-pointer text-gray-800 hover:text-gray-800 transition">
+              Upload your own
+              <input type="file" accept=".csv" className="hidden" onChange={handleMooringUpload} />
+            </label>
+            {" "}using{" "}
+            <span onClick={downloadMooringTemplate} className="border-b border-gray-400 cursor-pointer transition"> CSV template</span></p>
+
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+          {/* AMAR section */}
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">AMAR</div>
+          {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
+            <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+          )}
+          {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
+            <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
+                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
+                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
+                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
+                }}>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                <span className="text-sm font-medium text-slate-700">{m.name}</span>
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+            </div>
+          ))}
+
+          {/* Uploaded section */}
+          {uploadedMoorings.length > 0 && (
+            <>
+              <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Uploaded</div>
+              {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
+                <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+              )}
+              {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
+                <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
+                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
+                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
+                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
+                }}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                    <span className="text-sm font-medium text-slate-700">{m.name}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-slate-100 my-2" />
+
+        {/* LAYERS */}
+        <div className="px-5 pt-8 pb-4 shrink-0">
+
+          <div className="">
+            <h2 className="text-sm font-semibold text-slate-700 ">Layers</h2>
+            <p className="text-gray-400 text-xs font-fraunces">Select detailed map layers to overlay.</p>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
           <div className="px-3 pt-1 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Ocean</div>
@@ -1593,7 +1496,9 @@ function ShipMap() {
         </div>
       </div>
 
-      {/* Legend */}
+      
+
+      {/* Legend - Speed */}
       <div className="absolute bottom-5 left-5 z-10 bg-white/90 backdrop-blur-md rounded-sm shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs">
         <div className="font-semibold mb-2 text-slate-600">Speed (knots)</div>
         <div className="flex items-center gap-2 mb-1 text-slate-500">
