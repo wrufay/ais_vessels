@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
+import ImageLayer from "ol/layer/Image";
+import ImageStatic from "ol/source/ImageStatic";
 import XYZ from "ol/source/XYZ";
 import TileWMS from "ol/source/TileWMS";
 import TileGrid from "ol/tilegrid/TileGrid";
@@ -101,6 +103,7 @@ function ShipMap() {
   const routeLayerRef = useRef<VectorLayer | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const bathyLayerRef = useRef<TileLayer | null>(null);
+  const noiseLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLPointsLayer | null>(null);
   const highlightSourceRef = useRef(new VectorSource());
@@ -171,6 +174,7 @@ function ShipMap() {
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
   const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
   const [showBathymetry, setShowBathymetry] = useState(false);
+  const [showNoise, setShowNoise] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [regionVessels, setRegionVessels] = useState<Vessel[]>([]);
   const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(
@@ -299,6 +303,22 @@ function ShipMap() {
     });
     bathyLayerRef.current = bathyLayer;
 
+    // ocean noise modelling — static raster overlay, one day's mean dB grid
+    const noiseExtent = [
+      ...fromLonLat([-69.5, 41.0]),
+      ...fromLonLat([-59.0, 46.0]),
+    ] as [number, number, number, number];
+    const noiseLayer = new ImageLayer({
+      source: new ImageStatic({
+        url: `${API}/api/noise/overlay?date=2020-02-01`,
+        imageExtent: noiseExtent,
+        projection: "EPSG:3857",
+      }),
+      opacity: 0.65,
+      visible: false,
+    });
+    noiseLayerRef.current = noiseLayer;
+
     const map = new Map({
       target: mapRef.current,
       layers: [
@@ -313,6 +333,7 @@ function ShipMap() {
           }),
         }),
         bathyLayer,
+        noiseLayer,
         chaLayer,
         mooringLayer,
         regionTrackLayer,
@@ -415,6 +436,10 @@ function ShipMap() {
   useEffect(() => {
     bathyLayerRef.current?.setVisible(showBathymetry);
   }, [showBathymetry]);
+
+  useEffect(() => {
+    noiseLayerRef.current?.setVisible(showNoise);
+  }, [showNoise]);
 
   useEffect(() => {
     regionDisplayModeRef.current = regionDisplayMode;
@@ -1382,6 +1407,22 @@ function ShipMap() {
               </div>
               <div className="text-[11px] text-slate-400">
                 NRCan / DFO — Scotian Shelf &amp; NL Shelves
+              </div>
+            </div>
+          </label>
+          <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showNoise}
+              onChange={() => setShowNoise((p) => !p)}
+              className="accent-[#3d5a80] w-4 h-4 rounded"
+            />
+            <div>
+              <div className="text-sm font-medium text-slate-700">
+                Vessel noise (2020-02-01)
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Modelled underwater noise, 10m depth, 50Hz — daily mean
               </div>
             </div>
           </label>

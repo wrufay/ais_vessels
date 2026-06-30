@@ -12,13 +12,14 @@ from contextlib import asynccontextmanager
 import pandas as pd # type: ignore
 import psycopg2 # type: ignore
 import psycopg2.extras # type: ignore
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES  # noqa: E402 # type: ignore
+from noise import render_noise_overlay, NOISE_EXTENT  # noqa: E402 # type: ignore
 
 DATABASE_URL: str = os.environ["DATABASE_URL"]
 
@@ -250,3 +251,24 @@ def analyse_region(req: RegionRequest):
         ],
         "plots": plots,
     }
+
+
+@app.get("/api/noise/extent")
+def get_noise_extent():
+    return NOISE_EXTENT
+
+
+@app.get("/api/noise/overlay")
+def get_noise_overlay(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    variable: str = Query("vessel_noise"),
+    freq: float = Query(50),
+    depth: float = Query(10),
+):
+    try:
+        png = render_noise_overlay(date, variable=variable, freq=freq, depth=depth)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No noise data for {date}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return Response(content=png, media_type="image/png")

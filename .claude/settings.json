@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ncdump -h /mnt/shared_remote/202002/20200201.nc)",
+      "Bash(ncdump -v longitude,latitude,frequency,depth /mnt/shared_remote/202002/20200201.nc)",
+      "Bash(ncdump -v latitude /mnt/shared_remote/202002/20200201.nc)",
+      "Bash(sed -n '1p;$p')",
+      "Bash(ncdump -v frequency /mnt/shared_remote/202002/20200201.nc)",
+      "Bash(sed -n '/frequency =/,/;/p')",
+      "Bash(ncdump -v depth /mnt/shared_remote/202002/20200201.nc)",
+      "Bash(sed -n '/depth =/,/;/p')",
+      "Bash(ncdump -v longitude /mnt/shared_remote/202002/20200201.nc)",
+      "Bash(python3 -c \"import netCDF4\")",
+      "Bash(/usr/bin/python3 -c \"import netCDF4; print\\('ok'\\)\")",
+      "Bash(/usr/bin/python3 -c ' *)",
+      "Bash(xargs -I{} sh -c 'echo ==={}===; cat {}')",
+      "Bash(kill -0 3850460)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(pg_lsclusters)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(kill 3895456)",
+      "Bash(jobs)",
+      "Bash(systemctl list-units *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(grep -E \"^[0-9]{6}$\")",
+      "Bash(curl -s -o /dev/null -w \"backend :8000 -> %{http_code}\\\\n\" http://localhost:8000/ --max-time 3)",
+      "Bash(curl -s -o /dev/null -w \"frontend :5173 -> %{http_code}\\\\n\" http://localhost:5173/ --max-time 3)",
+      "Read(//proc/8973/**)",
+      "Bash(curl -sv http://127.0.0.1:8000/ --max-time 3)",
+      "Bash(curl -sv http://127.0.0.1:5173/ --max-time 3)"
+    ]
+  }
+}

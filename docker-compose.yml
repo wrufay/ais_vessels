@@ -25,6 +25,9 @@ services:
 
       # added localhost:3000 for quick frontend dev
       - CORS_ORIGINS=http://localhost,http://localhost:3000,http://localhost:5173
+    volumes:
+      # locally converted noise GeoTIFFs (see pipeline/noise_to_geotiff.py)
+      - ./pipeline/noise_data:/app/pipeline/noise_data:ro
     depends_on:
       db:
         condition: service_healthy
