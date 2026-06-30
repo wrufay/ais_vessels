@@ -148,6 +148,7 @@ export function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
 export function regionColor(type: string) {
   if (type === "WEA") return { stroke: "#ee6c4d", fill: "rgba(238,108,77,0.07)", hoverFill: "rgba(238,108,77,0.15)", selectedFill: "rgba(238,108,77,0.28)" };
   if (type === "Uploaded") return { stroke: "#9b59b6", fill: "rgba(155,89,182,0.07)", hoverFill: "rgba(155,89,182,0.15)", selectedFill: "rgba(155,89,182,0.28)" };
+  if (type === "Drawn") return { stroke: "#98c1d9", fill: "rgba(152,193,217,0.07)", hoverFill: "rgba(152,193,217,0.15)", selectedFill: "rgba(152,193,217,0.28)" };
   return { stroke: "#3d5a80", fill: "rgba(61,90,128,0.07)", hoverFill: "rgba(61,90,128,0.15)", selectedFill: "rgba(61,90,128,0.28)" };
 }
 

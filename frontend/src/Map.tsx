@@ -188,6 +188,7 @@ function ShipMap() {
       ...CHA_REGIONS.map((r) => ({ ...r, regionType: "CHA" })),
       ...WEA_REGIONS.map((r) => ({ ...r, regionType: "WEA" })),
       ...uploadedRegions.map((r) => ({ ...r, regionType: "Uploaded" })),
+      ...userSelectedRegions.map((r) => ({ ...r, regionType: "Drawn" })),
     ];
     allRegions.forEach((r) => {
       const geom = fmt.readGeometry(r.geojson, {
@@ -202,7 +203,7 @@ function ShipMap() {
       });
       chaSourceRef.current.addFeature(f);
     });
-  }, [uploadedRegions]);
+  }, [uploadedRegions, userSelectedRegions]);
 
   // rebuild mooring points when date range or uploaded moorings change
   useEffect(() => {
@@ -320,8 +321,8 @@ function ShipMap() {
         new VectorLayer({
           source: drawSourceRef.current,
           style: new Style({
-            stroke: new Stroke({ color: "#ee6c4d", width: 2 }),
-            fill: new Fill({ color: "rgba(238,108,77,0.1)" }),
+            stroke: new Stroke({ color: "#98c1d9", width: 2 }),
+            fill: new Fill({ color: "rgba(152,193,217,0.1)" }),
           }),
         }),
       ],
@@ -681,13 +682,13 @@ function ShipMap() {
         featureProjection: "EPSG:3857",
       });
       setDrawnPolygon(geojson);
-      setSelectedChaName(null);
-      chaSourceRef.current.changed();
       setDrawing(false);
       setUserSelectedRegions((prev) => {
         const n = prev.filter((r) => r.type === "drawn").length + 1;
         const name = `Drawn region ${n}`;
         setRegionName(name);
+        setSelectedChaName(name);
+        chaSourceRef.current.changed();
         setClickedRegionNames((prevClicked) => {
           const next = new Set(prevClicked);
           next.add(name);
@@ -698,6 +699,7 @@ function ShipMap() {
       });
       mapObj.current!.removeInteraction(draw);
       drawRef.current = null;
+      drawSourceRef.current.clear();
     });
 
     drawRef.current = draw;
@@ -1056,6 +1058,8 @@ function ShipMap() {
             </label>
           </div>
 
+          <hr className="border-gray-200 mb-4" />
+
           {/* Region action pills */}
           <div className="flex flex-wrap gap-2">
             <button
@@ -1074,6 +1078,13 @@ function ShipMap() {
             >
               See all traffic
             </button>
+            {/* show selected region */}
+            <div
+              title="Click on a region to select it."
+              className="mt-2 font-inter text-gray-400 text-xs bg-gray-100 px-2 py-0.5 rounded-xs"
+            >
+              {regionName ? `Selected: ${regionName}` : "No region selected."}
+            </div>
           </div>
         </div>
 
@@ -1161,35 +1172,9 @@ function ShipMap() {
                   onClick={() => {
                     const hiding = clickedRegionNames.has(r.name);
                     toggleClickedRegion(r.name);
-                    if (hiding) {
-                      if (regionName === r.name) {
-                        setDrawnPolygon(null);
-                        setRegionName(null);
-                      }
-                      drawSourceRef.current.clear();
-                    } else {
-                      setDrawnPolygon(r.geojson);
-                      setRegionName(r.name);
-                      const fmt = new GeoJSON();
-                      drawSourceRef.current.clear();
-                      drawSourceRef.current.addFeatures(
-                        fmt.readFeatures(
-                          {
-                            type: "FeatureCollection",
-                            features: [
-                              {
-                                type: "Feature",
-                                geometry: r.geojson,
-                                properties: {},
-                              },
-                            ],
-                          },
-                          {
-                            dataProjection: "EPSG:4326",
-                            featureProjection: "EPSG:3857",
-                          }
-                        )
-                      );
+                    if (hiding && regionName === r.name) {
+                      setDrawnPolygon(null);
+                      setRegionName(null);
                       setSelectedChaName(null);
                       chaSourceRef.current.changed();
                     }
@@ -1223,6 +1208,7 @@ function ShipMap() {
       {/* DETAIL LAYERS SECTION */}
       <SidePanel open={showLayerPanel} onClose={() => setShowLayerPanel(false)}>
         {/* MOORINGS */}
+        <div className="flex-1 min-h-0 flex flex-col">
         <div className="px-5 pt-8 pb-4 shrink-0">
           <PanelHeader
             name="Moorings"
@@ -1366,10 +1352,12 @@ function ShipMap() {
             </>
           )}
         </div>
+        </div>
 
         <div className="border-t border-slate-100 my-2" />
 
         {/* LAYERS */}
+        <div className="flex-1 min-h-0 flex flex-col">
         <div className="px-5 pt-8 pb-4 shrink-0">
           <PanelHeader
             name="Layers"
@@ -1397,6 +1385,7 @@ function ShipMap() {
               </div>
             </div>
           </label>
+        </div>
         </div>
       </SidePanel>
 
