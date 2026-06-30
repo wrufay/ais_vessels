@@ -8,7 +8,7 @@ import TileGrid from "ol/tilegrid/TileGrid";
 import { get as getProjection } from "ol/proj";
 import { getTopLeft, getWidth } from "ol/extent";
 import { fromLonLat } from "ol/proj";
-import Feature, { type FeatureLike } from "ol/Feature";
+import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
 import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
@@ -19,81 +19,38 @@ import Draw from "ol/interaction/Draw";
 import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
 import "ol/ol.css";
+import {
+  type PresetRegion,
+  type Mooring,
+  CHA_REGIONS,
+  WEA_REGIONS,
+  AMAR_MOORINGS,
+  TYPE_COLORS,
+} from "./data/regions";
+import {
+  classifyType,
+  formatTime,
+  REGION_WEBGL_STYLE,
+  TYPE_NUM,
+  makeFeatureStyle,
+  makeMooringCanvas,
+  chaStyle,
+  chaHoverStyle,
+  drawnRegionLabel,
+  downloadPlot,
+  getSelectedChaName,
+  setSelectedChaName,
+  getClickedChaNames,
+  setClickedChaNames,
+} from "./utils/mapStyles";
+import PanelHeader from "./components/PanelHeader";
+import DateRangePicker from "./components/DateRangePicker";
+import RegionListItem from "./components/RegionListItem";
+import SidePanel from "./components/SidePanel";
+import XIcon from "./components/XIcon";
+import IconBar from "./components/IconBar";
 
 const API = import.meta.env.VITE_API_URL ?? "";
-
-// ---- Preset Regions ----
-interface PresetRegion {
-  name: string;
-  geojson: object;
-}
-
-const CHA_REGIONS: PresetRegion[] = [
-  {
-    name: "Roseway Basin",
-    geojson: {
-      type: "Polygon",
-      coordinates: [
-        [
-          [-64.9167, 43.2667],
-          [-64.9833, 42.7833],
-          [-65.5167, 42.65],
-          [-66.0833, 42.8667],
-          [-64.9167, 43.2667],
-        ],
-      ],
-    },
-  },
-  {
-    name: "Grand Manan Basin",
-    geojson: {
-      type: "Polygon",
-      coordinates: [
-        [
-          [-66.45, 44.8167],
-          [-66.2833, 44.7833],
-          [-66.2833, 44.6667],
-          [-66.3667, 44.55],
-          [-66.5, 44.4833],
-          [-66.6167, 44.4833],
-          [-66.6167, 44.7],
-          [-66.45, 44.8167],
-        ],
-      ],
-    },
-  },
-];
-
-const WEA_REGIONS: PresetRegion[] = [
-  {
-    name: "French Bank",
-    geojson: {
-      type: "Polygon",
-      coordinates: [[[-61.75,44.4167],[-61.75,44.4333],[-61.775,44.4333],[-61.8,44.4333],[-61.8,44.45],[-61.825,44.45],[-61.825,44.4667],[-61.85,44.4667],[-61.85,44.4833],[-61.85,44.5],[-61.875,44.5],[-61.875,44.5167],[-61.875,44.5333],[-61.9,44.5333],[-61.9,44.55],[-61.925,44.55],[-61.925,44.5667],[-61.95,44.5667],[-61.95,44.5833],[-61.975,44.5833],[-62.0,44.5833],[-62.0,44.6],[-62.0,44.6167],[-62.0,44.6333],[-61.975,44.6333],[-61.975,44.65],[-61.95,44.65],[-61.925,44.65],[-61.9,44.65],[-61.9,44.6667],[-61.875,44.6667],[-61.85,44.6667],[-61.825,44.6667],[-61.825,44.6833],[-61.8,44.6833],[-61.8,44.7],[-61.775,44.7],[-61.775,44.7167],[-61.75,44.7167],[-61.75,44.7333],[-61.75,44.75],[-61.75,44.7667],[-61.75,44.7833],[-61.75,44.8],[-61.725,44.8],[-61.725,44.8167],[-61.725,44.8333],[-61.725,44.85],[-61.7,44.85],[-61.7,44.8667],[-61.675,44.8667],[-61.65,44.8667],[-61.625,44.8667],[-61.6,44.8667],[-61.575,44.8667],[-61.55,44.8667],[-61.55,44.8833],[-61.525,44.8833],[-61.5,44.8833],[-61.5,44.9],[-61.475,44.9],[-61.475,44.9167],[-61.45,44.9167],[-61.425,44.9167],[-61.425,44.9333],[-61.4,44.9333],[-61.4,44.95],[-61.375,44.95],[-61.35,44.95],[-61.35,44.9667],[-61.325,44.9667],[-61.325,44.9833],[-61.3,44.9833],[-61.275,44.9833],[-61.275,45.0],[-61.25,45.0],[-61.225,45.0],[-61.225,44.9833],[-61.2,44.9833],[-61.2,44.9667],[-61.2,44.95],[-61.175,44.95],[-61.175,44.9333],[-61.175,44.9167],[-61.15,44.9167],[-61.125,44.9167],[-61.125,44.9],[-61.1,44.9],[-61.1,44.8833],[-61.075,44.8833],[-61.075,44.8667],[-61.05,44.8667],[-61.05,44.85],[-61.05,44.8333],[-61.05,44.8167],[-61.05,44.8],[-61.05,44.7833],[-61.05,44.7667],[-61.075,44.7667],[-61.075,44.75],[-61.075,44.7333],[-61.075,44.7167],[-61.1,44.7167],[-61.1,44.7],[-61.1,44.6833],[-61.125,44.6833],[-61.125,44.6667],[-61.125,44.65],[-61.15,44.65],[-61.15,44.6333],[-61.15,44.6167],[-61.175,44.6167],[-61.175,44.6],[-61.15,44.6],[-61.15,44.5833],[-61.15,44.5667],[-61.15,44.55],[-61.125,44.55],[-61.125,44.5333],[-61.1,44.5333],[-61.1,44.5167],[-61.1,44.5],[-61.1,44.4833],[-61.125,44.4833],[-61.125,44.4667],[-61.15,44.4667],[-61.15,44.45],[-61.175,44.45],[-61.2,44.45],[-61.225,44.45],[-61.225,44.4333],[-61.25,44.4333],[-61.275,44.4333],[-61.3,44.4333],[-61.3,44.4167],[-61.325,44.4167],[-61.35,44.4167],[-61.375,44.4167],[-61.4,44.4167],[-61.425,44.4167],[-61.45,44.4167],[-61.45,44.4333],[-61.475,44.4333],[-61.5,44.4333],[-61.525,44.4333],[-61.55,44.4333],[-61.575,44.4333],[-61.575,44.4167],[-61.6,44.4167],[-61.625,44.4167],[-61.65,44.4167],[-61.675,44.4167],[-61.7,44.4167],[-61.725,44.4167],[-61.75,44.4167]]],
-    },
-  },
-  {
-    name: "Middle Bank",
-    geojson: {
-      type: "Polygon",
-      coordinates: [[[-60.375,44.3167],[-60.375,44.3333],[-60.4,44.3333],[-60.4,44.35],[-60.425,44.35],[-60.45,44.35],[-60.475,44.35],[-60.5,44.35],[-60.525,44.35],[-60.55,44.35],[-60.575,44.35],[-60.575,44.3667],[-60.6,44.3667],[-60.625,44.3667],[-60.65,44.3667],[-60.675,44.3667],[-60.7,44.3667],[-60.725,44.3667],[-60.75,44.3667],[-60.775,44.3667],[-60.775,44.3833],[-60.8,44.3833],[-60.825,44.3833],[-60.85,44.3833],[-60.875,44.3833],[-60.875,44.4],[-60.9,44.4],[-60.9,44.4167],[-60.925,44.4167],[-60.95,44.4167],[-60.95,44.4333],[-60.975,44.4333],[-61.0,44.4333],[-61.025,44.4333],[-61.025,44.45],[-61.025,44.4667],[-61.025,44.4833],[-61.025,44.5],[-61.025,44.5167],[-61.025,44.5333],[-61.025,44.55],[-61.025,44.5667],[-61.025,44.5833],[-61.0,44.5833],[-61.0,44.6],[-61.0,44.6167],[-61.0,44.6333],[-60.975,44.6333],[-60.975,44.65],[-60.95,44.65],[-60.95,44.6667],[-60.925,44.6667],[-60.925,44.6833],[-60.925,44.7],[-60.9,44.7],[-60.875,44.7],[-60.85,44.7],[-60.85,44.7167],[-60.825,44.7167],[-60.8,44.7167],[-60.775,44.7167],[-60.75,44.7167],[-60.725,44.7167],[-60.7,44.7167],[-60.675,44.7167],[-60.675,44.7333],[-60.65,44.7333],[-60.625,44.7333],[-60.625,44.75],[-60.6,44.75],[-60.575,44.75],[-60.55,44.75],[-60.525,44.75],[-60.5,44.75],[-60.475,44.75],[-60.45,44.75],[-60.425,44.75],[-60.4,44.75],[-60.375,44.75],[-60.375,44.7333],[-60.375,44.7167],[-60.375,44.7],[-60.375,44.6833],[-60.375,44.6667],[-60.375,44.65],[-60.375,44.6333],[-60.35,44.6333],[-60.325,44.6333],[-60.3,44.6333],[-60.275,44.6333],[-60.25,44.6333],[-60.25,44.6167],[-60.25,44.6],[-60.25,44.5833],[-60.25,44.5667],[-60.25,44.55],[-60.25,44.5333],[-60.25,44.5167],[-60.25,44.5],[-60.25,44.4833],[-60.25,44.4667],[-60.25,44.45],[-60.25,44.4333],[-60.25,44.4167],[-60.25,44.4],[-60.25,44.3833],[-60.25,44.3667],[-60.25,44.35],[-60.275,44.35],[-60.275,44.3333],[-60.3,44.3333],[-60.3,44.3167],[-60.325,44.3167],[-60.35,44.3167],[-60.375,44.3167]]],
-    },
-  },
-  {
-    name: "Sable Island Bank",
-    geojson: {
-      type: "Polygon",
-      coordinates: [[[-61.45,43.4667],[-61.45,43.4833],[-61.475,43.4833],[-61.475,43.5],[-61.475,43.5167],[-61.5,43.5167],[-61.5,43.5333],[-61.5,43.55],[-61.5,43.5667],[-61.525,43.5667],[-61.525,43.5833],[-61.525,43.6],[-61.525,43.6167],[-61.525,43.6333],[-61.525,43.65],[-61.525,43.6667],[-61.525,43.6833],[-61.525,43.7],[-61.525,43.7167],[-61.525,43.7333],[-61.525,43.75],[-61.525,43.7667],[-61.5,43.7667],[-61.5,43.7833],[-61.5,43.8],[-61.5,43.8167],[-61.5,43.8333],[-61.475,43.8333],[-61.475,43.85],[-61.475,43.8667],[-61.45,43.8667],[-61.45,43.8833],[-61.45,43.9],[-61.425,43.9],[-61.4,43.9],[-61.4,43.9167],[-61.375,43.9167],[-61.35,43.9167],[-61.35,43.9333],[-61.325,43.9333],[-61.325,43.95],[-61.3,43.95],[-61.3,43.9667],[-61.275,43.9667],[-61.275,43.9833],[-61.275,44.0],[-61.25,44.0],[-61.25,44.0167],[-61.25,44.0333],[-61.25,44.05],[-61.25,44.0667],[-61.225,44.0667],[-61.225,44.0833],[-61.225,44.1],[-61.2,44.1],[-61.2,44.1167],[-61.2,44.1333],[-61.175,44.1333],[-61.175,44.15],[-61.15,44.15],[-61.15,44.1667],[-61.15,44.1833],[-61.125,44.1833],[-61.125,44.2],[-61.125,44.2167],[-61.1,44.2167],[-61.075,44.2167],[-61.075,44.2333],[-61.05,44.2333],[-61.05,44.25],[-61.025,44.25],[-61.0,44.25],[-60.975,44.25],[-60.95,44.25],[-60.925,44.25],[-60.9,44.25],[-60.875,44.25],[-60.85,44.25],[-60.825,44.25],[-60.8,44.25],[-60.8,44.2333],[-60.775,44.2333],[-60.775,44.2167],[-60.75,44.2167],[-60.725,44.2167],[-60.725,44.2],[-60.7,44.2],[-60.7,44.1833],[-60.675,44.1833],[-60.675,44.1667],[-60.65,44.1667],[-60.625,44.1667],[-60.625,44.15],[-60.6,44.15],[-60.6,44.1333],[-60.575,44.1333],[-60.55,44.1333],[-60.525,44.1333],[-60.525,44.1167],[-60.5,44.1167],[-60.475,44.1167],[-60.45,44.1167],[-60.45,44.1],[-60.475,44.1],[-60.475,44.0833],[-60.475,44.0667],[-60.475,44.05],[-60.5,44.05],[-60.5,44.0333],[-60.5,44.0167],[-60.5,44.0],[-60.5,43.9833],[-60.5,43.9667],[-60.5,43.95],[-60.5,43.9333],[-60.5,43.9167],[-60.5,43.9],[-60.475,43.9],[-60.475,43.8833],[-60.475,43.8667],[-60.45,43.8667],[-60.45,43.85],[-60.45,43.8333],[-60.425,43.8333],[-60.425,43.8167],[-60.4,43.8167],[-60.4,43.8],[-60.375,43.8],[-60.375,43.7833],[-60.35,43.7833],[-60.35,43.7667],[-60.325,43.7667],[-60.3,43.7667],[-60.3,43.75],[-60.275,43.75],[-60.275,43.7333],[-60.25,43.7333],[-60.225,43.7333],[-60.225,43.7167],[-60.225,43.7],[-60.225,43.6833],[-60.25,43.6833],[-60.25,43.6667],[-60.25,43.65],[-60.275,43.65],[-60.3,43.65],[-60.3,43.6333],[-60.325,43.6333],[-60.35,43.6333],[-60.35,43.6167],[-60.375,43.6167],[-60.4,43.6167],[-60.425,43.6167],[-60.425,43.6],[-60.45,43.6],[-60.475,43.6],[-60.475,43.5833],[-60.5,43.5833],[-60.525,43.5833],[-60.55,43.5833],[-60.55,43.5667],[-60.575,43.5667],[-60.6,43.5667],[-60.625,43.5667],[-60.65,43.5667],[-60.675,43.5667],[-60.7,43.5667],[-60.7,43.55],[-60.725,43.55],[-60.75,43.55],[-60.775,43.55],[-60.8,43.55],[-60.825,43.55],[-60.85,43.55],[-60.875,43.55],[-60.9,43.55],[-60.925,43.55],[-60.925,43.5333],[-60.95,43.5333],[-60.975,43.5333],[-61.0,43.5333],[-61.025,43.5333],[-61.05,43.5333],[-61.05,43.5167],[-61.075,43.5167],[-61.1,43.5167],[-61.125,43.5167],[-61.15,43.5167],[-61.175,43.5167],[-61.175,43.5],[-61.2,43.5],[-61.225,43.5],[-61.225,43.4833],[-61.25,43.4833],[-61.275,43.4833],[-61.275,43.4667],[-61.3,43.4667],[-61.325,43.4667],[-61.35,43.4667],[-61.375,43.4667],[-61.4,43.4667],[-61.425,43.4667],[-61.45,43.4667]]],
-    },
-  },
-  {
-    name: "Sydney Bight",
-    geojson: {
-      type: "Polygon",
-      coordinates: [[[-59.625,46.3833],[-59.625,46.4],[-59.65,46.4],[-59.675,46.4],[-59.675,46.4167],[-59.7,46.4167],[-59.725,46.4167],[-59.75,46.4167],[-59.775,46.4167],[-59.8,46.4167],[-59.8,46.4333],[-59.825,46.4333],[-59.85,46.4333],[-59.85,46.45],[-59.875,46.45],[-59.875,46.4667],[-59.9,46.4667],[-59.925,46.4667],[-59.95,46.4667],[-59.95,46.4833],[-59.975,46.4833],[-60.0,46.4833],[-60.025,46.4833],[-60.025,46.5],[-60.05,46.5],[-60.05,46.5167],[-60.025,46.5167],[-60.025,46.5333],[-60.025,46.55],[-60.025,46.5667],[-60.025,46.5833],[-60.025,46.6],[-60.0,46.6],[-60.0,46.6167],[-60.0,46.6333],[-60.0,46.65],[-60.0,46.6667],[-60.0,46.6833],[-60.0,46.7],[-59.975,46.7],[-59.975,46.7167],[-59.975,46.7333],[-59.95,46.7333],[-59.95,46.75],[-59.925,46.75],[-59.925,46.7667],[-59.9,46.7667],[-59.9,46.7833],[-59.875,46.7833],[-59.85,46.7833],[-59.825,46.7833],[-59.8,46.7833],[-59.8,46.7667],[-59.775,46.7667],[-59.75,46.7667],[-59.75,46.75],[-59.725,46.75],[-59.725,46.7333],[-59.7,46.7333],[-59.675,46.7333],[-59.675,46.7167],[-59.65,46.7167],[-59.65,46.7],[-59.625,46.7],[-59.625,46.6833],[-59.625,46.6667],[-59.6,46.6667],[-59.6,46.65],[-59.575,46.65],[-59.575,46.6333],[-59.55,46.6333],[-59.55,46.6167],[-59.55,46.6],[-59.525,46.6],[-59.525,46.5833],[-59.5,46.5833],[-59.5,46.5667],[-59.475,46.5667],[-59.475,46.55],[-59.45,46.55],[-59.45,46.5333],[-59.45,46.5167],[-59.45,46.5],[-59.45,46.4833],[-59.475,46.4833],[-59.475,46.4667],[-59.5,46.4667],[-59.5,46.45],[-59.525,46.45],[-59.525,46.4333],[-59.55,46.4333],[-59.55,46.4167],[-59.575,46.4167],[-59.575,46.4],[-59.6,46.4],[-59.6,46.3833],[-59.625,46.3833]]],
-    },
-  },
-];
 
 interface Vessel {
   mmsi: number;
@@ -111,7 +68,13 @@ interface RoutePoint {
   source: string;
 }
 
-interface RegionPosition { mmsi: number; lat: number; lon: number; sog: number | null; ship_type: number | null }
+interface RegionPosition {
+  mmsi: number;
+  lat: number;
+  lon: number;
+  sog: number | null;
+  ship_type: number | null;
+}
 
 interface RegionStats {
   total_positions: number;
@@ -119,239 +82,11 @@ interface RegionStats {
   vessel_mmsis: number[];
   positions: RegionPosition[];
   days: { date: string; vessel_counts: Record<string, number> }[];
-  plots: { vessel_types?: string; speed_overall?: string; vessel_density?: string };
-}
-
-const TYPE_COLORS: Record<string, string> = {
-  cargo:            "#0072BD",
-  tanker:           "#D95319",
-  fishing:          "#EDB120",
-  passenger:        "#7E2F8E",
-  "search & rescue":"#77AC30",
-  other:            "#4DBEEE",
-  unknown:          "#A2142F",
-};
-
-function classifyType(code: string | number | null): string {
-  const c = typeof code === "number" ? code : parseInt(String(code ?? ""), 10);
-  if (Number.isNaN(c))
-    return String(code ?? "").trim() ? String(code).toLowerCase() : "unknown";
-  if (c >= 70 && c < 80) return "cargo";
-  if (c >= 80 && c < 90) return "tanker";
-  if (c === 30) return "fishing";
-  if (c >= 60 && c < 70) return "passenger";
-  if (c === 51) return "search & rescue";
-  if (
-    (c >= 20 && c < 30) ||
-    (c >= 31 && c < 51) ||
-    (c >= 52 && c < 60) ||
-    (c >= 90 && c < 100)
-  )
-    return "other";
-  return "unknown";
-}
-
-function formatTime(epochSeconds: number): string {
-  return (
-    new Date(epochSeconds * 1000).toISOString().replace("T", " ").slice(0, 19) +
-    " UTC"
-  );
-}
-
-const EMPTY_STYLE = new Style({});
-
-// type_num encoding used in the WebGL region track layer style (0 = unknown)
-const TYPE_NUM: Record<string, number> = {
-  cargo: 1, tanker: 2, fishing: 3, passenger: 4, "search & rescue": 5, other: 6,
-};
-
-// WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed
-const REGION_WEBGL_STYLE = {
-  variables: { mode: 0 },
-  "circle-radius": 4,
-  "circle-fill-color": [
-    "case",
-    ["==", ["var", "mode"], 2],
-    ["case", [">", ["get", "sog"], 10], "#ee6c4d", [">", ["get", "sog"], 3], "#ffc857", "#0a8754"],
-    ["==", ["var", "mode"], 1],
-    ["match", ["get", "type_num"],
-      1, "#0072BD", 2, "#D95319", 3, "#EDB120", 4, "#7E2F8E", 5, "#77AC30", 6, "#4DBEEE",
-      "#A2142F",
-    ],
-    "#5a5a5a",
-  ],
-  "circle-opacity": 0.6,
-};
-
-
-function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
-  return function (feature: FeatureLike): Style {
-    const geomType = feature.getGeometry()?.getType();
-    if (geomType === "LineString") return VESSEL_STYLES.line;
-    const isStart = feature.get("isStart") as boolean;
-    const isEnd = feature.get("isEnd") as boolean;
-    if (isStart && !showStart) return EMPTY_STYLE;
-    if (isEnd && !showEnd) return EMPTY_STYLE;
-    if (isStart) return VESSEL_STYLES.start;
-    if (isEnd) return VESSEL_STYLES.end;
-    const sog = (feature.get("sog") as number) || 0;
-    return sog > 10 ? VESSEL_STYLES.fast : sog > 3 ? VESSEL_STYLES.mid : VESSEL_STYLES.slow;
+  plots: {
+    vessel_types?: string;
+    speed_overall?: string;
+    vessel_density?: string;
   };
-}
-
-function regionColor(type: string) {
-  if (type === "WEA") return { stroke: "#ee6c4d", fill: "rgba(238,108,77,0.07)", hoverFill: "rgba(238,108,77,0.15)", selectedFill: "rgba(238,108,77,0.28)" };
-  if (type === "Uploaded") return { stroke: "#9b59b6", fill: "rgba(155,89,182,0.07)", hoverFill: "rgba(155,89,182,0.15)", selectedFill: "rgba(155,89,182,0.28)" };
-  return { stroke: "#3d5a80", fill: "rgba(61,90,128,0.07)", hoverFill: "rgba(61,90,128,0.15)", selectedFill: "rgba(61,90,128,0.28)" };
-}
-
-let _selectedChaName: string | null = null;
-let _clickedChaNames: Set<string> = new Set();
-
-function chaStyle(feature: FeatureLike): Style {
-  const c = regionColor(feature.get("regionType") as string);
-  const name = feature.get("name") as string;
-  const selected = name === _selectedChaName;
-  const clicked = _clickedChaNames.has(name);
-  if (!selected && !clicked) return new Style();
-  return new Style({
-    stroke: new Stroke({ color: c.stroke, width: selected ? 2.5 : 2 }),
-    fill: new Fill({ color: selected ? c.selectedFill : c.fill }),
-  });
-}
-
-function chaHoverStyle(feature: FeatureLike): Style {
-  const c = regionColor(feature.get("regionType") as string);
-  const selected = feature.get("name") === _selectedChaName;
-  return new Style({
-    stroke: new Stroke({ color: c.stroke, width: 2.5 }),
-    fill: new Fill({ color: selected ? c.selectedFill : c.hoverFill }),
-  });
-}
-
-function drawnRegionLabel(geojson: object): string {
-  const coords = (geojson as any)?.coordinates?.[0] as number[][] | undefined;
-  if (!coords?.length) return "Drawn region";
-  return coords.slice(0, -1).slice(0, 3).map(([lon, lat]) =>
-    `${Math.abs(lat).toFixed(1)}°${lat >= 0 ? "N" : "S"} ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? "E" : "W"}`
-  ).join(", ") + (coords.length - 1 > 3 ? "…" : "");
-}
-
-// ---- Moorings ----
-interface Mooring {
-  name: string;
-  lat: number;
-  lon: number;
-  depth: number;
-  deployment: string;
-  recovery: string;
-}
-
-const AMAR_MOORINGS: Mooring[] = [
-  { name: "201804ROB",  lat: 43.0026, lon: -65.5653, depth: 101, deployment: "2018-04-30", recovery: "2018-09-16" },
-  { name: "201805EMBS", lat: 43.4976, lon: -62.8700, depth: 98,  deployment: "2018-05-01", recovery: "2018-09-23" },
-  { name: "201809ROB",  lat: 43.0014, lon: -65.5660, depth: 119, deployment: "2018-09-16", recovery: "2019-10-07" },
-  { name: "201809EMBS", lat: 43.4973, lon: -62.8699, depth: 120, deployment: "2018-09-23", recovery: "2019-10-06" },
-  { name: "201809GMB",  lat: 44.6925, lon: -66.5311, depth: 175, deployment: "2018-09-21", recovery: "2019-04-08" },
-  { name: "201904GMB",  lat: 44.6916, lon: -66.5299, depth: 179, deployment: "2019-04-08", recovery: "2019-11-07" },
-  { name: "201904JOBW", lat: 43.3001, lon: -67.4999, depth: 179, deployment: "2019-04-09", recovery: "2019-10-07" },
-  { name: "201910ROB",  lat: 43.0014, lon: -65.5648, depth: 105, deployment: "2019-10-07", recovery: "2020-08-31" },
-  { name: "201910EMBS", lat: 43.4966, lon: -62.8694, depth: 96,  deployment: "2019-10-06", recovery: "2020-09-07" },
-  { name: "201910JOBW", lat: 43.3025, lon: -67.4990, depth: 173, deployment: "2019-10-07", recovery: "2020-09-01" },
-  { name: "202008ROB",  lat: 42.9996, lon: -65.5673, depth: 98,  deployment: "2020-08-31", recovery: "2021-08-19" },
-  { name: "202009EMBS", lat: 43.4966, lon: -62.8696, depth: 98,  deployment: "2020-09-07", recovery: "2021-08-26" },
-  { name: "202009GMB",  lat: 44.6965, lon: -66.5306, depth: 170, deployment: "2020-09-01", recovery: "2021-04-11" },
-  { name: "202009JOBW", lat: 43.3031, lon: -67.4991, depth: 184, deployment: "2020-09-01", recovery: "2021-08-22" },
-  { name: "202104GMB",  lat: 44.6995, lon: -66.5300, depth: 173, deployment: "2021-04-11", recovery: "2021-08-23" },
-  { name: "202108EMBD", lat: 43.6085, lon: -62.8686, depth: 179, deployment: "2021-08-26", recovery: "2022-09-13" },
-  { name: "202108GMB",  lat: 44.6923, lon: -66.5314, depth: 172, deployment: "2021-08-23", recovery: "2022-10-03" },
-];
-
-const _vesselCanvasCache: Record<string, HTMLCanvasElement> = {};
-function makeVesselCanvas(hex: string, radius: number, border?: string): HTMLCanvasElement {
-  const key = `${hex}-${radius}-${border ?? ""}`;
-  if (_vesselCanvasCache[key]) return _vesselCanvasCache[key];
-  const pad = border ? 2 : 1;
-  const size = (radius + pad) * 2;
-  const cx = size / 2;
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d")!;
-  if (border) {
-    ctx.beginPath();
-    ctx.arc(cx, cx, radius + 1.5, 0, Math.PI * 2);
-    ctx.fillStyle = border;
-    ctx.fill();
-  }
-  const grad = ctx.createRadialGradient(cx - radius * 0.3, cx - radius * 0.3, 0, cx, cx, radius);
-  // lighten color for highlight
-  grad.addColorStop(0, lighten(hex, 0.45));
-  grad.addColorStop(0.55, hex);
-  grad.addColorStop(1, darken(hex, 0.35));
-  ctx.beginPath();
-  ctx.arc(cx, cx, radius, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
-  _vesselCanvasCache[key] = c;
-  return c;
-}
-
-function lighten(hex: string, amt: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, (n >> 16) + Math.round(255 * amt));
-  const g = Math.min(255, ((n >> 8) & 0xff) + Math.round(255 * amt));
-  const b = Math.min(255, (n & 0xff) + Math.round(255 * amt));
-  return `rgb(${r},${g},${b})`;
-}
-
-function darken(hex: string, amt: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.max(0, (n >> 16) - Math.round(255 * amt));
-  const g = Math.max(0, ((n >> 8) & 0xff) - Math.round(255 * amt));
-  const b = Math.max(0, (n & 0xff) - Math.round(255 * amt));
-  return `rgb(${r},${g},${b})`;
-}
-
-const _mooringCanvasCache: Record<string, HTMLCanvasElement> = {};
-function makeMooringCanvas(highlighted: boolean): HTMLCanvasElement {
-  const key = highlighted ? "1" : "0";
-  if (_mooringCanvasCache[key]) return _mooringCanvasCache[key];
-  const r = 10;
-  const size = r * 2 + 2;
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d")!;
-  const grad = ctx.createRadialGradient(r - 3, r - 3, 1, r, r, r);
-  grad.addColorStop(0, highlighted ? "#6b8cae" : "#4e6680");
-  grad.addColorStop(0.6, highlighted ? "#3d5a80" : "#293241");
-  grad.addColorStop(1, "#111a22");
-  ctx.beginPath();
-  ctx.arc(r + 1, r + 1, r, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
-  _mooringCanvasCache[key] = c;
-  return c;
-}
-
-const iconAnchor = { anchor: [0.5, 0.5] as [number, number], anchorXUnits: "fraction" as const, anchorYUnits: "fraction" as const };
-const VESSEL_STYLES = {
-  fast:  new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", 5), ...iconAnchor }) }),
-  mid:   new Style({ image: new Icon({ img: makeVesselCanvas("#ffc857", 5), ...iconAnchor }) }),
-  slow:  new Style({ image: new Icon({ img: makeVesselCanvas("#0a8754", 5), ...iconAnchor }) }),
-  start: new Style({ image: new Icon({ img: makeVesselCanvas("#98c1d9", 7, "#fff"), ...iconAnchor }) }),
-  end:   new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", 7, "#fff"), ...iconAnchor }) }),
-  line:  new Style({ stroke: new Stroke({ color: "#98c1d9", width: 2 }) }),
-};
-
-function downloadPlot(b64: string, name: string) {
-  const a = document.createElement("a");
-  a.href = `data:image/png;base64,${b64}`;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
 }
 
 function ShipMap() {
@@ -396,36 +131,53 @@ function ShipMap() {
   const [pointCount, setPointCount] = useState<number | null>(null);
   const [pointTotal, setPointTotal] = useState<number | null>(null);
   const [popup, setPopup] = useState<Popup | null>(null);
-  const [mooringPopup, setMooringPopup] = useState<{ x: number; y: number; mooring: Mooring } | null>(null);
+  const [mooringPopup, setMooringPopup] = useState<{
+    x: number;
+    y: number;
+    mooring: Mooring;
+  } | null>(null);
   const [regionStats, setRegionStats] = useState<RegionStats | null>(null);
   const [regionLoading, setRegionLoading] = useState(false);
   const [regionTime, setRegionTime] = useState<number | null>(null);
   const [regionName, setRegionName] = useState<string | null>(null);
-  useEffect(() => { regionNameRef.current = regionName; }, [regionName]);
+  useEffect(() => {
+    regionNameRef.current = regionName;
+  }, [regionName]);
   const [drawnPolygon, setDrawnPolygon] = useState<object | null>(null);
   const [drawing, setDrawing] = useState(false);
-  const [userSelectedRegions, setUserSelectedRegions] = useState<{ name: string; geojson: object; type: string }[]>([]);
+  const [userSelectedRegions, setUserSelectedRegions] = useState<
+    { name: string; geojson: object; type: string }[]
+  >([]);
   const [showResults, setShowResults] = useState(false);
   const [closingResults, setClosingResults] = useState(false);
   function closeResults() {
     setClosingResults(true);
-    setTimeout(() => { setShowResults(false); setClosingResults(false); }, 180);
+    setTimeout(() => {
+      setShowResults(false);
+      setClosingResults(false);
+    }, 180);
   }
   const [hoveredCha, setHoveredCha] = useState<string | null>(null);
   const [showVesselPanel, setShowVesselPanel] = useState(false);
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(new Set());
+  const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(
+    new Set()
+  );
   const [uploadedRegions, setUploadedRegions] = useState<PresetRegion[]>([]);
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
   const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
   const [showBathymetry, setShowBathymetry] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [regionVessels, setRegionVessels] = useState<Vessel[]>([]);
-  const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(null);
+  const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(
+    null
+  );
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
-  const [regionDisplayMode, setRegionDisplayMode] = useState<"grey" | "type" | "speed">("grey");
+  const [regionDisplayMode, setRegionDisplayMode] = useState<
+    "grey" | "type" | "speed"
+  >("grey");
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -440,7 +192,12 @@ function ShipMap() {
         dataProjection: "EPSG:4326",
         featureProjection: "EPSG:3857",
       }) as OLPolygon;
-      const f = new Feature({ geometry: geom, name: r.name, chaRegion: r, regionType: r.regionType });
+      const f = new Feature({
+        geometry: geom,
+        name: r.name,
+        chaRegion: r,
+        regionType: r.regionType,
+      });
       chaSourceRef.current.addFeature(f);
     });
   }, [uploadedRegions]);
@@ -472,7 +229,9 @@ function ShipMap() {
     const mooringLayer = new VectorLayer({
       source: mooringSourceRef.current,
       style: (feature) => {
-        const isHighlighted = (feature.get("mooring") as Mooring)?.name === highlightedMooringRef.current;
+        const isHighlighted =
+          (feature.get("mooring") as Mooring)?.name ===
+          highlightedMooringRef.current;
         return new Style({
           image: new Icon({
             img: makeMooringCanvas(isHighlighted),
@@ -491,7 +250,10 @@ function ShipMap() {
     routeLayerRef.current = routeLayer;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const regionTrackLayer = new WebGLPointsLayer({ source: regionTrackSourceRef.current, style: REGION_WEBGL_STYLE as any });
+    const regionTrackLayer = new WebGLPointsLayer({
+      source: regionTrackSourceRef.current,
+      style: REGION_WEBGL_STYLE as any,
+    });
     regionTrackLayerRef.current = regionTrackLayer;
 
     const highlightLayer = new VectorLayer({
@@ -504,7 +266,10 @@ function ShipMap() {
     const proj4326 = getProjection("EPSG:4326")!;
     const proj4326Extent = proj4326.getExtent()!;
     const proj4326Width = getWidth(proj4326Extent);
-    const resolutions = Array.from({ length: 14 }, (_, z) => proj4326Width / (256 * Math.pow(2, z)));
+    const resolutions = Array.from(
+      { length: 14 },
+      (_, z) => proj4326Width / (256 * Math.pow(2, z))
+    );
     const bathyTileGrid = new TileGrid({
       extent: proj4326Extent,
       origin: getTopLeft(proj4326Extent),
@@ -515,7 +280,12 @@ function ShipMap() {
     const bathyLayer = new TileLayer({
       source: new TileWMS({
         url: "https://maps-cartes.services.geo.ca/server_serveur/services/NRCan/GSC_Atlantic_bathymetric_compilation_en/MapServer/WmsServer?",
-        params: { LAYERS: "1", VERSION: "1.3.0", FORMAT: "image/png", CRS: "EPSG:4326" },
+        params: {
+          LAYERS: "1",
+          VERSION: "1.3.0",
+          FORMAT: "image/png",
+          CRS: "EPSG:4326",
+        },
         projection: "EPSG:4326",
         tileGrid: bathyTileGrid,
         crossOrigin: "anonymous",
@@ -531,8 +301,11 @@ function ShipMap() {
       layers: [
         new TileLayer({
           source: new XYZ({
-            url: `https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}.png?api_key=${import.meta.env.VITE_STADIA_KEY}`,
-            attributions: '© <a href="https://stamen.com">Stamen Design</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            url: `https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}.png?api_key=${
+              import.meta.env.VITE_STADIA_KEY
+            }`,
+            attributions:
+              '© <a href="https://stamen.com">Stamen Design</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
             maxZoom: 18,
           }),
         }),
@@ -566,12 +339,12 @@ function ShipMap() {
           if (regionNameRef.current === cha.name) {
             setDrawnPolygon(null);
             setRegionName(null);
-            _selectedChaName = null;
+            setSelectedChaName(null);
           } else {
             setDrawnPolygon(cha.geojson);
             setRegionName(cha.name);
             drawSourceRef.current.clear();
-            _selectedChaName = cha.name;
+            setSelectedChaName(cha.name);
             setShowRegionPanel(true);
           }
           chaSourceRef.current.changed();
@@ -585,7 +358,11 @@ function ShipMap() {
         if (feature.getGeometry()?.getType() !== "Point") return;
         if (feature.get("chaRegion")) return;
         if (feature.get("mooring")) {
-          setMooringPopup({ x: e.pixel[0], y: e.pixel[1], mooring: feature.get("mooring") as Mooring });
+          setMooringPopup({
+            x: e.pixel[0],
+            y: e.pixel[1],
+            mooring: feature.get("mooring") as Mooring,
+          });
           return true;
         }
         setPopup({
@@ -611,7 +388,8 @@ function ShipMap() {
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         if (feature.get("chaRegion")) {
           const name = feature.get("name") as string;
-          const visible = _clickedChaNames.has(name) || name === _selectedChaName;
+          const visible =
+            getClickedChaNames().has(name) || name === getSelectedChaName();
           if (!visible) return;
           overCha = true;
           setHoveredCha(name);
@@ -626,11 +404,14 @@ function ShipMap() {
       });
       if (!overCha) {
         setHoveredCha(null);
-        chaSourceRef.current.getFeatures().forEach((f) => f.setStyle(undefined));
+        chaSourceRef.current
+          .getFeatures()
+          .forEach((f) => f.setStyle(undefined));
       }
       if (!overMooring) setHoveredMooring(null);
 
-      map.getTargetElement().style.cursor = overCha || overMooring ? "pointer" : "";
+      map.getTargetElement().style.cursor =
+        overCha || overMooring ? "pointer" : "";
     });
 
     mapObj.current = map;
@@ -643,7 +424,8 @@ function ShipMap() {
 
   useEffect(() => {
     regionDisplayModeRef.current = regionDisplayMode;
-    const modeNum = regionDisplayMode === "type" ? 1 : regionDisplayMode === "speed" ? 2 : 0;
+    const modeNum =
+      regionDisplayMode === "type" ? 1 : regionDisplayMode === "speed" ? 2 : 0;
     regionTrackLayerRef.current?.updateStyleVariables({ mode: modeNum });
   }, [regionDisplayMode]);
 
@@ -653,7 +435,10 @@ function ShipMap() {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json();
       })
-      .then((d) => { setServerError(null); setVessels(d.vessels || []); })
+      .then((d) => {
+        setServerError(null);
+        setVessels(d.vessels || []);
+      })
       .catch((e: Error) => setServerError(e.message));
   }, [start, end]);
 
@@ -677,26 +462,36 @@ function ShipMap() {
     reader.onload = (evt) => {
       try {
         const lines = (evt.target?.result as string).trim().split(/\r?\n/);
-        const header = lines[0].toLowerCase().split(",").map((h) => h.trim());
+        const header = lines[0]
+          .toLowerCase()
+          .split(",")
+          .map((h) => h.trim());
         const idx = (col: string) => header.indexOf(col);
         const toISO = (d: string) => {
           const dt = new Date(d);
           return isNaN(dt.getTime()) ? d : dt.toISOString().slice(0, 10);
         };
-        const parsed: Mooring[] = lines.slice(1).map((line) => {
-          const cols = line.split(",").map((c) => c.trim().replace(/\r/g, ""));
-          return {
-            name: cols[idx("name")],
-            lat: parseFloat(cols[idx("lat")]),
-            lon: parseFloat(cols[idx("lon")]),
-            depth: parseFloat(cols[idx("depth")] ?? "0"),
-            deployment: toISO(cols[idx("deployment")]),
-            recovery: toISO(cols[idx("recovery")]),
-          };
-        }).filter((m) => m.name && !isNaN(m.lat) && !isNaN(m.lon));
+        const parsed: Mooring[] = lines
+          .slice(1)
+          .map((line) => {
+            const cols = line
+              .split(",")
+              .map((c) => c.trim().replace(/\r/g, ""));
+            return {
+              name: cols[idx("name")],
+              lat: parseFloat(cols[idx("lat")]),
+              lon: parseFloat(cols[idx("lon")]),
+              depth: parseFloat(cols[idx("depth")] ?? "0"),
+              deployment: toISO(cols[idx("deployment")]),
+              recovery: toISO(cols[idx("recovery")]),
+            };
+          })
+          .filter((m) => m.name && !isNaN(m.lat) && !isNaN(m.lon));
         setUploadedMoorings((prev) => [...prev, ...parsed]);
       } catch {
-        alert("Invalid CSV. Expected columns: name, lat, lon, depth, deployment, recovery");
+        alert(
+          "Invalid CSV. Expected columns: name, lat, lon, depth, deployment, recovery"
+        );
       }
     };
     reader.readAsText(file);
@@ -706,8 +501,9 @@ function ShipMap() {
   function toggleClickedRegion(name: string) {
     setClickedRegionNames((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      _clickedChaNames = next;
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      setClickedChaNames(next);
       chaSourceRef.current.changed();
       return next;
     });
@@ -721,22 +517,36 @@ function ShipMap() {
       try {
         const buffer = evt.target?.result as ArrayBuffer;
         const fc = await shp(buffer);
-        const features = Array.isArray(fc) ? fc.flatMap((f) => f.features) : fc.features;
+        const features = Array.isArray(fc)
+          ? fc.flatMap((f) => f.features)
+          : fc.features;
         const name = file.name.replace(/\.zip$/i, "");
         features.forEach((feat, i) => {
-          const regionName = feat.properties?.Name || feat.properties?.name || (features.length === 1 ? name : `${name} ${i + 1}`);
+          const regionName =
+            feat.properties?.Name ||
+            feat.properties?.name ||
+            (features.length === 1 ? name : `${name} ${i + 1}`);
           const geometry = feat.geometry;
-          setUploadedRegions((prev) => [...prev, { name: regionName, geojson: geometry }]);
-          setClickedRegionNames((prev) => { const next = new Set(prev); next.add(regionName); _clickedChaNames = next; return next; });
+          setUploadedRegions((prev) => [
+            ...prev,
+            { name: regionName, geojson: geometry },
+          ]);
+          setClickedRegionNames((prev) => {
+            const next = new Set(prev);
+            next.add(regionName);
+            setClickedChaNames(next);
+            return next;
+          });
         });
       } catch {
-        alert("Invalid shapefile. Upload a .zip containing .shp, .dbf, and .prj files.");
+        alert(
+          "Invalid shapefile. Upload a .zip containing .shp, .dbf, and .prj files."
+        );
       }
     };
     reader.readAsArrayBuffer(file);
     e.target.value = "";
   }
-
 
   function loadRoute(vessel = selected) {
     if (!vessel) return;
@@ -750,35 +560,37 @@ function ShipMap() {
 
     fetch(`${API}/api/vessel/${vessel.mmsi}/route?${params}`)
       .then((r) => r.json())
-      .then((data: { points: RoutePoint[]; total?: number; sampled?: boolean }) => {
-        const pts = data.points || [];
-        setPointCount(pts.length);
-        setPointTotal(data.sampled ? (data.total ?? null) : null);
-        if (pts.length === 0) return;
+      .then(
+        (data: { points: RoutePoint[]; total?: number; sampled?: boolean }) => {
+          const pts = data.points || [];
+          setPointCount(pts.length);
+          setPointTotal(data.sampled ? data.total ?? null : null);
+          if (pts.length === 0) return;
 
-        pts.forEach((p, i) => {
-          const f = new Feature({
-            geometry: new Point(fromLonLat([p.longitude, p.latitude])),
-            sog: p.sog,
-            cog: p.cog,
-            time: p.time,
-            lat: p.latitude,
-            lon: p.longitude,
-            source: p.source,
-            isStart: i === 0,
-            isEnd: i === pts.length - 1,
+          pts.forEach((p, i) => {
+            const f = new Feature({
+              geometry: new Point(fromLonLat([p.longitude, p.latitude])),
+              sog: p.sog,
+              cog: p.cog,
+              time: p.time,
+              lat: p.latitude,
+              lon: p.longitude,
+              source: p.source,
+              isStart: i === 0,
+              isEnd: i === pts.length - 1,
+            });
+            sourceRef.current.addFeature(f);
           });
-          sourceRef.current.addFeature(f);
-        });
 
-        const extent = sourceRef.current.getExtent();
-        if (extent)
-          mapObj.current!.getView().fit(extent, {
-            padding: [60, 60, 60, 60],
-            maxZoom: 12,
-            duration: 800,
-          });
-      })
+          const extent = sourceRef.current.getExtent();
+          if (extent)
+            mapObj.current!.getView().fit(extent, {
+              padding: [60, 60, 60, 60],
+              maxZoom: 12,
+              duration: 800,
+            });
+        }
+      )
       .catch(console.error);
   }
 
@@ -790,15 +602,21 @@ function ShipMap() {
     regionRouteCacheRef.current = {};
     console.log(`[region] rendering ${positions.length} positions`);
     positions.forEach((p) => {
-      regionTrackSourceRef.current.addFeature(new Feature({
-        geometry: new Point(fromLonLat([p.lon, p.lat])),
-        mmsi: p.mmsi,
-        sog: p.sog ?? 0,
-        ship_type: p.ship_type,
-        type_num: TYPE_NUM[classifyType(p.ship_type)] ?? 0,
-      }));
+      regionTrackSourceRef.current.addFeature(
+        new Feature({
+          geometry: new Point(fromLonLat([p.lon, p.lat])),
+          mmsi: p.mmsi,
+          sog: p.sog ?? 0,
+          ship_type: p.ship_type,
+          type_num: TYPE_NUM[classifyType(p.ship_type)] ?? 0,
+        })
+      );
     });
-    console.log(`[region] source has ${regionTrackSourceRef.current.getFeatures().length} features`);
+    console.log(
+      `[region] source has ${
+        regionTrackSourceRef.current.getFeatures().length
+      } features`
+    );
   }
 
   function hoverRegionVessel(mmsi: number) {
@@ -809,7 +627,10 @@ function ShipMap() {
       renderHighlight(mmsi, cached);
       return;
     }
-    const params = new URLSearchParams({ start: `${start}T00:00:00`, end: `${end}T23:59:59` });
+    const params = new URLSearchParams({
+      start: `${start}T00:00:00`,
+      end: `${end}T23:59:59`,
+    });
     fetch(`${API}/api/vessel/${mmsi}/route?${params}`)
       .then((r) => r.json())
       .then((data: { points: RoutePoint[] }) => {
@@ -823,18 +644,20 @@ function ShipMap() {
   function renderHighlight(mmsi: number, pts: RoutePoint[]) {
     highlightSourceRef.current.clear();
     pts.forEach((p, i) => {
-      highlightSourceRef.current.addFeature(new Feature({
-        geometry: new Point(fromLonLat([p.longitude, p.latitude])),
-        mmsi,
-        sog: p.sog,
-        cog: p.cog,
-        time: p.time,
-        lat: p.latitude,
-        lon: p.longitude,
-        source: p.source,
-        isStart: i === 0,
-        isEnd: i === pts.length - 1,
-      }));
+      highlightSourceRef.current.addFeature(
+        new Feature({
+          geometry: new Point(fromLonLat([p.longitude, p.latitude])),
+          mmsi,
+          sog: p.sog,
+          cog: p.cog,
+          time: p.time,
+          lat: p.latitude,
+          lon: p.longitude,
+          source: p.source,
+          isStart: i === 0,
+          isEnd: i === pts.length - 1,
+        })
+      );
     });
   }
 
@@ -865,7 +688,7 @@ function ShipMap() {
         featureProjection: "EPSG:3857",
       });
       setDrawnPolygon(geojson);
-      _selectedChaName = null;
+      setSelectedChaName(null);
       chaSourceRef.current.changed();
       setDrawing(false);
       setUserSelectedRegions((prev) => {
@@ -875,7 +698,7 @@ function ShipMap() {
         setClickedRegionNames((prevClicked) => {
           const next = new Set(prevClicked);
           next.add(name);
-          _clickedChaNames = next;
+          setClickedChaNames(next);
           return next;
         });
         return [...prev, { name, geojson, type: "drawn" }];
@@ -912,7 +735,7 @@ function ShipMap() {
     setRegionStats(null);
     setRegionTime(null);
     setRegionName(null);
-    _selectedChaName = null;
+    setSelectedChaName(null);
     chaSourceRef.current.changed();
   }
 
@@ -951,7 +774,9 @@ function ShipMap() {
     })
       .then((r) => r.json())
       .then((d: { vessel_mmsis: number[]; positions: RegionPosition[] }) => {
-        const rv = vessels.filter((v) => (d.vessel_mmsis ?? []).includes(v.mmsi));
+        const rv = vessels.filter((v) =>
+          (d.vessel_mmsis ?? []).includes(v.mmsi)
+        );
         setRegionVessels(rv);
         renderRegionPositions(d.positions ?? []);
         setViewVesselsMode(true);
@@ -965,10 +790,13 @@ function ShipMap() {
   const activeVesselList = regionVessels.length > 0 ? regionVessels : vessels;
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return activeVesselList.filter((v) =>
-      String(v.mmsi).includes(q) ||
-      (v.vessel_name || "").toLowerCase().includes(q) ||
-      String(v.ship_type || "").toLowerCase().includes(q)
+    return activeVesselList.filter(
+      (v) =>
+        String(v.mmsi).includes(q) ||
+        (v.vessel_name || "").toLowerCase().includes(q) ||
+        String(v.ship_type || "")
+          .toLowerCase()
+          .includes(q)
     );
   }, [activeVesselList, search]);
 
@@ -980,16 +808,24 @@ function ShipMap() {
       {/* Server error banner */}
       {serverError && (
         <div className="absolute top-0 left-0 right-0 z-50 bg-red-600 text-white text-xs text-center py-2 px-4 flex items-center justify-center gap-3">
-          <span>Could not reach the server — vessel data unavailable. <span className="opacity-75">({serverError})</span></span>
-          <button onClick={() => setServerError(null)} className="underline opacity-75 hover:opacity-100">Dismiss</button>
+          <span>
+            Could not reach the server — vessel data unavailable.{" "}
+            <span className="opacity-75">({serverError})</span>
+          </span>
+          <button
+            onClick={() => setServerError(null)}
+            className="underline opacity-75 hover:opacity-100"
+          >
+            Dismiss
+          </button>
         </div>
       )}
-
 
       {/* Mooring hover tooltip */}
       {hoveredMooring && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
-          {hoveredMooring.name} · {hoveredMooring.depth}m · {hoveredMooring.deployment} → {hoveredMooring.recovery}
+          {hoveredMooring.name} · {hoveredMooring.depth}m ·{" "}
+          {hoveredMooring.deployment} → {hoveredMooring.recovery}
         </div>
       )}
 
@@ -1001,136 +837,32 @@ function ShipMap() {
         </div>
       )}
 
-      {/* Left icon bar */}
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-4 bg-white/85 py-5 px-3 rounded-full text-center justify-center items-center">
-
-        {/* tracks */}
-        <div className="group relative flex flex-col gap-1">
-          <label className="text-gray-500 text-xs">Tracks</label>
-
-          <button
-            title="View individual vessels displayed on the map."
-            onClick={() => { setShowVesselPanel((p) => !p); setShowRegionPanel(false); setShowMooringPanel(false); setShowLayerPanel(false); }}
-            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
-              showVesselPanel
-                ? "bg-[#293241] ring-2"
-                : "bg-[#3d5a80] hover:bg-[#293241]"
-            } text-white`}
-          >
-
-            {/* update this with an actual picture not a generated svg */}
-            <svg
-              className="w-5 h-5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <circle cx="3" cy="6" r="1" fill="currentColor" stroke="none" />
-              <circle cx="3" cy="12" r="1" fill="currentColor" stroke="none" />
-              <circle cx="3" cy="18" r="1" fill="currentColor" stroke="none" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Honestly i don't know why this flex and gap-1 works to space it out, but it does */}
-
-        {/* Regions */}
-        <div className="group relative flex flex-col gap-1">
-          <label className="text-gray-500 text-xs">Regions</label>
-
-          <button
-            title="Analyze pre-defined and custom-select regions."
-            onClick={() => {
-              setShowRegionPanel((p) => !p);
-              setShowVesselPanel(false);
-              setShowMooringPanel(false);
-              setShowLayerPanel(false);
-            }}
-            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
-              showRegionPanel
-                ? "bg-[#293241] ring-2"
-                : "bg-[#3d5a80] hover:bg-[#293241]"
-            } text-white`}
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21" />
-            </svg>
-          </button>
-        </div>
-
-
-        {/* Todo with draw region: remove the button, have it be a feature under regions. perhaps next to the regions text */}
-        
-        {/* important logic to carry over to other button:
-        onClick={drawing ? cancelDrawing : startDrawing}
-
-        className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
-              drawing
-                ? "bg-[#ee6c4d] hover:bg-[#c4462a]"
-                : "bg-[#3d5a80] hover:bg-[#293241]"
-            }`} */}
-
-
-        {/* Layers */}
-        <div className="group relative flex flex-col gap-1">
-          <label className="text-gray-500 text-xs">Overlay</label>
-
-          <button
-            title="Display overlaid features on the map (e.g. moorings, bathymetry)"
-            onClick={() => { setShowLayerPanel((p) => !p); setShowVesselPanel(false); setShowRegionPanel(false); setShowMooringPanel(false); }}
-            className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
-              showLayerPanel ? "bg-[#293241] ring-2" : "bg-[#3d5a80] hover:bg-[#293241]"
-            }`}
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-              <polyline points="2 17 12 22 22 17"/>
-              <polyline points="2 12 12 17 22 12"/>
-            </svg>
-          </button>
-        </div>
-
-      </div>
+      <IconBar
+        showVesselPanel={showVesselPanel}
+        showRegionPanel={showRegionPanel}
+        showLayerPanel={showLayerPanel}
+        setShowVesselPanel={setShowVesselPanel}
+        setShowRegionPanel={setShowRegionPanel}
+        setShowMooringPanel={setShowMooringPanel}
+        setShowLayerPanel={setShowLayerPanel}
+      />
 
       {/* Vessel panel — slides in from the right */}
-      <div
-        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
-          showVesselPanel ? "translate-x-0" : "translate-x-full"
-        }`}
+      <SidePanel
+        open={showVesselPanel}
+        onClose={() => setShowVesselPanel(false)}
       >
-        <button onClick={() => setShowVesselPanel(false)} className="absolute top-3 right-3 text-slate-400">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
         <div className="px-5 pt-8 pb-4 shrink-0">
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <label className="flex flex-col gap-1">
-              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">
-                Start
-              </span>
-              <input
-                type="date"
-                className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">
-                End
-              </span>
-              <input
-                type="date"
-                className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-              />
-            </label>
-          </div>
+          <PanelHeader
+            description="See all vessels from the database."
+            name="Tracks"
+          />
+          <DateRangePicker
+            start={start}
+            end={end}
+            onStartChange={setStart}
+            onEndChange={setEnd}
+          />
 
           {/* Search for a vessel input bar */}
           <div className="relative mb-4">
@@ -1156,7 +888,7 @@ function ShipMap() {
 
         {viewVesselsMode && (
           <div className="px-5 py-2.5 border-t border-slate-100 shrink-0 flex items-center gap-1.5">
-{(["grey", "type", "speed"] as const).map((mode) => (
+            {(["grey", "type", "speed"] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setRegionDisplayMode(mode)}
@@ -1166,7 +898,11 @@ function ShipMap() {
                     : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                 }`}
               >
-                {mode === "grey" ? "Uniform" : mode === "type" ? "Ship type" : "Speed"}
+                {mode === "grey"
+                  ? "Uniform"
+                  : mode === "type"
+                  ? "Ship type"
+                  : "Speed"}
               </button>
             ))}
           </div>
@@ -1186,11 +922,18 @@ function ShipMap() {
             </span>
             {regionVessels.length > 0 && (
               <button
-                onClick={() => { setRegionVessels([]); regionTrackSourceRef.current.clear(); highlightSourceRef.current.clear(); regionRouteCacheRef.current.clear(); hoveredRegionVesselRef.current = null; setHoveredRegionVessel(null); }}
+                onClick={() => {
+                  setRegionVessels([]);
+                  regionTrackSourceRef.current.clear();
+                  highlightSourceRef.current.clear();
+                  regionRouteCacheRef.current = {};
+                  hoveredRegionVesselRef.current = null;
+                  setHoveredRegionVessel(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 transition"
                 title="Clear region filter"
               >
-                ✕
+                <XIcon className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -1224,8 +967,12 @@ function ShipMap() {
                     loadRoute(v);
                   }
                 }}
-                onMouseEnter={() => { if (regionVessels.length > 0) hoverRegionVessel(v.mmsi); }}
-                onMouseLeave={() => { if (regionVessels.length > 0) unhoverRegionVessel(); }}
+                onMouseEnter={() => {
+                  if (regionVessels.length > 0) hoverRegionVessel(v.mmsi);
+                }}
+                onMouseLeave={() => {
+                  if (regionVessels.length > 0) unhoverRegionVessel();
+                }}
                 className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition animate-slide-up ${
                   active
                     ? "bg-[#3d5a80]/8 ring-1 ring-[#3d5a80]/20"
@@ -1258,53 +1005,58 @@ function ShipMap() {
                     {pointCount === 0
                       ? "No data for this period."
                       : pointTotal !== null
-                        ? `Showing 500 of ${pointTotal.toLocaleString()} points (subsampled)`
-                        : `${pointCount.toLocaleString()} position points in range`}
+                      ? `Showing 500 of ${pointTotal.toLocaleString()} points (subsampled)`
+                      : `${pointCount.toLocaleString()} position points in range`}
                   </p>
                 )}
               </button>
             );
           })}
         </div>
-      </div>
-
+      </SidePanel>
 
       {/* Regions panel — slides in from the right */}
-      <div
-        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
-          showRegionPanel ? "translate-x-0" : "translate-x-full"
-        }`}
+      <SidePanel
+        open={showRegionPanel}
+        onClose={() => setShowRegionPanel(false)}
       >
-        <button onClick={() => setShowRegionPanel(false)} className="absolute top-3 right-3 text-slate-400">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
         <div className="px-5 pt-8 pb-4 shrink-0">
-          
-          <div className="mb-6">
-            <h2 className="text-sm font-semibold text-slate-700 ">Regions</h2>
-            <p className="text-gray-400 text-xs font-fraunces">View & analyze pre-defined CHA/WEA or custom regions. Click to show on the map.</p>
-          </div>
-
+          <PanelHeader
+            name="Regions"
+            description="View & analyze pre-defined CHA/WEA or custom regions. Click to show on the map."
+          />
 
           {/* custom select  */}
 
           <div className="mb-2 flex flex-row justify-between items-center">
             <button
               onClick={drawing ? cancelDrawing : startDrawing}
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full">{drawing ? "Cancel" : "Draw region"}
-              </button>
-              <label className="font-fraunces text-xs text-gray-700">{drawing ? "Double-click to finish drawing." : "Click map to add points"}.</label>
-            </div>
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full"
+            >
+              {drawing ? "Cancel" : "Draw region"}
+            </button>
+            <label className="font-fraunces text-xs text-gray-700">
+              {drawing
+                ? "Double-click to finish drawing."
+                : "Click map to add points"}
+              .
+            </label>
+          </div>
 
-            <div className="mb-6 flex flex-row justify-between items-center">
-            <label
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full cursor-pointer">
+          <div className="mb-6 flex flex-row justify-between items-center">
+            <label className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full cursor-pointer">
               Upload
-            <input type="file" accept=".zip" className="hidden" onChange={handleFileUpload} />
-              </label>
-              <label className="font-fraunces text-xs text-gray-700">Use your own shapefile (.zip)</label>
-            </div>
-
+              <input
+                type="file"
+                accept=".zip"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </label>
+            <label className="font-fraunces text-xs text-gray-700">
+              Use your own shapefile (.zip)
+            </label>
+          </div>
 
           {/* Region action pills */}
           <div className="flex flex-wrap gap-2">
@@ -1313,85 +1065,84 @@ function ShipMap() {
               disabled={!drawnPolygon || regionLoading}
               onClick={loadRegionStats}
               className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-            >Analyse region</button>
+            >
+              Analyse region
+            </button>
             <button
               title="See all vessel traffic in selected region"
               disabled={!drawnPolygon || regionLoading}
               onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
               className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-            >See all traffic</button>
+            >
+              See all traffic
+            </button>
           </div>
-
-  
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
-
           {/* CHA section */}
-          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Critical Habitat Areas</div>
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Critical Habitat Areas
+          </div>
           {CHA_REGIONS.map((r) => (
-            <div key={r.name}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
+            <RegionListItem
+              key={r.name}
+              label={r.name}
+              dotColor="#3d5a80"
+              tagLabel="CHA"
+              active={clickedRegionNames.has(r.name)}
               onClick={() => {
                 const hiding = clickedRegionNames.has(r.name);
                 toggleClickedRegion(r.name);
                 if (hiding && regionName === r.name) {
-                  setDrawnPolygon(null); setRegionName(null);
-                  _selectedChaName = null; chaSourceRef.current.changed();
+                  setDrawnPolygon(null);
+                  setRegionName(null);
+                  setSelectedChaName(null);
+                  chaSourceRef.current.changed();
                 }
               }}
-            >
-              <div>
-                <div className="text-sm font-medium text-slate-700">{r.name}</div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-[#3d5a80] inline-block" />
-                  <span className="text-[11px] text-slate-400">CHA</span>
-                </div>
-              </div>
-            </div>
+            />
           ))}
 
           {/* WEA section */}
-          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Wind Energy Areas</div>
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Wind Energy Areas
+          </div>
           {WEA_REGIONS.map((r) => (
-            <div key={r.name}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
+            <RegionListItem
+              key={r.name}
+              label={r.name}
+              dotColor="#ee6c4d"
+              tagLabel="WEA"
+              active={clickedRegionNames.has(r.name)}
               onClick={() => {
                 const hiding = clickedRegionNames.has(r.name);
                 toggleClickedRegion(r.name);
                 if (hiding && regionName === r.name) {
-                  setDrawnPolygon(null); setRegionName(null);
-                  _selectedChaName = null; chaSourceRef.current.changed();
+                  setDrawnPolygon(null);
+                  setRegionName(null);
+                  setSelectedChaName(null);
+                  chaSourceRef.current.changed();
                 }
               }}
-            >
-              <div>
-                <div className="text-sm font-medium text-slate-700">{r.name}</div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-[#ee6c4d] inline-block" />
-                  <span className="text-[11px] text-slate-400">WEA</span>
-                </div>
-              </div>
-            </div>
+            />
           ))}
 
           {/* Uploaded regions */}
           {uploadedRegions.length > 0 && (
             <>
-              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Uploaded</div>
+              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Uploaded
+              </div>
               {uploadedRegions.map((r) => (
-                <div key={r.name}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
+                <RegionListItem
+                  key={r.name}
+                  label={r.name}
+                  dotColor="#9b59b6"
+                  tagLabel="Uploaded"
+                  active={clickedRegionNames.has(r.name)}
                   onClick={() => toggleClickedRegion(r.name)}
-                >
-                  <div>
-                    <div className="text-sm font-medium text-slate-700">{r.name}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="w-2 h-2 rounded-full bg-[#9b59b6] inline-block" />
-                      <span className="text-[11px] text-slate-400">Uploaded</span>
-                    </div>
-                  </div>
-                </div>
+                />
               ))}
             </>
           )}
@@ -1399,139 +1150,221 @@ function ShipMap() {
           {/* Your regions (drawn) — at bottom */}
           {userSelectedRegions.length > 0 && (
             <>
-              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Your regions</div>
+              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Your regions
+              </div>
               {userSelectedRegions.map((r) => (
-                <div key={r.name}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer transition ${clickedRegionNames.has(r.name) ? "bg-slate-100" : "hover:bg-slate-50"}`}
+                <RegionListItem
+                  key={r.name}
+                  label={drawnRegionLabel(r.geojson)}
+                  dotColor="#98c1d9"
+                  tagLabel="Drawn"
+                  active={clickedRegionNames.has(r.name)}
                   onClick={() => {
                     const hiding = clickedRegionNames.has(r.name);
                     toggleClickedRegion(r.name);
                     if (hiding) {
-                      if (regionName === r.name) { setDrawnPolygon(null); setRegionName(null); }
+                      if (regionName === r.name) {
+                        setDrawnPolygon(null);
+                        setRegionName(null);
+                      }
                       drawSourceRef.current.clear();
                     } else {
                       setDrawnPolygon(r.geojson);
                       setRegionName(r.name);
                       const fmt = new GeoJSON();
                       drawSourceRef.current.clear();
-                      drawSourceRef.current.addFeatures(fmt.readFeatures({ type: "FeatureCollection", features: [{ type: "Feature", geometry: r.geojson, properties: {} }] }, { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" }));
-                      _selectedChaName = null;
+                      drawSourceRef.current.addFeatures(
+                        fmt.readFeatures(
+                          {
+                            type: "FeatureCollection",
+                            features: [
+                              {
+                                type: "Feature",
+                                geometry: r.geojson,
+                                properties: {},
+                              },
+                            ],
+                          },
+                          {
+                            dataProjection: "EPSG:4326",
+                            featureProjection: "EPSG:3857",
+                          }
+                        )
+                      );
+                      setSelectedChaName(null);
                       chaSourceRef.current.changed();
                     }
                   }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-slate-700 truncate">{drawnRegionLabel(r.geojson)}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="w-2 h-2 rounded-full bg-[#98c1d9] inline-block" />
-                      <span className="text-[11px] text-slate-400">Drawn</span>
-                    </div>
-                  </div>
-                  <button className="text-slate-300 hover:text-slate-500 shrink-0 ml-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!window.confirm(`Remove this drawn region?`)) return;
-                      setUserSelectedRegions((prev) => prev.filter((x) => x.name !== r.name));
-                      if (regionName === r.name) {
-                        setDrawnPolygon(null); setRegionName(null);
-                        drawSourceRef.current.clear();
-                        regionTrackSourceRef.current.clear();
-                        highlightSourceRef.current.clear();
-                        setRegionVessels([]); setViewVesselsMode(false); setRegionStats(null);
-                      }
-                    }}
-                  >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
-                </div>
+                  onRemove={(e) => {
+                    e.stopPropagation();
+                    if (!window.confirm(`Remove this drawn region?`)) return;
+                    setUserSelectedRegions((prev) =>
+                      prev.filter((x) => x.name !== r.name)
+                    );
+                    if (regionName === r.name) {
+                      setDrawnPolygon(null);
+                      setRegionName(null);
+                      drawSourceRef.current.clear();
+                      regionTrackSourceRef.current.clear();
+                      highlightSourceRef.current.clear();
+                      setRegionVessels([]);
+                      setViewVesselsMode(false);
+                      setRegionStats(null);
+                    }
+                  }}
+                />
               ))}
             </>
           )}
         </div>
-      </div>
+      </SidePanel>
 
       {/* Overlay panel — slides in from the right */}
 
       {/* DETAIL LAYERS SECTION */}
-      <div
-        className={`absolute right-0 top-0 h-full w-72 bg-white z-20 flex flex-col shadow-xl transition-transform duration-300 ease-in-out ${
-          showLayerPanel ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-
-        <button onClick={() => setShowLayerPanel(false)} className="absolute top-3 right-3 text-slate-400">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+      <SidePanel open={showLayerPanel} onClose={() => setShowLayerPanel(false)}>
         {/* MOORINGS */}
         <div className="px-5 pt-8 pb-4 shrink-0">
-          <div className="mb-4">
-            <h2 className="text-sm font-semibold text-slate-700 ">Moorings</h2>
-            <p className="text-gray-400 text-xs font-fraunces">Input desired time frame to see locations.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mb-6">
-            <label className="flex flex-col gap-1">
-              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">Start</span>
-              <input type="date" className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={start} onChange={(e) => setStart(e.target.value)} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">End</span>
-              <input type="date" className="bg-slate-50 border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition" value={end} onChange={(e) => setEnd(e.target.value)} />
-            </label>
-          </div>
-
+          <PanelHeader
+            name="Moorings"
+            description="Input desired time frame to see locations."
+            className="mb-4"
+          />
+          <DateRangePicker
+            start={start}
+            end={end}
+            onStartChange={setStart}
+            onEndChange={setEnd}
+            className="mb-6"
+          />
 
           {/* upload onw csv  */}
           <p className="text-gray-400 text-xs font-fraunces border border-gray-300 rounded-full py-2 px-4">
-            
             <label className="border-b border-transparent hover:border-gray-800 cursor-pointer text-gray-800 hover:text-gray-800 transition">
               Upload your own
-              <input type="file" accept=".csv" className="hidden" onChange={handleMooringUpload} />
-            </label>
-            {" "}using{" "}
-            <span onClick={downloadMooringTemplate} className="border-b border-gray-400 cursor-pointer transition"> CSV template</span></p>
-
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleMooringUpload}
+              />
+            </label>{" "}
+            using{" "}
+            <span
+              onClick={downloadMooringTemplate}
+              className="border-b border-gray-400 cursor-pointer transition"
+            >
+              {" "}
+              CSV template
+            </span>
+          </p>
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
           {/* AMAR section */}
-          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">AMAR</div>
-          {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
-            <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            AMAR
+          </div>
+          {AMAR_MOORINGS.filter(
+            (m) => m.deployment <= end && m.recovery >= start
+          ).length === 0 && (
+            <p className="text-xs text-slate-400 px-3 py-1">
+              None active in this period.
+            </p>
           )}
-          {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-            <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
-                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
-                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
-                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
-                }}>
+          {AMAR_MOORINGS.filter(
+            (m) => m.deployment <= end && m.recovery >= start
+          ).map((m) => (
+            <div
+              key={m.name}
+              className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
+              onMouseEnter={() => {
+                highlightedMooringRef.current = m.name;
+                mooringSourceRef.current.changed();
+              }}
+              onMouseLeave={() => {
+                highlightedMooringRef.current = null;
+                mooringSourceRef.current.changed();
+              }}
+              onClick={() => {
+                if (mooringPopup?.mooring.name === m.name) {
+                  setMooringPopup(null);
+                  return;
+                }
+                const pixel = mapObj.current?.getPixelFromCoordinate(
+                  fromLonLat([m.lon, m.lat])
+                );
+                if (pixel)
+                  setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
+              }}
+            >
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                <span className="text-sm font-medium text-slate-700">{m.name}</span>
+                <span className="text-sm font-medium text-slate-700">
+                  {m.name}
+                </span>
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                {m.depth}m · {m.deployment} → {m.recovery}
+              </div>
             </div>
           ))}
 
           {/* Uploaded section */}
           {uploadedMoorings.length > 0 && (
             <>
-              <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Uploaded</div>
-              {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
-                <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+              <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Uploaded
+              </div>
+              {uploadedMoorings.filter(
+                (m) => m.deployment <= end && m.recovery >= start
+              ).length === 0 && (
+                <p className="text-xs text-slate-400 px-3 py-1">
+                  None active in this period.
+                </p>
               )}
-              {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-                <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer" onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }} onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }} onClick={() => {
-                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
-                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
-                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
-                }}>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                    <span className="text-sm font-medium text-slate-700">{m.name}</span>
+              {uploadedMoorings
+                .filter((m) => m.deployment <= end && m.recovery >= start)
+                .map((m) => (
+                  <div
+                    key={m.name}
+                    className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
+                    onMouseEnter={() => {
+                      highlightedMooringRef.current = m.name;
+                      mooringSourceRef.current.changed();
+                    }}
+                    onMouseLeave={() => {
+                      highlightedMooringRef.current = null;
+                      mooringSourceRef.current.changed();
+                    }}
+                    onClick={() => {
+                      if (mooringPopup?.mooring.name === m.name) {
+                        setMooringPopup(null);
+                        return;
+                      }
+                      const pixel = mapObj.current?.getPixelFromCoordinate(
+                        fromLonLat([m.lon, m.lat])
+                      );
+                      if (pixel)
+                        setMooringPopup({
+                          x: pixel[0],
+                          y: pixel[1],
+                          mooring: m,
+                        });
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                      <span className="text-sm font-medium text-slate-700">
+                        {m.name}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      {m.depth}m · {m.deployment} → {m.recovery}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
-                </div>
-              ))}
+                ))}
             </>
           )}
         </div>
@@ -1540,14 +1373,16 @@ function ShipMap() {
 
         {/* LAYERS */}
         <div className="px-5 pt-8 pb-4 shrink-0">
-
-          <div className="">
-            <h2 className="text-sm font-semibold text-slate-700 ">Layers</h2>
-            <p className="text-gray-400 text-xs font-fraunces">Select detailed map layers to overlay.</p>
-          </div>
+          <PanelHeader
+            name="Layers"
+            description="Select detailed map layers to overlay."
+            className=""
+          />
         </div>
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
-          <div className="px-3 pt-1 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Ocean</div>
+          <div className="px-3 pt-1 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Ocean
+          </div>
           <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
             <input
               type="checkbox"
@@ -1556,14 +1391,16 @@ function ShipMap() {
               className="accent-[#3d5a80] w-4 h-4 rounded"
             />
             <div>
-              <div className="text-sm font-medium text-slate-700">Bathymetry</div>
-              <div className="text-[11px] text-slate-400">NRCan / DFO — Scotian Shelf &amp; NL Shelves</div>
+              <div className="text-sm font-medium text-slate-700">
+                Bathymetry
+              </div>
+              <div className="text-[11px] text-slate-400">
+                NRCan / DFO — Scotian Shelf &amp; NL Shelves
+              </div>
             </div>
           </label>
         </div>
-      </div>
-
-      
+      </SidePanel>
 
       {/* Legend - Speed */}
       <div className="absolute bottom-5 left-5 z-10 bg-white/90 backdrop-blur-md rounded-sm shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs">
@@ -1585,13 +1422,16 @@ function ShipMap() {
       {/* Results modal */}
       {(showResults || closingResults) && regionStats && (
         <div
-          className={`absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 ${closingResults ? "animate-fade-out" : "animate-fade-in"}`}
+          className={`absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 ${
+            closingResults ? "animate-fade-out" : "animate-fade-in"
+          }`}
           onClick={() => closeResults()}
         >
-
           {/* actual white area */}
           <div
-            className={`bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col ${closingResults ? "animate-scale-out" : "animate-scale-in"}`}
+            className={`bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col ${
+              closingResults ? "animate-scale-out" : "animate-scale-in"
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between px-7 pt-6 pb-5 border-b border-slate-100 shrink-0">
@@ -1599,9 +1439,9 @@ function ShipMap() {
                 <h2 className="text-xl font-inter font-semibold text-slate-800">
                   {regionName ?? "Region Analysis"}
                 </h2>
-                <p className="text-sm text-slate-500 mt-1"> 
-                  <span className="font-medium text-slate-700">Selected: {" "}
-                    {regionStats.unique_vessels}
+                <p className="text-sm text-slate-500 mt-1">
+                  <span className="font-medium text-slate-700">
+                    Selected: {regionStats.unique_vessels}
                   </span>{" "}
                   vessels ·{" "}
                   <span className="font-medium text-slate-700">
@@ -1620,7 +1460,7 @@ function ShipMap() {
                 onClick={() => closeResults()}
                 className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full w-8 h-8 flex items-center justify-center transition shrink-0"
               >
-                ✕
+                <XIcon className="w-4 h-4" />
               </button>
             </div>
             <div className="overflow-y-auto px-7 py-6 space-y-7">
@@ -1716,13 +1556,34 @@ function ShipMap() {
           className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-xl px-4 py-3 text-xs pointer-events-none animate-scale-in"
           style={{ left: mooringPopup.x + 12, top: mooringPopup.y - 8 }}
         >
-          <div className="font-semibold text-[#3d5a80] mb-1.5">{mooringPopup.mooring.name}</div>
+          <div className="font-semibold text-[#3d5a80] mb-1.5">
+            {mooringPopup.mooring.name}
+          </div>
           <div className="text-slate-600 space-y-1 tabular-nums">
-            <div><span className="text-slate-400 inline-block w-20">Latitude</span>{mooringPopup.mooring.lat.toFixed(4)}°N</div>
-            <div><span className="text-slate-400 inline-block w-20">Longitude</span>{mooringPopup.mooring.lon.toFixed(4)}°</div>
-            <div><span className="text-slate-400 inline-block w-20">Depth</span>{mooringPopup.mooring.depth}m</div>
-            <div><span className="text-slate-400 inline-block w-20">Deployed</span>{mooringPopup.mooring.deployment}</div>
-            <div><span className="text-slate-400 inline-block w-20">Recovered</span>{mooringPopup.mooring.recovery}</div>
+            <div>
+              <span className="text-slate-400 inline-block w-20">Latitude</span>
+              {mooringPopup.mooring.lat.toFixed(4)}°N
+            </div>
+            <div>
+              <span className="text-slate-400 inline-block w-20">
+                Longitude
+              </span>
+              {mooringPopup.mooring.lon.toFixed(4)}°
+            </div>
+            <div>
+              <span className="text-slate-400 inline-block w-20">Depth</span>
+              {mooringPopup.mooring.depth}m
+            </div>
+            <div>
+              <span className="text-slate-400 inline-block w-20">Deployed</span>
+              {mooringPopup.mooring.deployment}
+            </div>
+            <div>
+              <span className="text-slate-400 inline-block w-20">
+                Recovered
+              </span>
+              {mooringPopup.mooring.recovery}
+            </div>
           </div>
         </div>
       )}

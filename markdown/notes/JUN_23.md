@@ -25,5 +25,14 @@ bathymetry:grid_mapping = "spatial_ref" ;
 
 
 
+### documentation notes
+- using pep257 style for docstrings.
+
+### git notes
+- to "undo" a commit, use git reset --soft HEAD~1
+
+
+
+
 
                 
