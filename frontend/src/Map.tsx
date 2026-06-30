@@ -7,7 +7,7 @@ import TileWMS from "ol/source/TileWMS";
 import TileGrid from "ol/tilegrid/TileGrid";
 import { get as getProjection } from "ol/proj";
 import { getTopLeft, getWidth } from "ol/extent";
-import { fromLonLat } from "ol/proj";
+import { fromLonLat, toLonLat } from "ol/proj";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
 import OLPolygon from "ol/geom/Polygon";
@@ -35,12 +35,9 @@ import {
   makeFeatureStyle,
   makeMooringCanvas,
   chaStyle,
-  chaHoverStyle,
   drawnRegionLabel,
   downloadPlot,
-  getSelectedChaName,
   setSelectedChaName,
-  getClickedChaNames,
   setClickedChaNames,
 } from "./utils/mapStyles";
 import PanelHeader from "./components/PanelHeader";
@@ -49,6 +46,8 @@ import RegionListItem from "./components/RegionListItem";
 import SidePanel from "./components/SidePanel";
 import XIcon from "./components/XIcon";
 import IconBar from "./components/IconBar";
+import Legend from "./components/Legend";
+import CursorCoordinates from "./components/CursorCoordinates";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -157,7 +156,10 @@ function ShipMap() {
       setClosingResults(false);
     }, 180);
   }
-  const [hoveredCha, setHoveredCha] = useState<string | null>(null);
+  const [cursorCoord, setCursorCoord] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
   const [showVesselPanel, setShowVesselPanel] = useState(false);
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
@@ -381,37 +383,28 @@ function ShipMap() {
       }) ?? (setPopup(null), setMooringPopup(null));
     });
 
-    // hover cursor on CHA polygons and moorings
+    // hover cursor on moorings and CHA polygons
     map.on("pointermove", (e) => {
-      let overCha = false;
+      const [lon, lat] = toLonLat(e.coordinate);
+      setCursorCoord({ lat, lon });
+
       let overMooring = false;
+      let overClickable = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
-        if (feature.get("chaRegion")) {
-          const name = feature.get("name") as string;
-          const visible =
-            getClickedChaNames().has(name) || name === getSelectedChaName();
-          if (!visible) return;
-          overCha = true;
-          setHoveredCha(name);
-          (feature as Feature).setStyle(chaHoverStyle(feature));
-          return true;
-        }
         if (feature.get("mooring")) {
           overMooring = true;
+          overClickable = true;
           setHoveredMooring(feature.get("mooring") as Mooring);
           return true;
         }
+        if (feature.get("chaRegion")) {
+          overClickable = true;
+          return true;
+        }
       });
-      if (!overCha) {
-        setHoveredCha(null);
-        chaSourceRef.current
-          .getFeatures()
-          .forEach((f) => f.setStyle(undefined));
-      }
       if (!overMooring) setHoveredMooring(null);
 
-      map.getTargetElement().style.cursor =
-        overCha || overMooring ? "pointer" : "";
+      map.getTargetElement().style.cursor = overClickable ? "pointer" : "";
     });
 
     mapObj.current = map;
@@ -804,6 +797,11 @@ function ShipMap() {
     <div className="relative w-full h-screen overflow-hidden">
       {/* Map — full screen */}
       <div ref={mapRef} className="absolute inset-0" />
+
+      <CursorCoordinates
+        lat={cursorCoord?.lat ?? null}
+        lon={cursorCoord?.lon ?? null}
+      />
 
       {/* Server error banner */}
       {serverError && (
@@ -1402,22 +1400,8 @@ function ShipMap() {
         </div>
       </SidePanel>
 
-      {/* Legend - Speed */}
-      <div className="absolute bottom-5 left-5 z-10 bg-white/90 backdrop-blur-md rounded-sm shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5 px-4 py-3 text-xs">
-        <div className="font-semibold mb-2 text-slate-600">Speed (knots)</div>
-        <div className="flex items-center gap-2 mb-1 text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#0a8754] inline-block" />
-          &lt; 3
-        </div>
-        <div className="flex items-center gap-2 mb-1 text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ffc857] inline-block" />
-          3 – 10
-        </div>
-        <div className="flex items-center gap-2 text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ee6c4d] inline-block" />
-          &gt; 10
-        </div>
-      </div>
+      {/* hide legend temporarily */}
+      {/* <Legend /> */}
 
       {/* Results modal */}
       {(showResults || closingResults) && regionStats && (
