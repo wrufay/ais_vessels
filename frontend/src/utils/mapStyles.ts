@@ -36,8 +36,8 @@ export const TYPE_NUM: Record<string, number> = {
 
 // WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed
 export const REGION_WEBGL_STYLE = {
-  variables: { mode: 0 },
-  "circle-radius": 4,
+  variables: { mode: 0, dotSize: 4 },
+  "circle-radius": ["var", "dotSize"],
   "circle-fill-color": [
     "case",
     ["==", ["var", "mode"], 2],
@@ -99,10 +99,9 @@ export function darken(hex: string, amt: number): string {
 }
 
 const _mooringCanvasCache: Record<string, HTMLCanvasElement> = {};
-export function makeMooringCanvas(highlighted: boolean): HTMLCanvasElement {
-  const key = highlighted ? "1" : "0";
+export function makeMooringCanvas(highlighted: boolean, r = 10): HTMLCanvasElement {
+  const key = `${highlighted ? "1" : "0"}-${r}`;
   if (_mooringCanvasCache[key]) return _mooringCanvasCache[key];
-  const r = 10;
   const size = r * 2 + 2;
   const c = document.createElement("canvas");
   c.width = size;
@@ -130,7 +129,13 @@ export const VESSEL_STYLES = {
   line:  new Style({ stroke: new Stroke({ color: "#98c1d9", width: 2 }) }),
 };
 
-export function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
+export function makeFeatureStyle(showStart: boolean, showEnd: boolean, radius = 5) {
+  const endRadius = Math.round(radius * 1.4);
+  const fast  = new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", radius), ...iconAnchor }) });
+  const mid   = new Style({ image: new Icon({ img: makeVesselCanvas("#ffc857", radius), ...iconAnchor }) });
+  const slow  = new Style({ image: new Icon({ img: makeVesselCanvas("#0a8754", radius), ...iconAnchor }) });
+  const start = new Style({ image: new Icon({ img: makeVesselCanvas("#98c1d9", endRadius, "#fff"), ...iconAnchor }) });
+  const end   = new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", endRadius, "#fff"), ...iconAnchor }) });
   return function (feature: FeatureLike): Style {
     const geomType = feature.getGeometry()?.getType();
     if (geomType === "LineString") return VESSEL_STYLES.line;
@@ -138,10 +143,10 @@ export function makeFeatureStyle(showStart: boolean, showEnd: boolean) {
     const isEnd = feature.get("isEnd") as boolean;
     if (isStart && !showStart) return EMPTY_STYLE;
     if (isEnd && !showEnd) return EMPTY_STYLE;
-    if (isStart) return VESSEL_STYLES.start;
-    if (isEnd) return VESSEL_STYLES.end;
+    if (isStart) return start;
+    if (isEnd) return end;
     const sog = (feature.get("sog") as number) || 0;
-    return sog > 10 ? VESSEL_STYLES.fast : sog > 3 ? VESSEL_STYLES.mid : VESSEL_STYLES.slow;
+    return sog > 10 ? fast : sog > 3 ? mid : slow;
   };
 }
 

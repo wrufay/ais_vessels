@@ -36,6 +36,7 @@ import {
   TYPE_NUM,
   makeFeatureStyle,
   makeMooringCanvas,
+  makeVesselCanvas,
   chaStyle,
   drawnRegionLabel,
   downloadPlot,
@@ -48,8 +49,8 @@ import RegionListItem from "./components/RegionListItem";
 import SidePanel from "./components/SidePanel";
 import XIcon from "./components/XIcon";
 import IconBar from "./components/IconBar";
-import Legend from "./components/Legend";
 import CursorCoordinates from "./components/CursorCoordinates";
+import SizingSlider from "./components/SizingSlider";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -167,6 +168,7 @@ function ShipMap() {
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
+  const [showCustomizePanel, setShowCustomizePanel] = useState(false);
   const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(
     new Set()
   );
@@ -185,9 +187,35 @@ function ShipMap() {
     "grey" | "type" | "speed"
   >("grey");
   const defaultFilters = { type: new Set<string>(), source: "all", dfo: "all" };
-  const [filters, setFilters] = useState<{ type: Set<string>; source: string; dfo: string }>(defaultFilters);
-  const [draftFilters, setDraftFilters] = useState<{ type: Set<string>; source: string; dfo: string }>(defaultFilters);
+  const [filters, setFilters] = useState<{
+    type: Set<string>;
+    source: string;
+    dfo: string;
+  }>(defaultFilters);
+  const [draftFilters, setDraftFilters] = useState<{
+    type: Set<string>;
+    source: string;
+    dfo: string;
+  }>(defaultFilters);
   const [showTypeFilter, setShowTypeFilter] = useState(false);
+  const [mooringSize, setMooringSize] = useState(10);
+  const [vesselSize, setVesselSize] = useState(5);
+  const [regionDotSize, setRegionDotSize] = useState(4);
+  const mooringSizeRef = useRef(10);
+  const vesselSizeRef = useRef(5);
+  useEffect(() => {
+    mooringSizeRef.current = mooringSize;
+    mooringSourceRef.current.changed();
+  }, [mooringSize]);
+  useEffect(() => {
+    vesselSizeRef.current = vesselSize;
+    routeLayerRef.current?.setStyle(makeFeatureStyle(true, true, vesselSize));
+  }, [vesselSize]);
+  useEffect(() => {
+    regionTrackLayerRef.current?.updateStyleVariables({
+      dotSize: regionDotSize,
+    });
+  }, [regionDotSize]);
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -245,7 +273,7 @@ function ShipMap() {
           highlightedMooringRef.current;
         return new Style({
           image: new Icon({
-            img: makeMooringCanvas(isHighlighted),
+            img: makeMooringCanvas(isHighlighted, mooringSizeRef.current),
             anchor: [0.5, 0.5],
             anchorXUnits: "fraction",
             anchorYUnits: "fraction",
@@ -817,14 +845,25 @@ function ShipMap() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return activeVesselList.filter((v) => {
-      if (filters.type.size > 0 && !filters.type.has(classifyType(v.ship_type))) return false;
+      if (filters.type.size > 0 && !filters.type.has(classifyType(v.ship_type)))
+        return false;
       if (filters.source !== "all" && v.source !== filters.source) return false;
-      if (filters.dfo === "dfo" && !(v.vessel_name || "").toLowerCase().includes("ccgs")) return false;
-      if (filters.dfo === "non-dfo" && (v.vessel_name || "").toLowerCase().includes("ccgs")) return false;
+      if (
+        filters.dfo === "dfo" &&
+        !(v.vessel_name || "").toLowerCase().includes("ccgs")
+      )
+        return false;
+      if (
+        filters.dfo === "non-dfo" &&
+        (v.vessel_name || "").toLowerCase().includes("ccgs")
+      )
+        return false;
       return (
         String(v.mmsi).includes(q) ||
         (v.vessel_name || "").toLowerCase().includes(q) ||
-        String(v.ship_type || "").toLowerCase().includes(q)
+        String(v.ship_type || "")
+          .toLowerCase()
+          .includes(q)
       );
     });
   }, [activeVesselList, search, filters]);
@@ -857,17 +896,9 @@ function ShipMap() {
 
       {/* Mooring hover tooltip */}
       {hoveredMooring && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-sm pointer-events-none">
           {hoveredMooring.name} · {hoveredMooring.depth}m ·{" "}
           {hoveredMooring.deployment} → {hoveredMooring.recovery}
-        </div>
-      )}
-
-      {/* Region loading indicator */}
-      {regionLoading && regionName && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur-md rounded-full shadow-lg ring-1 ring-slate-900/5 px-4 py-2 text-xs text-slate-600 flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full border-2 border-[#3d5a80] border-t-transparent animate-spin" />
-          Analysing {regionName}…
         </div>
       )}
 
@@ -875,10 +906,12 @@ function ShipMap() {
         showVesselPanel={showVesselPanel}
         showRegionPanel={showRegionPanel}
         showLayerPanel={showLayerPanel}
+        showCustomizePanel={showCustomizePanel}
         setShowVesselPanel={setShowVesselPanel}
         setShowRegionPanel={setShowRegionPanel}
         setShowMooringPanel={setShowMooringPanel}
         setShowLayerPanel={setShowLayerPanel}
+        setShowCustomizePanel={setShowCustomizePanel}
       />
 
       {/* Vessel panel — slides in from the right */}
@@ -944,14 +977,25 @@ function ShipMap() {
 
         <div className="flex items-center justify-between px-5 py-2.5 text-xs font-medium text-slate-400 border-t border-slate-100 shrink-0">
           <button
-            onClick={() => { setDraftFilters({ ...filters, type: new Set(filters.type) }); setShowTypeFilter(true); }}
+            onClick={() => {
+              setDraftFilters({ ...filters, type: new Set(filters.type) });
+              setShowTypeFilter(true);
+            }}
             className={`uppercase tracking-wide transition ${
-              filters.type.size > 0 || filters.source !== "all" || filters.dfo !== "all"
+              filters.type.size > 0 ||
+              filters.source !== "all" ||
+              filters.dfo !== "all"
                 ? "text-[#3d5a80]"
                 : "text-slate-400 hover:text-slate-600"
             }`}
           >
-            {(() => { const n = filters.type.size + (filters.source !== "all" ? 1 : 0) + (filters.dfo !== "all" ? 1 : 0); return n > 0 ? `${n} filter${n > 1 ? "s" : ""}` : "Filter by…"; })()}
+            {(() => {
+              const n =
+                filters.type.size +
+                (filters.source !== "all" ? 1 : 0) +
+                (filters.dfo !== "all" ? 1 : 0);
+              return n > 0 ? `${n} filter${n > 1 ? "s" : ""}` : "Filter by…";
+            })()}
           </button>
           <div className="flex items-center gap-2">
             <span className="tabular-nums">
@@ -1450,7 +1494,67 @@ function ShipMap() {
         </div>
       </SidePanel>
 
-      <Legend />
+      {/* Customize panel */}
+      <SidePanel
+        open={showCustomizePanel}
+        onClose={() => setShowCustomizePanel(false)}
+      >
+        <div className="px-5 pt-8 pb-4 shrink-0">
+          <PanelHeader
+            name="Customize"
+            description="Adjust the appearance of map elements."
+          />
+          <div className="mt-6 flex flex-col gap-4">
+            <SizingSlider
+              label="Mooring dots"
+              value={mooringSize}
+              onChange={setMooringSize}
+              accent="accent-[#3d5a80]/80"
+              preview={
+                <img
+                  src={makeMooringCanvas(false, mooringSize).toDataURL()}
+                  width={mooringSize * 2}
+                  height={mooringSize * 2}
+                />
+              }
+            />
+            <SizingSlider
+              label="Vessel tracks"
+              value={vesselSize}
+              onChange={setVesselSize}
+              preview={
+                <>
+                  {(["#0a8754", "#ffc857", "#ee6c4d"] as const).map((color) => (
+                    <img
+                      key={color}
+                      src={makeVesselCanvas(color, vesselSize).toDataURL()}
+                      width={vesselSize * 2}
+                      height={vesselSize * 2}
+                    />
+                  ))}
+                </>
+              }
+            />
+            <SizingSlider
+              label="Region vessels"
+              value={regionDotSize}
+              onChange={setRegionDotSize}
+              preview={
+                <div
+                  style={{
+                    width: regionDotSize * 2,
+                    height: regionDotSize * 2,
+                    borderRadius: "50%",
+                    backgroundColor: "#5a5a5a",
+                    opacity: 0.6,
+                    flexShrink: 0,
+                  }}
+                />
+              }
+            />
+          </div>
+        </div>
+      </SidePanel>
 
       {/* Vessel type filter modal */}
       {showTypeFilter && (
@@ -1459,12 +1563,17 @@ function ShipMap() {
           onClick={() => setShowTypeFilter(false)}
         >
           <div
-            className="bg-white rounded-lg shadow-2xl w-full max-w-sm animate-scale-in"
+            className="bg-white rounded-lg shadow-sm w-full max-w-sm animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
-              <h2 className="text-base font-semibold text-slate-800">Filter vessels</h2>
-              <button onClick={() => setShowTypeFilter(false)} className="text-slate-400 hover:text-slate-600 transition">
+              <h2 className="text-base font-semibold text-slate-800">
+                Filter vessels
+              </h2>
+              <button
+                onClick={() => setShowTypeFilter(false)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
                 <XIcon className="w-4 h-4" />
               </button>
             </div>
@@ -1473,23 +1582,44 @@ function ShipMap() {
               <div className="flex flex-col gap-2">
                 <span className="text-sm text-slate-600">Vessel type</span>
                 <div className="flex flex-wrap gap-1.5">
-                  {(["cargo", "tanker", "fishing", "passenger", "search & rescue", "other", "unknown"] as const).map((t) => {
+                  {(
+                    [
+                      "cargo",
+                      "tanker",
+                      "fishing",
+                      "passenger",
+                      "search & rescue",
+                      "other",
+                      "unknown",
+                    ] as const
+                  ).map((t) => {
                     const on = draftFilters.type.has(t);
                     const color = TYPE_COLORS[t];
                     return (
                       <button
                         key={t}
-                        onClick={() => setDraftFilters((prev) => {
-                          const next = new Set(prev.type);
-                          on ? next.delete(t) : next.add(t);
-                          return { ...prev, type: next };
-                        })}
+                        onClick={() =>
+                          setDraftFilters((prev) => {
+                            const next = new Set(prev.type);
+                            on ? next.delete(t) : next.add(t);
+                            return { ...prev, type: next };
+                          })
+                        }
                         className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition ${
-                          on ? "border-transparent text-white" : "border-slate-200 text-slate-600 hover:border-slate-300"
+                          on
+                            ? "border-transparent text-white"
+                            : "border-slate-200 text-slate-600 hover:border-slate-300"
                         }`}
                         style={on ? { backgroundColor: color } : {}}
                       >
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: on ? "rgba(255,255,255,0.7)" : color }} />
+                        <span
+                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                          style={{
+                            backgroundColor: on
+                              ? "rgba(255,255,255,0.7)"
+                              : color,
+                          }}
+                        />
                         {t.charAt(0).toUpperCase() + t.slice(1)}
                       </button>
                     );
@@ -1497,31 +1627,70 @@ function ShipMap() {
                 </div>
               </div>
               {/* Dropdowns for the other two */}
-              {([
-                { key: "source" as const, label: "AIS source", options: [{ value: "all", label: "All sources" }, { value: "terrestrial", label: "Terrestrial" }, { value: "satellite", label: "Satellite" }] },
-                { key: "dfo" as const, label: "DFO vessels", options: [{ value: "all", label: "All vessels" }, { value: "dfo", label: "DFO only" }, { value: "non-dfo", label: "Non-DFO only" }] },
-              ]).map(({ key, label, options }) => (
-                <div key={key} className="flex items-center justify-between gap-4">
-                  <span className="text-sm text-slate-600 shrink-0">{label}</span>
+              {[
+                {
+                  key: "source" as const,
+                  label: "AIS source",
+                  options: [
+                    { value: "all", label: "All sources" },
+                    { value: "terrestrial", label: "Terrestrial" },
+                    { value: "satellite", label: "Satellite" },
+                  ],
+                },
+                {
+                  key: "dfo" as const,
+                  label: "DFO vessels",
+                  options: [
+                    { value: "all", label: "All vessels" },
+                    { value: "dfo", label: "DFO only" },
+                    { value: "non-dfo", label: "Non-DFO only" },
+                  ],
+                },
+              ].map(({ key, label, options }) => (
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-4"
+                >
+                  <span className="text-sm text-slate-600 shrink-0">
+                    {label}
+                  </span>
                   <select
                     value={draftFilters[key]}
-                    onChange={(e) => setDraftFilters((prev) => ({ ...prev, [key]: e.target.value }))}
+                    onChange={(e) =>
+                      setDraftFilters((prev) => ({
+                        ...prev,
+                        [key]: e.target.value,
+                      }))
+                    }
                     className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition cursor-pointer"
                   >
-                    {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               ))}
             </div>
             <div className="flex items-center justify-between px-6 pb-5">
               <button
-                onClick={() => setDraftFilters({ type: new Set(), source: "all", dfo: "all" })}
+                onClick={() =>
+                  setDraftFilters({
+                    type: new Set(),
+                    source: "all",
+                    dfo: "all",
+                  })
+                }
                 className="text-sm text-slate-400 hover:text-slate-600 transition"
               >
                 Reset
               </button>
               <button
-                onClick={() => { setFilters(draftFilters); setShowTypeFilter(false); }}
+                onClick={() => {
+                  setFilters(draftFilters);
+                  setShowTypeFilter(false);
+                }}
                 className="px-4 py-1.5 rounded-full bg-[#3d5a80] text-white text-sm font-medium hover:bg-[#293241] transition"
               >
                 Apply
@@ -1541,7 +1710,7 @@ function ShipMap() {
         >
           {/* actual white area */}
           <div
-            className={`bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col ${
+            className={`bg-white rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col ${
               closingResults ? "animate-scale-out" : "animate-scale-in"
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -1665,7 +1834,7 @@ function ShipMap() {
       {/* Mooring popup */}
       {mooringPopup && (
         <div
-          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-xl px-4 py-3 text-xs pointer-events-none animate-scale-in"
+          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-sm px-4 py-3 text-xs pointer-events-none animate-scale-in"
           style={{ left: mooringPopup.x + 12, top: mooringPopup.y - 8 }}
         >
           <div className="font-semibold text-[#3d5a80] mb-1.5">
@@ -1703,7 +1872,7 @@ function ShipMap() {
       {/* Point popup */}
       {popup && (
         <div
-          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-xl px-4 py-3 text-xs pointer-events-none animate-scale-in"
+          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-sm px-4 py-3 text-xs pointer-events-none animate-scale-in"
           style={{ left: popup.x + 12, top: popup.y - 8 }}
         >
           <div className="font-semibold text-[#3d5a80] mb-1.5">

@@ -3,25 +3,28 @@ import IconBarButton from "./IconBarButton";
 
 const tracksIcon = (
   <svg
-    className="w-5 h-5"
+    className="w-4 h-4"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="2"
+    strokeWidth="1.8"
     strokeLinecap="round"
+    strokeLinejoin="round"
   >
-    <line x1="8" y1="6" x2="21" y2="6" />
-    <line x1="8" y1="12" x2="21" y2="12" />
-    <line x1="8" y1="18" x2="21" y2="18" />
-    <circle cx="3" cy="6" r="1" fill="currentColor" stroke="none" />
-    <circle cx="3" cy="12" r="1" fill="currentColor" stroke="none" />
-    <circle cx="3" cy="18" r="1" fill="currentColor" stroke="none" />
+    {/* hull */}
+    <path d="M3 17 L5 20 L19 20 L21 17 Z" />
+    {/* deck / superstructure */}
+    <path d="M5 17 L5 13 L14 13 L14 17" />
+    {/* cabin */}
+    <rect x="7" y="10" width="5" height="3" />
+    {/* mast */}
+    <line x1="9.5" y1="10" x2="9.5" y2="7" />
   </svg>
 );
 
 const regionsIcon = (
   <svg
-    className="w-5 h-5"
+    className="w-4 h-4"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -35,7 +38,7 @@ const regionsIcon = (
 
 const layersIcon = (
   <svg
-    className="w-5 h-5"
+    className="w-4 h-4"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -49,25 +52,44 @@ const layersIcon = (
   </svg>
 );
 
+const customizeIcon = (
+  <svg
+    className="w-4 h-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
 function IconBar({
   showVesselPanel,
   showRegionPanel,
   showLayerPanel,
+  showCustomizePanel,
   setShowVesselPanel,
   setShowRegionPanel,
   setShowMooringPanel,
   setShowLayerPanel,
+  setShowCustomizePanel,
 }: {
   showVesselPanel: boolean;
   showRegionPanel: boolean;
   showLayerPanel: boolean;
+  showCustomizePanel: boolean;
   setShowVesselPanel: Dispatch<SetStateAction<boolean>>;
   setShowRegionPanel: Dispatch<SetStateAction<boolean>>;
   setShowMooringPanel: Dispatch<SetStateAction<boolean>>;
   setShowLayerPanel: Dispatch<SetStateAction<boolean>>;
+  setShowCustomizePanel: Dispatch<SetStateAction<boolean>>;
 }) {
   return (
-    <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-4 bg-white/85 py-5 px-3 rounded-full text-center justify-center items-center">
+    <div className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2.5 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center justify-center items-center">
       <IconBarButton
         label="Tracks"
         title="View individual vessels displayed on the map."
@@ -78,6 +100,7 @@ function IconBar({
           setShowRegionPanel(false);
           setShowMooringPanel(false);
           setShowLayerPanel(false);
+          setShowCustomizePanel(false);
         }}
       />
 
@@ -91,19 +114,9 @@ function IconBar({
           setShowVesselPanel(false);
           setShowMooringPanel(false);
           setShowLayerPanel(false);
+          setShowCustomizePanel(false);
         }}
       />
-
-      {/* Todo with draw region: remove the button, have it be a feature under regions. perhaps next to the regions text */}
-
-      {/* important logic to carry over to other button:
-      onClick={drawing ? cancelDrawing : startDrawing}
-
-      className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition text-white ${
-            drawing
-              ? "bg-[#ee6c4d] hover:bg-[#c4462a]"
-              : "bg-[#3d5a80] hover:bg-[#293241]"
-          }`} */}
 
       <IconBarButton
         label="Overlay"
@@ -115,8 +128,33 @@ function IconBar({
           setShowVesselPanel(false);
           setShowRegionPanel(false);
           setShowMooringPanel(false);
+          setShowCustomizePanel(false);
         }}
       />
+
+      <IconBarButton
+        label="Settings"
+        title="Customize map appearance"
+        icon={customizeIcon}
+        active={showCustomizePanel}
+        onClick={() => {
+          setShowCustomizePanel((p) => !p);
+          setShowVesselPanel(false);
+          setShowRegionPanel(false);
+          setShowMooringPanel(false);
+          setShowLayerPanel(false);
+        }}
+      />
+
+      <hr className="w-full border-slate-200 my-0.5" />
+
+      <div className="text-[9px] font-semibold text-slate-400 mb-0.5">Speed (kn)</div>
+      {([["#0a8754", "< 3"], ["#ffc857", "3–10"], ["#ee6c4d", "> 10"]] as const).map(([color, label]) => (
+        <div key={label} className="flex items-center justify-center gap-1.5 text-[9px] text-slate-400 w-full">
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+          {label}
+        </div>
+      ))}
     </div>
   );
 }

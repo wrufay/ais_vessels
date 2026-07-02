@@ -14,14 +14,14 @@ function IconBarButton({
   onClick: () => void;
 }) {
   return (
-    <div className="group relative flex flex-col gap-1">
-      <label className="text-gray-500 text-xs">{label}</label>
+    <div className="group relative flex flex-col gap-0.5 items-center">
+      <label className="text-gray-500 text-[10px]">{label}</label>
 
       <button
         title={title}
         onClick={onClick}
-        className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition ${
-          active ? "bg-[#293241] ring-2" : "bg-[#3d5a80] hover:bg-[#293241]"
+        className={`w-10 h-10 rounded-full flex border border-gray-500 items-center bg-[#3d5a80] justify-center active:bg-gray-500 active:scale-95 transition ${
+          active ? "opacity-100" : "opacity-80"
         } text-white`}
       >
         {icon}
