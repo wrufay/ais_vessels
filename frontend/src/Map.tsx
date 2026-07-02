@@ -184,6 +184,10 @@ function ShipMap() {
   const [regionDisplayMode, setRegionDisplayMode] = useState<
     "grey" | "type" | "speed"
   >("grey");
+  const defaultFilters = { type: new Set<string>(), source: "all", dfo: "all" };
+  const [filters, setFilters] = useState<{ type: Set<string>; source: string; dfo: string }>(defaultFilters);
+  const [draftFilters, setDraftFilters] = useState<{ type: Set<string>; source: string; dfo: string }>(defaultFilters);
+  const [showTypeFilter, setShowTypeFilter] = useState(false);
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -426,7 +430,9 @@ function ShipMap() {
       });
       if (!overMooring) setHoveredMooring(null);
 
-      map.getTargetElement().style.cursor = overClickable ? "pointer" : "";
+      map.getTargetElement().style.cursor = overClickable
+        ? "pointer"
+        : "crosshair";
     });
 
     mapObj.current = map;
@@ -810,15 +816,18 @@ function ShipMap() {
   const activeVesselList = regionVessels.length > 0 ? regionVessels : vessels;
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return activeVesselList.filter(
-      (v) =>
+    return activeVesselList.filter((v) => {
+      if (filters.type.size > 0 && !filters.type.has(classifyType(v.ship_type))) return false;
+      if (filters.source !== "all" && v.source !== filters.source) return false;
+      if (filters.dfo === "dfo" && !(v.vessel_name || "").toLowerCase().includes("ccgs")) return false;
+      if (filters.dfo === "non-dfo" && (v.vessel_name || "").toLowerCase().includes("ccgs")) return false;
+      return (
         String(v.mmsi).includes(q) ||
         (v.vessel_name || "").toLowerCase().includes(q) ||
-        String(v.ship_type || "")
-          .toLowerCase()
-          .includes(q)
-    );
-  }, [activeVesselList, search]);
+        String(v.ship_type || "").toLowerCase().includes(q)
+      );
+    });
+  }, [activeVesselList, search, filters]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
@@ -879,7 +888,7 @@ function ShipMap() {
       >
         <div className="px-5 pt-8 pb-4 shrink-0">
           <PanelHeader
-            description="See all vessels from the database."
+            description="Click a vessel to see its track."
             name="Tracks"
           />
           <DateRangePicker
@@ -934,9 +943,16 @@ function ShipMap() {
         )}
 
         <div className="flex items-center justify-between px-5 py-2.5 text-xs font-medium text-slate-400 border-t border-slate-100 shrink-0">
-          <span className="uppercase tracking-wide">
-            {regionVessels.length > 0 ? "Vessels in region" : "Vessels"}
-          </span>
+          <button
+            onClick={() => { setDraftFilters({ ...filters, type: new Set(filters.type) }); setShowTypeFilter(true); }}
+            className={`uppercase tracking-wide transition ${
+              filters.type.size > 0 || filters.source !== "all" || filters.dfo !== "all"
+                ? "text-[#3d5a80]"
+                : "text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            {(() => { const n = filters.type.size + (filters.source !== "all" ? 1 : 0) + (filters.dfo !== "all" ? 1 : 0); return n > 0 ? `${n} filter${n > 1 ? "s" : ""}` : "Filter by…"; })()}
+          </button>
           <div className="flex items-center gap-2">
             <span className="tabular-nums">
               {regionVessels.length > 0
@@ -1000,7 +1016,7 @@ function ShipMap() {
                 }}
                 className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition animate-slide-up ${
                   active
-                    ? "bg-[#3d5a80]/8 ring-1 ring-[#3d5a80]/20"
+                    ? "bg-slate-100"
                     : hoveredRegionVessel === v.mmsi
                     ? "bg-slate-100"
                     : "hover:bg-slate-50"
@@ -1048,42 +1064,8 @@ function ShipMap() {
         <div className="px-5 pt-8 pb-4 shrink-0">
           <PanelHeader
             name="Regions"
-            description="View & analyze pre-defined CHA/WEA or custom regions. Click to show on the map."
+            description="Select one or more regions to display them on the map."
           />
-
-          {/* custom select  */}
-
-          <div className="mb-2 flex flex-row justify-between items-center">
-            <button
-              onClick={drawing ? cancelDrawing : startDrawing}
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full"
-            >
-              {drawing ? "Cancel" : "Draw region"}
-            </button>
-            <label className="font-fraunces text-xs text-gray-700">
-              {drawing
-                ? "Double-click to finish drawing."
-                : "Click map to add points"}
-              .
-            </label>
-          </div>
-
-          <div className="mb-6 flex flex-row justify-between items-center">
-            <label className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full cursor-pointer">
-              Upload
-              <input
-                type="file"
-                accept=".zip"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-            </label>
-            <label className="font-fraunces text-xs text-gray-700">
-              Use your own shapefile (.zip)
-            </label>
-          </div>
-
-          <hr className="border-gray-200 mb-4" />
 
           {/* Region action pills */}
           <div className="flex flex-wrap gap-2">
@@ -1106,12 +1088,50 @@ function ShipMap() {
             {/* show selected region */}
             <div
               title="Click on a region to select it."
-              className="mt-2 font-inter text-gray-400 text-xs bg-gray-100 px-2 py-0.5 rounded-xs"
+              className="font-inter text-gray-400 text-xs bg-gray-100 px-2 py-0.5 rounded-xs"
             >
               {regionName ? `Selected: ${regionName}` : "No region selected."}
             </div>
           </div>
         </div>
+
+        <hr className="border-gray-200 my-4" />
+
+        <div className="px-5 shrink-0">
+          {/* Feature: Draw a custom region on the map */}
+          <div className="mb-2 flex flex-row justify-between items-center">
+            <button
+              onClick={drawing ? cancelDrawing : startDrawing}
+              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full"
+            >
+              {drawing ? "Cancel" : "Draw region"}
+            </button>
+            <label className="font-fraunces text-xs text-gray-700">
+              {drawing
+                ? "Double-click to finish drawing."
+                : "Click map to add points"}
+              .
+            </label>
+          </div>
+
+          {/* Feature: Upload a shapefile as a region */}
+          <div className=" flex flex-row justify-between items-center">
+            <label className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full cursor-pointer">
+              Upload
+              <input
+                type="file"
+                accept=".zip"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </label>
+            <label className="font-fraunces text-xs text-gray-700">
+              Use your own shapefile (.zip)
+            </label>
+          </div>
+        </div>
+
+        <hr className="border-gray-200 my-4" />
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
           {/* CHA section */}
@@ -1234,204 +1254,282 @@ function ShipMap() {
       <SidePanel open={showLayerPanel} onClose={() => setShowLayerPanel(false)}>
         {/* MOORINGS */}
         <div className="flex-1 min-h-0 flex flex-col">
-        <div className="px-5 pt-8 pb-4 shrink-0">
-          <PanelHeader
-            name="Moorings"
-            description="Input desired time frame to see locations."
-            className="mb-4"
-          />
-          <DateRangePicker
-            start={start}
-            end={end}
-            onStartChange={setStart}
-            onEndChange={setEnd}
-            className="mb-6"
-          />
+          <div className="px-5 pt-8 pb-4 shrink-0">
+            <PanelHeader
+              name="Moorings"
+              description="Input desired time frame to see locations."
+              className="mb-4"
+            />
+            <DateRangePicker
+              start={start}
+              end={end}
+              onStartChange={setStart}
+              onEndChange={setEnd}
+              className="mb-6"
+            />
 
-          {/* upload onw csv  */}
-          <p className="text-gray-400 text-xs font-fraunces border border-gray-300 rounded-full py-2 px-4">
-            <label className="border-b border-transparent hover:border-gray-800 cursor-pointer text-gray-800 hover:text-gray-800 transition">
-              Upload your own
-              <input
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={handleMooringUpload}
-              />
-            </label>{" "}
-            using{" "}
-            <span
-              onClick={downloadMooringTemplate}
-              className="border-b border-gray-400 cursor-pointer transition"
-            >
-              {" "}
-              CSV template
-            </span>
-          </p>
-        </div>
-
-        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
-          {/* AMAR section */}
-          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            AMAR
-          </div>
-          {AMAR_MOORINGS.filter(
-            (m) => m.deployment <= end && m.recovery >= start
-          ).length === 0 && (
-            <p className="text-xs text-slate-400 px-3 py-1">
-              None active in this period.
+            {/* upload onw csv  */}
+            <p className="text-gray-400 text-xs font-fraunces border border-gray-300 rounded-full py-2 px-4">
+              <label className="border-b border-transparent hover:border-gray-800 cursor-pointer text-gray-800 hover:text-gray-800 transition">
+                Upload your own
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleMooringUpload}
+                />
+              </label>{" "}
+              using{" "}
+              <span
+                onClick={downloadMooringTemplate}
+                className="border-b border-gray-400 cursor-pointer transition"
+              >
+                {" "}
+                CSV template
+              </span>
             </p>
-          )}
-          {AMAR_MOORINGS.filter(
-            (m) => m.deployment <= end && m.recovery >= start
-          ).map((m) => (
-            <div
-              key={m.name}
-              className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
-              onMouseEnter={() => {
-                highlightedMooringRef.current = m.name;
-                mooringSourceRef.current.changed();
-              }}
-              onMouseLeave={() => {
-                highlightedMooringRef.current = null;
-                mooringSourceRef.current.changed();
-              }}
-              onClick={() => {
-                if (mooringPopup?.mooring.name === m.name) {
-                  setMooringPopup(null);
-                  return;
-                }
-                const pixel = mapObj.current?.getPixelFromCoordinate(
-                  fromLonLat([m.lon, m.lat])
-                );
-                if (pixel)
-                  setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                <span className="text-sm font-medium text-slate-700">
-                  {m.name}
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">
-                {m.depth}m · {m.deployment} → {m.recovery}
-              </div>
-            </div>
-          ))}
+          </div>
 
-          {/* Uploaded section */}
-          {uploadedMoorings.length > 0 && (
-            <>
-              <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Uploaded
+          <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+            {/* AMAR section */}
+            <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              AMAR
+            </div>
+            {AMAR_MOORINGS.filter(
+              (m) => m.deployment <= end && m.recovery >= start
+            ).length === 0 && (
+              <p className="text-xs text-slate-400 px-3 py-1">
+                None active in this period.
+              </p>
+            )}
+            {AMAR_MOORINGS.filter(
+              (m) => m.deployment <= end && m.recovery >= start
+            ).map((m) => (
+              <div
+                key={m.name}
+                className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
+                onMouseEnter={() => {
+                  highlightedMooringRef.current = m.name;
+                  mooringSourceRef.current.changed();
+                }}
+                onMouseLeave={() => {
+                  highlightedMooringRef.current = null;
+                  mooringSourceRef.current.changed();
+                }}
+                onClick={() => {
+                  if (mooringPopup?.mooring.name === m.name) {
+                    setMooringPopup(null);
+                    return;
+                  }
+                  const pixel = mapObj.current?.getPixelFromCoordinate(
+                    fromLonLat([m.lon, m.lat])
+                  );
+                  if (pixel)
+                    setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                  <span className="text-sm font-medium text-slate-700">
+                    {m.name}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  {m.depth}m · {m.deployment} → {m.recovery}
+                </div>
               </div>
-              {uploadedMoorings.filter(
-                (m) => m.deployment <= end && m.recovery >= start
-              ).length === 0 && (
-                <p className="text-xs text-slate-400 px-3 py-1">
-                  None active in this period.
-                </p>
-              )}
-              {uploadedMoorings
-                .filter((m) => m.deployment <= end && m.recovery >= start)
-                .map((m) => (
-                  <div
-                    key={m.name}
-                    className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
-                    onMouseEnter={() => {
-                      highlightedMooringRef.current = m.name;
-                      mooringSourceRef.current.changed();
-                    }}
-                    onMouseLeave={() => {
-                      highlightedMooringRef.current = null;
-                      mooringSourceRef.current.changed();
-                    }}
-                    onClick={() => {
-                      if (mooringPopup?.mooring.name === m.name) {
-                        setMooringPopup(null);
-                        return;
-                      }
-                      const pixel = mapObj.current?.getPixelFromCoordinate(
-                        fromLonLat([m.lon, m.lat])
-                      );
-                      if (pixel)
-                        setMooringPopup({
-                          x: pixel[0],
-                          y: pixel[1],
-                          mooring: m,
-                        });
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                      <span className="text-sm font-medium text-slate-700">
-                        {m.name}
-                      </span>
+            ))}
+
+            {/* Uploaded section */}
+            {uploadedMoorings.length > 0 && (
+              <>
+                <div className="px-3 pt-3 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Uploaded
+                </div>
+                {uploadedMoorings.filter(
+                  (m) => m.deployment <= end && m.recovery >= start
+                ).length === 0 && (
+                  <p className="text-xs text-slate-400 px-3 py-1">
+                    None active in this period.
+                  </p>
+                )}
+                {uploadedMoorings
+                  .filter((m) => m.deployment <= end && m.recovery >= start)
+                  .map((m) => (
+                    <div
+                      key={m.name}
+                      className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
+                      onMouseEnter={() => {
+                        highlightedMooringRef.current = m.name;
+                        mooringSourceRef.current.changed();
+                      }}
+                      onMouseLeave={() => {
+                        highlightedMooringRef.current = null;
+                        mooringSourceRef.current.changed();
+                      }}
+                      onClick={() => {
+                        if (mooringPopup?.mooring.name === m.name) {
+                          setMooringPopup(null);
+                          return;
+                        }
+                        const pixel = mapObj.current?.getPixelFromCoordinate(
+                          fromLonLat([m.lon, m.lat])
+                        );
+                        if (pixel)
+                          setMooringPopup({
+                            x: pixel[0],
+                            y: pixel[1],
+                            mooring: m,
+                          });
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                        <span className="text-sm font-medium text-slate-700">
+                          {m.name}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {m.depth}m · {m.deployment} → {m.recovery}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      {m.depth}m · {m.deployment} → {m.recovery}
-                    </div>
-                  </div>
-                ))}
-            </>
-          )}
-        </div>
+                  ))}
+              </>
+            )}
+          </div>
         </div>
 
         <div className="border-t border-slate-100 my-2" />
 
         {/* LAYERS */}
         <div className="flex-1 min-h-0 flex flex-col">
-        <div className="px-5 pt-8 pb-4 shrink-0">
-          <PanelHeader
-            name="Layers"
-            description="Select detailed map layers to overlay."
-            className=""
-          />
-        </div>
-        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
-          <div className="px-3 pt-1 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            Ocean
+          <div className="px-5 pt-8 pb-4 shrink-0">
+            <PanelHeader
+              name="Layers"
+              description="Select detailed map layers to overlay."
+              className=""
+            />
           </div>
-          <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showBathymetry}
-              onChange={() => setShowBathymetry((p) => !p)}
-              className="accent-[#3d5a80] w-4 h-4 rounded"
-            />
-            <div>
-              <div className="text-sm font-medium text-slate-700">
-                Bathymetry
-              </div>
-              <div className="text-[11px] text-slate-400">
-                NRCan / DFO — Scotian Shelf &amp; NL Shelves
-              </div>
+          <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+            <div className="px-3 pt-1 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              Ocean
             </div>
-          </label>
-          <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showNoise}
-              onChange={() => setShowNoise((p) => !p)}
-              className="accent-[#3d5a80] w-4 h-4 rounded"
-            />
-            <div>
-              <div className="text-sm font-medium text-slate-700">
-                Vessel noise (2020-02-01)
+            <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showBathymetry}
+                onChange={() => setShowBathymetry((p) => !p)}
+                className="accent-[#3d5a80] w-4 h-4 rounded"
+              />
+              <div>
+                <div className="text-sm font-medium text-slate-700">
+                  Bathymetry
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  NRCan / DFO — Scotian Shelf &amp; NL Shelves
+                </div>
               </div>
-              <div className="text-[11px] text-slate-400">
-                Modelled underwater noise, 10m depth, 50Hz — daily mean
+            </label>
+            <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showNoise}
+                onChange={() => setShowNoise((p) => !p)}
+                className="accent-[#3d5a80] w-4 h-4 rounded"
+              />
+              <div>
+                <div className="text-sm font-medium text-slate-700">
+                  Vessel noise (2020-02-01)
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Modelled underwater noise, 10m depth, 50Hz — daily mean
+                </div>
               </div>
-            </div>
-          </label>
-        </div>
+            </label>
+          </div>
         </div>
       </SidePanel>
 
-      {/* hide legend temporarily */}
-      {/* <Legend /> */}
+      <Legend />
+
+      {/* Vessel type filter modal */}
+      {showTypeFilter && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in"
+          onClick={() => setShowTypeFilter(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-2xl w-full max-w-sm animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
+              <h2 className="text-base font-semibold text-slate-800">Filter vessels</h2>
+              <button onClick={() => setShowTypeFilter(false)} className="text-slate-400 hover:text-slate-600 transition">
+                <XIcon className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-6 py-5 flex flex-col gap-5">
+              {/* Vessel type — pills */}
+              <div className="flex flex-col gap-2">
+                <span className="text-sm text-slate-600">Vessel type</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {(["cargo", "tanker", "fishing", "passenger", "search & rescue", "other", "unknown"] as const).map((t) => {
+                    const on = draftFilters.type.has(t);
+                    const color = TYPE_COLORS[t];
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => setDraftFilters((prev) => {
+                          const next = new Set(prev.type);
+                          on ? next.delete(t) : next.add(t);
+                          return { ...prev, type: next };
+                        })}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition ${
+                          on ? "border-transparent text-white" : "border-slate-200 text-slate-600 hover:border-slate-300"
+                        }`}
+                        style={on ? { backgroundColor: color } : {}}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: on ? "rgba(255,255,255,0.7)" : color }} />
+                        {t.charAt(0).toUpperCase() + t.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Dropdowns for the other two */}
+              {([
+                { key: "source" as const, label: "AIS source", options: [{ value: "all", label: "All sources" }, { value: "terrestrial", label: "Terrestrial" }, { value: "satellite", label: "Satellite" }] },
+                { key: "dfo" as const, label: "DFO vessels", options: [{ value: "all", label: "All vessels" }, { value: "dfo", label: "DFO only" }, { value: "non-dfo", label: "Non-DFO only" }] },
+              ]).map(({ key, label, options }) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-slate-600 shrink-0">{label}</span>
+                  <select
+                    value={draftFilters[key]}
+                    onChange={(e) => setDraftFilters((prev) => ({ ...prev, [key]: e.target.value }))}
+                    className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition cursor-pointer"
+                  >
+                    {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between px-6 pb-5">
+              <button
+                onClick={() => setDraftFilters({ type: new Set(), source: "all", dfo: "all" })}
+                className="text-sm text-slate-400 hover:text-slate-600 transition"
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => { setFilters(draftFilters); setShowTypeFilter(false); }}
+                className="px-4 py-1.5 rounded-full bg-[#3d5a80] text-white text-sm font-medium hover:bg-[#293241] transition"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Results modal */}
       {(showResults || closingResults) && regionStats && (
