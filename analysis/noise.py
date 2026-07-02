@@ -14,6 +14,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 import rasterio  # type: ignore
 from PIL import Image
+from scipy.ndimage import gaussian_filter  # type: ignore
 
 NOISE_DATA_DIR = os.environ.get(
     "NOISE_DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "pipeline", "noise_data")
@@ -42,11 +43,16 @@ def render_noise_overlay(
         grid = ds.read(1)
 
     nodata = np.isnan(grid)
-    finite = grid[~nodata]
+    # fill no-data with mean before smoothing to avoid edge bleed, then restore
+    filled = np.where(nodata, float(np.nanmean(grid)), grid)
+    smoothed = gaussian_filter(filled, sigma=1.5)
+    smoothed[nodata] = np.nan
+
+    finite = smoothed[~nodata]
     vmin, vmax = np.percentile(finite, [2, 98]) if finite.size else (0.0, 1.0)
 
     norm = mcolors.Normalize(vmin=vmin, vmax=vmax, clip=True)
-    rgba = matplotlib.colormaps["inferno"](norm(np.nan_to_num(grid)), bytes=True)
+    rgba = matplotlib.colormaps["RdYlBu_r"](norm(np.nan_to_num(smoothed)), bytes=True)
     rgba[nodata, 3] = 0
 
     img = Image.fromarray(rgba, mode="RGBA")

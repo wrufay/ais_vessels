@@ -346,7 +346,7 @@ function ShipMap() {
         imageExtent: noiseExtent,
         projection: "EPSG:3857",
       }),
-      opacity: 0.65,
+      opacity: 0.5,
       visible: false,
     });
     noiseLayerRef.current = noiseLayer;
