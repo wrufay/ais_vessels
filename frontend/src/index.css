@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geologica:wght,CRSV@100..900,0&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Stack+Sans+Headline:wght@200..700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -11,8 +11,7 @@ html, body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: "Fraunces", serif;
-  font-optical-sizing: auto;
+  font-family: "Stack Sans Headline", sans-serif;
 }
 
 .font-inter {
@@ -20,9 +19,12 @@ h1, h2, h3, h4, h5, h6 {
   font-optical-sizing: auto;
 }
 
-.font-fraunces {
-  font-family: "Fraunces", serif;
-  font-optical-sizing: auto;
+.font-stack-headline {
+  font-family: "Stack Sans Headline", sans-serif;
+}
+
+.font-geologica {
+  font-family: "Geologica", sans-serif;
 }
 
 /* colour scheme

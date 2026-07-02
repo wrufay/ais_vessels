@@ -10,7 +10,7 @@ function PanelHeader({
   return (
     <div className={className}>
       <h2 className="text-sm font-semibold text-slate-600">{name}</h2>
-      <p className="text-slate-400 text-xs font-fraunces">{description}</p>
+      <p className="text-slate-400 text-xs font-stack-headline">{description}</p>
     </div>
   );
 }

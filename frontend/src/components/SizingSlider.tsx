@@ -20,7 +20,7 @@ function SizingSlider({
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
-        <span className="text-xs text-slate-400 font-fraunces">{label}</span>
+        <span className="text-xs text-slate-400 font-stack-headline">{label}</span>
         <div className="flex items-center gap-2">
           {preview}
           <span className="text-xs text-slate-400 tabular-nums">{value}px</span>

@@ -89,7 +89,7 @@ function IconBar({
   setShowCustomizePanel: Dispatch<SetStateAction<boolean>>;
 }) {
   return (
-    <div className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2.5 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center justify-center items-center">
+    <div className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center justify-center items-center">
       <IconBarButton
         label="Tracks"
         title="View individual vessels displayed on the map."

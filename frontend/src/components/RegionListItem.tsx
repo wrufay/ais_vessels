@@ -23,12 +23,12 @@ function RegionListItem({
       onClick={onClick}
     >
       <div className={onRemove ? "flex-1 min-w-0" : ""}>
-        <div className={`text-sm font-medium text-slate-600 ${onRemove ? "truncate" : ""}`}>
+        <div className={`text-sm font-inter text-slate-600 ${onRemove ? "truncate" : ""}`}>
           {label}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className="w-2 h-2 rounded-full inline-block" style={{ background: dotColor }} />
-          <span className="text-[11px] text-slate-400">{tagLabel}</span>
+          <span className="text-[11px] text-slate-400 font-geologica">{tagLabel}</span>
         </div>
       </div>
       {onRemove && (

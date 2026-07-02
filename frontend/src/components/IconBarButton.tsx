@@ -15,7 +15,7 @@ function IconBarButton({
 }) {
   return (
     <div className="group relative flex flex-col gap-0.5 items-center">
-      <label className="text-slate-500 text-[10px]">{label}</label>
+      <label className="text-slate-500 text-[10px] font-geologica">{label}</label>
 
       <button
         title={title}

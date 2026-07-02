@@ -17,7 +17,7 @@ function DateRangePicker({
   return (
     <div className={`grid grid-cols-2 gap-2 ${className}`}>
       <label className="flex flex-col gap-1">
-        <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">
+        <span className="text-slate-400 text-xs font-medium font-geologica uppercase tracking-wide">
           Start
         </span>
         <input
@@ -28,7 +28,7 @@ function DateRangePicker({
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">
+        <span className="text-slate-400 text-xs font-medium font-geologica uppercase tracking-wide">
           End
         </span>
         <input
