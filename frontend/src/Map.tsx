@@ -47,10 +47,10 @@ import PanelHeader from "./components/PanelHeader";
 import DateRangePicker from "./components/DateRangePicker";
 import RegionListItem from "./components/RegionListItem";
 import SidePanel from "./components/SidePanel";
-import XIcon from "./components/XIcon";
 import IconBar from "./components/IconBar";
 import CursorCoordinates from "./components/CursorCoordinates";
 import SizingSlider from "./components/SizingSlider";
+import ClosePanelBtn from "./components/ClosePanelBtn";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -169,6 +169,9 @@ function ShipMap() {
   const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [showCustomizePanel, setShowCustomizePanel] = useState(false);
+  const [lastOpenedPanel, setLastOpenedPanel] = useState<
+    "vessel" | "region" | "layer" | "customize"
+  >("vessel");
   const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(
     new Set()
   );
@@ -201,6 +204,26 @@ function ShipMap() {
   const [mooringSize, setMooringSize] = useState(10);
   const [vesselSize, setVesselSize] = useState(5);
   const [regionDotSize, setRegionDotSize] = useState(4);
+  useEffect(() => {
+    if (showVesselPanel) setLastOpenedPanel("vessel");
+    else if (showRegionPanel) setLastOpenedPanel("region");
+    else if (showLayerPanel) setLastOpenedPanel("layer");
+    else if (showCustomizePanel) setLastOpenedPanel("customize");
+  }, [showVesselPanel, showRegionPanel, showLayerPanel, showCustomizePanel]);
+  const anyPanelOpen =
+    showVesselPanel || showRegionPanel || showLayerPanel || showCustomizePanel;
+  function closeActivePanel() {
+    setShowVesselPanel(false);
+    setShowRegionPanel(false);
+    setShowLayerPanel(false);
+    setShowCustomizePanel(false);
+  }
+  function openLastPanel() {
+    if (lastOpenedPanel === "vessel") setShowVesselPanel(true);
+    else if (lastOpenedPanel === "region") setShowRegionPanel(true);
+    else if (lastOpenedPanel === "layer") setShowLayerPanel(true);
+    else if (lastOpenedPanel === "customize") setShowCustomizePanel(true);
+  }
   const mooringSizeRef = useRef(10);
   const vesselSizeRef = useRef(5);
   useEffect(() => {
@@ -914,11 +937,16 @@ function ShipMap() {
         setShowCustomizePanel={setShowCustomizePanel}
       />
 
+      {/* Persistent panel toggle button */}
+      <div className={`absolute top-3 right-3 z-30 transition-transform duration-300 ease-in-out ${anyPanelOpen ? "" : "rotate-180"}`}>
+        <ClosePanelBtn
+          onClick={anyPanelOpen ? closeActivePanel : openLastPanel}
+          displayType="chevron"
+        />
+      </div>
+
       {/* Vessel panel — slides in from the right */}
-      <SidePanel
-        open={showVesselPanel}
-        onClose={() => setShowVesselPanel(false)}
-      >
+      <SidePanel open={showVesselPanel}>
         <div className="px-5 pt-8 pb-4 shrink-0">
           <PanelHeader
             description="Click a vessel to see its track."
@@ -1006,7 +1034,7 @@ function ShipMap() {
                 : `${vessels.length}`}
             </span>
             {regionVessels.length > 0 && (
-              <button
+              <ClosePanelBtn
                 onClick={() => {
                   setRegionVessels([]);
                   regionTrackSourceRef.current.clear();
@@ -1015,11 +1043,7 @@ function ShipMap() {
                   hoveredRegionVesselRef.current = null;
                   setHoveredRegionVessel(null);
                 }}
-                className="text-slate-400 hover:text-slate-600 transition"
-                title="Clear region filter"
-              >
-                <XIcon className="w-3 h-3" />
-              </button>
+              />
             )}
           </div>
         </div>
@@ -1068,7 +1092,7 @@ function ShipMap() {
               >
                 <div
                   className={`font-medium truncate ${
-                    active ? "text-[#293241]" : "text-slate-700"
+                    active ? "text-[#293241]" : "text-slate-600"
                   }`}
                 >
                   {v.vessel_name || "Unknown vessel"}
@@ -1101,10 +1125,7 @@ function ShipMap() {
       </SidePanel>
 
       {/* Regions panel — slides in from the right */}
-      <SidePanel
-        open={showRegionPanel}
-        onClose={() => setShowRegionPanel(false)}
-      >
+      <SidePanel open={showRegionPanel}>
         <div className="px-5 pt-8 pb-4 shrink-0">
           <PanelHeader
             name="Regions"
@@ -1117,7 +1138,7 @@ function ShipMap() {
               title="Generate plots of daily mean spead, types and vessel traffic density heat-map."
               disabled={!drawnPolygon || regionLoading}
               onClick={loadRegionStats}
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
+              className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Analyse region
             </button>
@@ -1125,32 +1146,32 @@ function ShipMap() {
               title="See all vessel traffic in selected region"
               disabled={!drawnPolygon || regionLoading}
               onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
+              className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
             >
               See all traffic
             </button>
             {/* show selected region */}
             <div
               title="Click on a region to select it."
-              className="font-inter text-gray-400 text-xs bg-gray-100 px-2 py-0.5 rounded-xs"
+              className="font-inter text-slate-400 text-xs bg-slate-100 px-2 py-0.5 rounded-xs"
             >
               {regionName ? `Selected: ${regionName}` : "No region selected."}
             </div>
           </div>
         </div>
 
-        <hr className="border-gray-200 my-4" />
+        <hr className="border-slate-200 my-4" />
 
         <div className="px-5 shrink-0">
           {/* Feature: Draw a custom region on the map */}
           <div className="mb-2 flex flex-row justify-between items-center">
             <button
               onClick={drawing ? cancelDrawing : startDrawing}
-              className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full"
+              className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full"
             >
               {drawing ? "Cancel" : "Draw region"}
             </button>
-            <label className="font-fraunces text-xs text-gray-700">
+            <label className="font-fraunces text-xs text-slate-600">
               {drawing
                 ? "Double-click to finish drawing."
                 : "Click map to add points"}
@@ -1160,7 +1181,7 @@ function ShipMap() {
 
           {/* Feature: Upload a shapefile as a region */}
           <div className=" flex flex-row justify-between items-center">
-            <label className="font-inter text-gray-700 text-xs px-2 py-0.5 border border-gray-400 rounded-full cursor-pointer">
+            <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
               Upload
               <input
                 type="file"
@@ -1169,13 +1190,13 @@ function ShipMap() {
                 onChange={handleFileUpload}
               />
             </label>
-            <label className="font-fraunces text-xs text-gray-700">
+            <label className="font-fraunces text-xs text-slate-600">
               Use your own shapefile (.zip)
             </label>
           </div>
         </div>
 
-        <hr className="border-gray-200 my-4" />
+        <hr className="border-slate-200 my-4" />
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
           {/* CHA section */}
@@ -1293,9 +1314,8 @@ function ShipMap() {
       </SidePanel>
 
       {/* Overlay panel — slides in from the right */}
-
-      {/* DETAIL LAYERS SECTION */}
-      <SidePanel open={showLayerPanel} onClose={() => setShowLayerPanel(false)}>
+      <SidePanel open={showLayerPanel}>
+        {/* DETAIL LAYERS SECTION */}
         {/* MOORINGS */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-5 pt-8 pb-4 shrink-0">
@@ -1313,8 +1333,8 @@ function ShipMap() {
             />
 
             {/* upload onw csv  */}
-            <p className="text-gray-400 text-xs font-fraunces border border-gray-300 rounded-full py-2 px-4">
-              <label className="border-b border-transparent hover:border-gray-800 cursor-pointer text-gray-800 hover:text-gray-800 transition">
+            <p className="text-slate-400 text-xs font-fraunces border border-slate-300 rounded-full py-2 px-4">
+              <label className="border-b border-transparent hover:border-slate-800 cursor-pointer text-slate-800 hover:text-slate-800 transition">
                 Upload your own
                 <input
                   type="file"
@@ -1326,7 +1346,7 @@ function ShipMap() {
               using{" "}
               <span
                 onClick={downloadMooringTemplate}
-                className="border-b border-gray-400 cursor-pointer transition"
+                className="border-b border-slate-400 cursor-pointer transition"
               >
                 {" "}
                 CSV template
@@ -1374,7 +1394,7 @@ function ShipMap() {
               >
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                  <span className="text-sm font-medium text-slate-700">
+                  <span className="text-sm font-medium text-slate-600">
                     {m.name}
                   </span>
                 </div>
@@ -1429,7 +1449,7 @@ function ShipMap() {
                     >
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                        <span className="text-sm font-medium text-slate-700">
+                        <span className="text-sm font-medium text-slate-600">
                           {m.name}
                         </span>
                       </div>
@@ -1466,7 +1486,7 @@ function ShipMap() {
                 className="accent-[#3d5a80] w-4 h-4 rounded"
               />
               <div>
-                <div className="text-sm font-medium text-slate-700">
+                <div className="text-sm font-medium text-slate-600">
                   Bathymetry
                 </div>
                 <div className="text-[11px] text-slate-400">
@@ -1482,7 +1502,7 @@ function ShipMap() {
                 className="accent-[#3d5a80] w-4 h-4 rounded"
               />
               <div>
-                <div className="text-sm font-medium text-slate-700">
+                <div className="text-sm font-medium text-slate-600">
                   Vessel noise (2020-02-01)
                 </div>
                 <div className="text-[11px] text-slate-400">
@@ -1495,10 +1515,7 @@ function ShipMap() {
       </SidePanel>
 
       {/* Customize panel */}
-      <SidePanel
-        open={showCustomizePanel}
-        onClose={() => setShowCustomizePanel(false)}
-      >
+      <SidePanel open={showCustomizePanel}>
         <div className="px-5 pt-8 pb-4 shrink-0">
           <PanelHeader
             name="Customize"
@@ -1570,12 +1587,10 @@ function ShipMap() {
               <h2 className="text-base font-semibold text-slate-800">
                 Filter vessels
               </h2>
-              <button
+              <ClosePanelBtn
                 onClick={() => setShowTypeFilter(false)}
-                className="text-slate-400 hover:text-slate-600 transition"
-              >
-                <XIcon className="w-4 h-4" />
-              </button>
+                displayType="cross"
+              />
             </div>
             <div className="px-6 py-5 flex flex-col gap-5">
               {/* Vessel type — pills */}
@@ -1662,7 +1677,7 @@ function ShipMap() {
                         [key]: e.target.value,
                       }))
                     }
-                    className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition cursor-pointer"
+                    className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition cursor-pointer"
                   >
                     {options.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -1721,11 +1736,11 @@ function ShipMap() {
                   {regionName ?? "Region Analysis"}
                 </h2>
                 <p className="text-sm text-slate-500 mt-1">
-                  <span className="font-medium text-slate-700">
+                  <span className="font-medium text-slate-600">
                     Selected: {regionStats.unique_vessels}
                   </span>{" "}
                   vessels ·{" "}
-                  <span className="font-medium text-slate-700">
+                  <span className="font-medium text-slate-600">
                     {regionStats.total_positions.toLocaleString()}
                   </span>{" "}
                   positions · {start} to {end}
@@ -1737,12 +1752,7 @@ function ShipMap() {
                   )}
                 </p>
               </div>
-              <button
-                onClick={() => closeResults()}
-                className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full w-8 h-8 flex items-center justify-center transition shrink-0"
-              >
-                <XIcon className="w-4 h-4" />
-              </button>
+              <ClosePanelBtn onClick={closeResults} displayType="cross" />
             </div>
             <div className="overflow-y-auto px-7 py-6 space-y-7">
               {regionStats.total_positions === 0 ? (
@@ -1755,7 +1765,7 @@ function ShipMap() {
                   {regionStats.plots?.vessel_types && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-700 font-fraunces">
+                        <span className="text-sm font-semibold text-slate-600 font-fraunces">
                           Breakdown of vessel types by day.
                         </span>
                         <button
@@ -1779,7 +1789,7 @@ function ShipMap() {
                   {regionStats.plots?.speed_overall && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-700 font-fraunces">
+                        <span className="text-sm font-semibold text-slate-600 font-fraunces">
                           Mean speed of all vessels, daily.
                         </span>
                         <button
@@ -1803,7 +1813,7 @@ function ShipMap() {
                   {regionStats.plots?.vessel_density && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-700 font-fraunces">
+                        <span className="text-sm font-semibold text-slate-600 font-fraunces">
                           Regional traffic displayed in a heat map.
                         </span>
                         <button

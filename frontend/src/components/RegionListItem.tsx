@@ -1,4 +1,4 @@
-import XIcon from "./XIcon";
+import ClosePanelBtn from "./ClosePanelBtn";
 
 function RegionListItem({
   label,
@@ -23,7 +23,7 @@ function RegionListItem({
       onClick={onClick}
     >
       <div className={onRemove ? "flex-1 min-w-0" : ""}>
-        <div className={`text-sm font-medium text-slate-700 ${onRemove ? "truncate" : ""}`}>
+        <div className={`text-sm font-medium text-slate-600 ${onRemove ? "truncate" : ""}`}>
           {label}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
@@ -32,9 +32,7 @@ function RegionListItem({
         </div>
       </div>
       {onRemove && (
-        <button className="text-slate-300 hover:text-slate-500 shrink-0 ml-2" onClick={onRemove}>
-          <XIcon className="w-3.5 h-3.5" />
-        </button>
+        <ClosePanelBtn onClick={onRemove} displayType="cross" />
       )}
     </div>
   );
