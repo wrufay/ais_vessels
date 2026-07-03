@@ -54,6 +54,16 @@ import ClosePanelBtn from "./components/ClosePanelBtn";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
+const BASEMAPS = [
+  { id: "esri-street",     label: "World Street Map",    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",                           maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-imagery",    label: "World Imagery",       url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",                              maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-ocean",      label: "Ocean / Bathymetry",  url: "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",                     maxZoom: 13, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-topo",       label: "Topo Map",            url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",                             maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-light-gray", label: "Light Gray",          url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",              maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-dark-gray",  label: "Dark Gray",           url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",               maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-natgeo",     label: "National Geographic", url: "https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",                          maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+];
+
 interface Vessel {
   mmsi: number;
   vessel_name: string | null;
@@ -104,6 +114,7 @@ function ShipMap() {
   const routeLayerRef = useRef<VectorLayer | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const bathyLayerRef = useRef<TileLayer | null>(null);
+  const basemapLayerRef = useRef<TileLayer | null>(null);
   const noiseLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLPointsLayer | null>(null);
@@ -179,7 +190,10 @@ function ShipMap() {
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
   const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
   const [showBathymetry, setShowBathymetry] = useState(false);
+  const [bathyOpacity, setBathyOpacity] = useState(0.75);
   const [showNoise, setShowNoise] = useState(false);
+  const [noiseOpacity, setNoiseOpacity] = useState(0.5);
+  const [basemap, setBasemap] = useState("esri-street");
   const [serverError, setServerError] = useState<string | null>(null);
   const [regionVessels, setRegionVessels] = useState<Vessel[]>([]);
   const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(
@@ -377,16 +391,17 @@ function ShipMap() {
     const map = new Map({
       target: mapRef.current,
       layers: [
-        new TileLayer({
-          source: new XYZ({
-            url: `https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}.png?api_key=${
-              import.meta.env.VITE_STADIA_KEY
-            }`,
-            attributions:
-              '© <a href="https://stamen.com">Stamen Design</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-            maxZoom: 18,
-          }),
-        }),
+        (() => {
+          const layer = new TileLayer({
+            source: new XYZ({
+              url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+              attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',
+              maxZoom: 18,
+            }),
+          });
+          basemapLayerRef.current = layer;
+          return layer;
+        })(),
         bathyLayer,
         noiseLayer,
         chaLayer,
@@ -495,8 +510,26 @@ function ShipMap() {
   }, [showBathymetry]);
 
   useEffect(() => {
+    bathyLayerRef.current?.setOpacity(bathyOpacity);
+  }, [bathyOpacity]);
+
+  useEffect(() => {
     noiseLayerRef.current?.setVisible(showNoise);
   }, [showNoise]);
+
+  useEffect(() => {
+    noiseLayerRef.current?.setOpacity(noiseOpacity);
+  }, [noiseOpacity]);
+
+  useEffect(() => {
+    if (!basemapLayerRef.current) return;
+    const bm = BASEMAPS.find((b) => b.id === basemap);
+    if (!bm) return;
+    const url = bm.url;
+    basemapLayerRef.current.setSource(
+      new XYZ({ url, attributions: bm.attributions, maxZoom: bm.maxZoom })
+    );
+  }, [basemap]);
 
   useEffect(() => {
     regionDisplayModeRef.current = regionDisplayMode;
@@ -1478,38 +1511,56 @@ function ShipMap() {
             <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
               Ocean
             </div>
-            <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showBathymetry}
-                onChange={() => setShowBathymetry((p) => !p)}
-                className="accent-[#3d5a80] w-4 h-4 rounded"
-              />
-              <div>
-                <div className="text-sm font-medium text-slate-600">
-                  Bathymetry
+            <div className="px-3 py-2.5 rounded-sm hover:bg-slate-50">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showBathymetry}
+                  onChange={() => setShowBathymetry((p) => !p)}
+                  className="accent-[#3d5a80] w-4 h-4 rounded"
+                />
+                <div>
+                  <div className="text-sm font-medium text-slate-600">Bathymetry</div>
+                  <div className="text-[11px] text-slate-400">NRCan / DFO — Scotian Shelf &amp; NL Shelves</div>
                 </div>
-                <div className="text-[11px] text-slate-400">
-                  NRCan / DFO — Scotian Shelf &amp; NL Shelves
+              </label>
+              {showBathymetry && (
+                <div className="mt-2 ml-7 flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 w-12 shrink-0">Opacity</span>
+                  <input
+                    type="range" min={0} max={100} value={Math.round(bathyOpacity * 100)}
+                    onChange={(e) => setBathyOpacity(Number(e.target.value) / 100)}
+                    className="flex-1 accent-[#3d5a80] h-1"
+                  />
+                  <span className="text-[11px] text-slate-400 w-7 text-right shrink-0">{Math.round(bathyOpacity * 100)}%</span>
                 </div>
-              </div>
-            </label>
-            <label className="flex items-center gap-3 px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showNoise}
-                onChange={() => setShowNoise((p) => !p)}
-                className="accent-[#3d5a80] w-4 h-4 rounded"
-              />
-              <div>
-                <div className="text-sm font-medium text-slate-600">
-                  Vessel noise (2020-02-01)
+              )}
+            </div>
+            <div className="px-3 py-2.5 rounded-sm hover:bg-slate-50">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showNoise}
+                  onChange={() => setShowNoise((p) => !p)}
+                  className="accent-[#3d5a80] w-4 h-4 rounded"
+                />
+                <div>
+                  <div className="text-sm font-medium text-slate-600">Vessel noise (2020-02-01)</div>
+                  <div className="text-[11px] text-slate-400">Modelled underwater noise, 10m depth, 50Hz — daily mean</div>
                 </div>
-                <div className="text-[11px] text-slate-400">
-                  Modelled underwater noise, 10m depth, 50Hz — daily mean
+              </label>
+              {showNoise && (
+                <div className="mt-2 ml-7 flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 w-12 shrink-0">Opacity</span>
+                  <input
+                    type="range" min={0} max={100} value={Math.round(noiseOpacity * 100)}
+                    onChange={(e) => setNoiseOpacity(Number(e.target.value) / 100)}
+                    className="flex-1 accent-[#3d5a80] h-1"
+                  />
+                  <span className="text-[11px] text-slate-400 w-7 text-right shrink-0">{Math.round(noiseOpacity * 100)}%</span>
                 </div>
-              </div>
-            </label>
+              )}
+            </div>
           </div>
         </div>
       </SidePanel>
@@ -1521,7 +1572,24 @@ function ShipMap() {
             name="Customize"
             description="Adjust the appearance of map elements."
           />
-          <div className="mt-6 flex flex-col gap-4">
+          <div className="mt-6 flex flex-col gap-6">
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Base map</p>
+              {BASEMAPS.map((b) => (
+                <label key={b.id} className="flex items-center gap-2 cursor-pointer py-0.5">
+                  <input
+                    type="radio"
+                    name="basemap"
+                    value={b.id}
+                    checked={basemap === b.id}
+                    onChange={() => setBasemap(b.id)}
+                    className="accent-[#3d5a80]"
+                  />
+                  <span className="text-sm text-slate-700">{b.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="border-t border-slate-100" />
             <SizingSlider
               label="Mooring dots"
               value={mooringSize}
