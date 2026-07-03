@@ -20,7 +20,7 @@ function IconBarButton({
       <button
         title={title}
         onClick={onClick}
-        className={`w-10 h-10 rounded-full flex border border-slate-500 items-center bg-[#3d5a80] justify-center active:bg-slate-600 hover:scale-105 active:scale-95 transition ${
+        className={`w-10 h-10 rounded-full flex border border-slate-500 items-center bg-[#3d5a80] justify-center active:bg-slate-600 hover:opacity-100 active:scale-95 transition ${
           active ? "opacity-100" : "opacity-80"
         } text-white`}
       >
