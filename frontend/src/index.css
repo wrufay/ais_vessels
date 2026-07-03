@@ -27,6 +27,44 @@ h1, h2, h3, h4, h5, h6 {
   font-family: "Geologica", sans-serif;
 }
 
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.panel-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 9999px;
+  background: #cbd5e1;
+  outline: none;
+  cursor: pointer;
+  margin-right: 4px;
+}
+.panel-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: white;
+  border: 1.5px solid #94a3b8;
+  cursor: pointer;
+}
+.panel-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: white;
+  border: 1.5px solid #94a3b8;
+  cursor: pointer;
+}
+
 /* colour scheme
 3d5a80 - dusk blue
 98c1d9 - powder blue

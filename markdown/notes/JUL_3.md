@@ -120,3 +120,43 @@ cp pipeline/noise_data/vessel_noise_f50_d10/2020-02-01_new_backup.tif \
 ```
 
 Note: the backend reads the TIF file directly from disk — no rebuild needed when swapping files. The git commit is irrelevant; only the file on disk matters.
+
+---
+
+## 6. Frontend improvements
+
+- **Basemap switcher** (Customize panel): ESRI World Street Map, World Imagery, Ocean/Bathymetry, Topo, Light Gray, Dark Gray, National Geographic. Default: World Imagery. Switching updates the OL tile source in real time, no rebuild.
+- **Layer opacity sliders** (Layers panel): bathymetry and noise layers each get an opacity slider that appears when the layer is enabled.
+- **Dot customization** (Customize panel): mooring dots, vessel tracks, and region vessels each have a collapsible `▶` section with size + opacity controls. The header shows a live preview dot reflecting current settings. Values are editable as a number input or via slider.
+- **Point count per vessel**: vessel list now shows "X pts in range" for every vessel in the selected timeframe (backend query updated to return `COUNT(*)` per vessel). When a vessel is selected and its track is subsampled, the text changes to "showing X / Y pts".
+
+---
+
+## 7. Product idea — dataset upload & comparison tool
+
+**Context:** supervisor has been assigning manual dataset comparison work (coverage, completeness, MMSI overlap between AIS sources). Idea: turn the app into a lightweight tool that makes this reproducible without code.
+
+**Core concept:**
+- Users upload AIS data files (CSV, Exact Earth, etc.) via a drag/drop interface
+- Backend parses and ingests into TimescaleDB
+- All existing map and analysis features work on the uploaded data
+- Multiple datasets can coexist — users can switch between them or compare side by side
+
+**Feature set (rough):**
+- Upload endpoint (`UploadFile` in FastAPI, background ingestion job)
+- Dataset list: name, source, row count, date range, upload date
+- Live ingestion progress: "ingesting... 142,000 / 800,000 rows"
+- Delete dataset
+- Switch active dataset on the map
+
+**Deployment context:**
+- No cloud needed — runs entirely on the DFO machine in Docker
+- Internal tool, accessible over VPN/local network
+- Light auth (e.g. just a name/username, no passwords) could be added to namespace uploads per person if multiple team members use it simultaneously, but not strictly necessary for a shared workspace model
+
+**Why this is useful:**
+- Reproduces comparisons that are currently done manually in Python/Jupyter
+- Comparison metrics: temporal coverage, spatial coverage, MMSI overlap, position density, gap analysis per vessel
+- Anyone on the team can run a comparison without writing code
+
+**Status:** idea only — needs discussion with supervisor to confirm scope and end goal before building.

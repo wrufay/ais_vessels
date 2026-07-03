@@ -36,7 +36,7 @@ export const TYPE_NUM: Record<string, number> = {
 
 // WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed
 export const REGION_WEBGL_STYLE = {
-  variables: { mode: 0, dotSize: 4 },
+  variables: { mode: 0, dotSize: 4, dotOpacity: 0.6 },
   "circle-radius": ["var", "dotSize"],
   "circle-fill-color": [
     "case",
@@ -49,7 +49,7 @@ export const REGION_WEBGL_STYLE = {
     ],
     "#5a5a5a",
   ],
-  "circle-opacity": 0.6,
+  "circle-opacity": ["var", "dotOpacity"],
 };
 
 const _vesselCanvasCache: Record<string, HTMLCanvasElement> = {};
@@ -129,13 +129,13 @@ export const VESSEL_STYLES = {
   line:  new Style({ stroke: new Stroke({ color: "#98c1d9", width: 2 }) }),
 };
 
-export function makeFeatureStyle(showStart: boolean, showEnd: boolean, radius = 5) {
+export function makeFeatureStyle(showStart: boolean, showEnd: boolean, radius = 5, opacity = 1) {
   const endRadius = Math.round(radius * 1.4);
-  const fast  = new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", radius), ...iconAnchor }) });
-  const mid   = new Style({ image: new Icon({ img: makeVesselCanvas("#ffc857", radius), ...iconAnchor }) });
-  const slow  = new Style({ image: new Icon({ img: makeVesselCanvas("#0a8754", radius), ...iconAnchor }) });
-  const start = new Style({ image: new Icon({ img: makeVesselCanvas("#98c1d9", endRadius, "#fff"), ...iconAnchor }) });
-  const end   = new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", endRadius, "#fff"), ...iconAnchor }) });
+  const fast  = new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", radius), ...iconAnchor, opacity }) });
+  const mid   = new Style({ image: new Icon({ img: makeVesselCanvas("#ffc857", radius), ...iconAnchor, opacity }) });
+  const slow  = new Style({ image: new Icon({ img: makeVesselCanvas("#0a8754", radius), ...iconAnchor, opacity }) });
+  const start = new Style({ image: new Icon({ img: makeVesselCanvas("#98c1d9", endRadius, "#fff"), ...iconAnchor, opacity }) });
+  const end   = new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", endRadius, "#fff"), ...iconAnchor, opacity }) });
   return function (feature: FeatureLike): Style {
     const geomType = feature.getGeometry()?.getType();
     if (geomType === "LineString") return VESSEL_STYLES.line;

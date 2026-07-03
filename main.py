@@ -76,13 +76,15 @@ def get_vessels(start: str | None = Query(None), end: str | None = Query(None)):
             p.mmsi,
             v.name AS vessel_name,
             v.ship_type,
-            p.source
+            p.source,
+            p.point_count
         FROM (
-            SELECT DISTINCT ON (mmsi) mmsi, source
+            SELECT mmsi, source, COUNT(*) AS point_count,
+                   MAX(received_at) AS last_seen
             FROM ais_positions
             WHERE mmsi BETWEEN 200000000 AND 799999999
             {date_filter}
-            ORDER BY mmsi, received_at DESC
+            GROUP BY mmsi, source
         ) p
         LEFT JOIN vessels v USING (mmsi)
         ORDER BY v.name NULLS LAST, p.mmsi

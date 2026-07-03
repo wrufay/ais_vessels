@@ -55,13 +55,13 @@ import ClosePanelBtn from "./components/ClosePanelBtn";
 const API = import.meta.env.VITE_API_URL ?? "";
 
 const BASEMAPS = [
-  { id: "esri-street",     label: "World Street Map",    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",                           maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
-  { id: "esri-imagery",    label: "World Imagery",       url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",                              maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
-  { id: "esri-ocean",      label: "Ocean / Bathymetry",  url: "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",                     maxZoom: 13, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
-  { id: "esri-topo",       label: "Topo Map",            url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",                             maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
-  { id: "esri-light-gray", label: "Light Gray",          url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",              maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
-  { id: "esri-dark-gray",  label: "Dark Gray",           url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",               maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
-  { id: "esri-natgeo",     label: "National Geographic", url: "https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",                          maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-street",     label: "World Street Map",    tooltip: "Road and transit detail for identifying ports and coastal features.",                                      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",     maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-imagery",    label: "World Imagery",       tooltip: "Satellite photography for visualising real ocean and coastal conditions.",                                          url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",        maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-ocean",      label: "Ocean / Bathymetry",  tooltip: "Seabed depth and ocean labels for correlating tracks with underwater topography.",                              url: "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}", maxZoom: 13, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-topo",       label: "Topo Map",            tooltip: "Topographic contours and relief shading for coastal terrain context.",                                        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",       maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-light-gray", label: "Light Gray",          tooltip: "Minimal canvas that keeps focus on data layers without visual clutter.",                                       url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-dark-gray",  label: "Dark Gray",           tooltip: "Dark canvas with high contrast for noise, track, and density overlays.",                                      url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
+  { id: "esri-natgeo",     label: "National Geographic", tooltip: "Classic cartographic style suited for presentations and reports.",                                         url: "https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",     maxZoom: 16, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
 ];
 
 interface Vessel {
@@ -69,6 +69,7 @@ interface Vessel {
   vessel_name: string | null;
   ship_type: string | number | null;
   source: string;
+  point_count: number;
 }
 
 interface RoutePoint {
@@ -193,7 +194,7 @@ function ShipMap() {
   const [bathyOpacity, setBathyOpacity] = useState(0.75);
   const [showNoise, setShowNoise] = useState(false);
   const [noiseOpacity, setNoiseOpacity] = useState(0.5);
-  const [basemap, setBasemap] = useState("esri-street");
+  const [basemap, setBasemap] = useState("esri-imagery");
   const [serverError, setServerError] = useState<string | null>(null);
   const [regionVessels, setRegionVessels] = useState<Vessel[]>([]);
   const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(
@@ -218,6 +219,12 @@ function ShipMap() {
   const [mooringSize, setMooringSize] = useState(10);
   const [vesselSize, setVesselSize] = useState(5);
   const [regionDotSize, setRegionDotSize] = useState(4);
+  const [mooringOpacity, setMooringOpacity] = useState(1);
+  const [vesselOpacity, setVesselOpacity] = useState(1);
+  const [regionDotOpacity, setRegionDotOpacity] = useState(0.6);
+  const [mooringOpen, setMooringOpen] = useState(false);
+  const [vesselOpen, setVesselOpen] = useState(false);
+  const [regionDotOpen, setRegionDotOpen] = useState(false);
   useEffect(() => {
     if (showVesselPanel) setLastOpenedPanel("vessel");
     else if (showRegionPanel) setLastOpenedPanel("region");
@@ -240,19 +247,30 @@ function ShipMap() {
   }
   const mooringSizeRef = useRef(10);
   const vesselSizeRef = useRef(5);
+  const mooringOpacityRef = useRef(1);
+  const vesselOpacityRef = useRef(1);
   useEffect(() => {
     mooringSizeRef.current = mooringSize;
     mooringSourceRef.current.changed();
   }, [mooringSize]);
   useEffect(() => {
     vesselSizeRef.current = vesselSize;
-    routeLayerRef.current?.setStyle(makeFeatureStyle(true, true, vesselSize));
+    routeLayerRef.current?.setStyle(makeFeatureStyle(true, true, vesselSize, vesselOpacityRef.current));
   }, [vesselSize]);
   useEffect(() => {
-    regionTrackLayerRef.current?.updateStyleVariables({
-      dotSize: regionDotSize,
-    });
+    regionTrackLayerRef.current?.updateStyleVariables({ dotSize: regionDotSize });
   }, [regionDotSize]);
+  useEffect(() => {
+    vesselOpacityRef.current = vesselOpacity;
+    routeLayerRef.current?.setStyle(makeFeatureStyle(true, true, vesselSizeRef.current, vesselOpacity));
+  }, [vesselOpacity]);
+  useEffect(() => {
+    mooringOpacityRef.current = mooringOpacity;
+    mooringSourceRef.current.changed();
+  }, [mooringOpacity]);
+  useEffect(() => {
+    regionTrackLayerRef.current?.updateStyleVariables({ dotOpacity: regionDotOpacity });
+  }, [regionDotOpacity]);
 
   useEffect(() => {
     const fmt = new GeoJSON();
@@ -314,6 +332,7 @@ function ShipMap() {
             anchor: [0.5, 0.5],
             anchorXUnits: "fraction",
             anchorYUnits: "fraction",
+            opacity: mooringOpacityRef.current,
           }),
         });
       },
@@ -394,7 +413,7 @@ function ShipMap() {
         (() => {
           const layer = new TileLayer({
             source: new XYZ({
-              url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+              url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
               attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',
               maxZoom: 18,
             }),
@@ -1142,15 +1161,11 @@ function ShipMap() {
                     {v.mmsi}
                   </span>
                 </div>
-                {active && pointCount !== null && (
-                  <p className="text-[11px] text-slate-400 mt-1.5 tabular-nums">
-                    {pointCount === 0
-                      ? "No data for this period."
-                      : pointTotal !== null
-                      ? `Showing 500 of ${pointTotal.toLocaleString()} points (subsampled)`
-                      : `${pointCount.toLocaleString()} position points in range`}
-                  </p>
-                )}
+                <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+                  {active && pointCount !== null && pointTotal !== null && pointTotal > pointCount
+                    ? `showing ${pointCount.toLocaleString()} / ${pointTotal.toLocaleString()} pts`
+                    : `${v.point_count.toLocaleString()} pts in range`}
+                </div>
               </button>
             );
           })}
@@ -1530,7 +1545,7 @@ function ShipMap() {
                   <input
                     type="range" min={0} max={100} value={Math.round(bathyOpacity * 100)}
                     onChange={(e) => setBathyOpacity(Number(e.target.value) / 100)}
-                    className="flex-1 accent-[#3d5a80] h-1"
+                    className="panel-slider w-24"
                   />
                   <span className="text-[11px] text-slate-400 w-7 text-right shrink-0">{Math.round(bathyOpacity * 100)}%</span>
                 </div>
@@ -1555,7 +1570,7 @@ function ShipMap() {
                   <input
                     type="range" min={0} max={100} value={Math.round(noiseOpacity * 100)}
                     onChange={(e) => setNoiseOpacity(Number(e.target.value) / 100)}
-                    className="flex-1 accent-[#3d5a80] h-1"
+                    className="panel-slider w-24"
                   />
                   <span className="text-[11px] text-slate-400 w-7 text-right shrink-0">{Math.round(noiseOpacity * 100)}%</span>
                 </div>
@@ -1576,7 +1591,7 @@ function ShipMap() {
             <div className="flex flex-col gap-2">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Base map</p>
               {BASEMAPS.map((b) => (
-                <label key={b.id} className="flex items-center gap-2 cursor-pointer py-0.5">
+                <label key={b.id} title={b.tooltip} className="flex items-center gap-2 cursor-pointer py-0.5">
                   <input
                     type="radio"
                     name="basemap"
@@ -1590,53 +1605,94 @@ function ShipMap() {
               ))}
             </div>
             <div className="border-t border-slate-100" />
-            <SizingSlider
-              label="Mooring dots"
-              value={mooringSize}
-              onChange={setMooringSize}
-              accent="accent-[#3d5a80]/80"
-              preview={
-                <img
-                  src={makeMooringCanvas(false, mooringSize).toDataURL()}
-                  width={mooringSize * 2}
-                  height={mooringSize * 2}
-                />
-              }
-            />
-            <SizingSlider
-              label="Vessel tracks"
-              value={vesselSize}
-              onChange={setVesselSize}
-              preview={
-                <>
+            {/* Mooring dots */}
+            <div className="flex flex-col">
+              <button onClick={() => setMooringOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
+                <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${mooringOpen ? "rotate-90" : ""}`}>▶</span>
+                <span className="text-xs text-slate-600 flex-1">Mooring dots</span>
+                <img src={makeMooringCanvas(false, mooringSize).toDataURL()} style={{ opacity: mooringOpacity, width: mooringSize * 2, height: mooringSize * 2 }} />
+              </button>
+              {mooringOpen && (
+                <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                    <input type="range" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Number(e.target.value))} className="panel-slider w-24" />
+                    <div className="flex items-center shrink-0">
+                      <input type="number" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Math.min(20, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400">px</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                    <input type="range" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
+                    <div className="flex items-center shrink-0">
+                      <input type="number" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400">%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Vessel tracks */}
+            <div className="flex flex-col">
+              <button onClick={() => setVesselOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
+                <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${vesselOpen ? "rotate-90" : ""}`}>▶</span>
+                <span className="text-xs text-slate-600 flex-1">Vessel tracks</span>
+                <div className="flex items-center gap-1">
                   {(["#0a8754", "#ffc857", "#ee6c4d"] as const).map((color) => (
-                    <img
-                      key={color}
-                      src={makeVesselCanvas(color, vesselSize).toDataURL()}
-                      width={vesselSize * 2}
-                      height={vesselSize * 2}
-                    />
+                    <img key={color} src={makeVesselCanvas(color, vesselSize).toDataURL()} style={{ opacity: vesselOpacity, width: vesselSize * 2, height: vesselSize * 2 }} />
                   ))}
-                </>
-              }
-            />
-            <SizingSlider
-              label="Region vessels"
-              value={regionDotSize}
-              onChange={setRegionDotSize}
-              preview={
-                <div
-                  style={{
-                    width: regionDotSize * 2,
-                    height: regionDotSize * 2,
-                    borderRadius: "50%",
-                    backgroundColor: "#5a5a5a",
-                    opacity: 0.6,
-                    flexShrink: 0,
-                  }}
-                />
-              }
-            />
+                </div>
+              </button>
+              {vesselOpen && (
+                <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                    <input type="range" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Number(e.target.value))} className="panel-slider w-24" />
+                    <div className="flex items-center shrink-0">
+                      <input type="number" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400">px</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                    <input type="range" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
+                    <div className="flex items-center shrink-0">
+                      <input type="number" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400">%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Region vessels */}
+            <div className="flex flex-col">
+              <button onClick={() => setRegionDotOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
+                <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${regionDotOpen ? "rotate-90" : ""}`}>▶</span>
+                <span className="text-xs text-slate-600 flex-1">Region vessels</span>
+                <div style={{ width: regionDotSize * 2, height: regionDotSize * 2, borderRadius: "50%", backgroundColor: "#5a5a5a", opacity: regionDotOpacity, flexShrink: 0 }} />
+              </button>
+              {regionDotOpen && (
+                <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                    <input type="range" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Number(e.target.value))} className="panel-slider w-24" />
+                    <div className="flex items-center shrink-0">
+                      <input type="number" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400">px</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                    <input type="range" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
+                    <div className="flex items-center shrink-0">
+                      <input type="number" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400">%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </SidePanel>
