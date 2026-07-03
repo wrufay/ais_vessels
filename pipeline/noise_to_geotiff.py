@@ -111,6 +111,7 @@ import argparse
 import os
 import re
 import sys
+import time
 
 import netCDF4 as nc  # type: ignore
 import numpy as np
@@ -222,15 +223,31 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
         lon = np.array(ds["longitude"][:])   # shape (701,), degrees east
         lat = np.array(ds["latitude"][:])    # shape (417,), degrees north
         fi = _nearest_index(np.array(ds["frequency"][:]), freq)
-        di = _nearest_index(np.array(ds["depth"][:]), depth)
-        # Read only the needed freq/depth hyperslab across all lon, lat, time.
-        # NetCDF4 fancy indexing reads just this slice from disk, not the
-        # entire 5-D variable (~337 MB uncompressed). Even so, reading the
-        # 144 time steps over sshfs takes ~17 s per file.
-        arr = np.array(ds[variable][:, :, fi, di, :])  # (lon=701, lat=417, t=144)
+        has_depth = ds[variable].ndim == 5  # wind_noise has no depth dimension
+        if has_depth:
+            di = _nearest_index(np.array(ds["depth"][:]), depth)
+            arr = np.array(ds[variable][:, :, fi, di, :], dtype=np.float64)  # (701, 417, 144)
+        else:
+            arr = np.array(ds[variable][:, :, fi, :], dtype=np.float64)      # (701, 417, 144)
 
-    # Average the 144 ten-minute time steps into one daily-mean value per cell.
-    day_mean = np.nanmean(arr, axis=2)  # (701, 417)
+    # Land / no-data mask first. The model stores land cells as exactly 0.0 dB.
+    # We must mask before converting to linear because 0 dB → 10^(0/20) = 1.0 µPa,
+    # which is indistinguishable from a real (very quiet) ocean cell.
+    arr[arr <= 0] = np.nan
+
+    # Convert dB to linear pressure (µPa): SPL_linear = 10^(SPL_dB / 20)
+    # Averaging must happen in linear space. Averaging dB values directly is
+    # equivalent to a geometric mean of pressures, which underweights loud events
+    # and violates energy conservation.
+    linear = 10.0 ** (arr / 20.0)
+
+    # Average the 144 ten-minute time steps into one daily-mean linear value,
+    # then convert back to dB: SPL_dB = 20 * log10(SPL_linear)
+    # errstate suppresses the expected "mean of empty slice" warning for land cells
+    # (all-NaN columns) — those cells become NaN in the output, which is correct.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        day_mean_linear = np.nanmean(linear, axis=2)          # (701, 417)
+        day_mean = 20.0 * np.log10(day_mean_linear)          # (701, 417), dB
 
     # Transpose from (lon, lat) to (lat, lon) = (417, 701) so that axis 0
     # is latitude (rows) and axis 1 is longitude (columns), matching image
@@ -238,12 +255,6 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
     # south→north (lat[0]=41°, lat[-1]=46°), but GeoTIFF rows run north→south
     # so that pixel (0,0) is the north-west corner of the raster.
     grid = np.flipud(day_mean.T).astype(np.float32)  # (417, 701)
-
-    # Land / no-data mask. The acoustic model stores cells outside its domain
-    # as 0.0 dB rather than NaN. Setting these to NaN lets rasterio write a
-    # proper nodata value, and lets the renderer skip these cells (transparent
-    # in the PNG overlay).
-    grid[grid <= 0] = np.nan
 
     # Build the affine transform. from_origin() expects the coordinates of the
     # north-west corner of the top-left pixel (pixel-corner convention), not
@@ -275,6 +286,85 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
         dst.write(grid, 1)
 
 
+def convert_monthly(
+    month_files: list[tuple[str, str]],
+    dst_path: str,
+    variable: str,
+    freq: float,
+    depth: float,
+) -> None:
+    """Average all daily files for one calendar month and write a GeoTIFF.
+
+    Averaging is done in linear pressure space across all days × all 144
+    time steps simultaneously, then converted back to dB. This avoids loading
+    all days into memory at once by accumulating a running sum and valid-count
+    array (each ~2.3 MB) instead of stacking the full (701, 417, 144×N) array
+    (~9 GB for a 28-day month).
+
+    Parameters
+    ----------
+    month_files:
+        List of (date_str, src_path) pairs for all days in the month, sorted
+        chronologically. Must all belong to the same calendar month.
+    dst_path:
+        Output path for the monthly GeoTIFF (e.g. .../2020-02.tif).
+    variable, freq, depth:
+        Same semantics as convert_one.
+    """
+    lon = lat = fi = di = None
+    # Accumulators in linear pressure space (µPa). Using float64 to avoid
+    # precision loss when summing ~4000 time steps (144 × ~28 days).
+    linear_sum: np.ndarray | None = None
+    valid_count: np.ndarray | None = None
+
+    for date, src_path in month_files:
+        with nc.Dataset(src_path) as ds:
+            if lon is None:
+                lon = np.array(ds["longitude"][:])
+                lat = np.array(ds["latitude"][:])
+                fi = _nearest_index(np.array(ds["frequency"][:]), freq)
+                has_depth = ds[variable].ndim == 5
+                di = _nearest_index(np.array(ds["depth"][:]), depth) if has_depth else None
+                shape = (len(lon), len(lat))
+                linear_sum = np.zeros(shape, dtype=np.float64)
+                valid_count = np.zeros(shape, dtype=np.int64)
+            if di is not None:
+                arr = np.array(ds[variable][:, :, fi, di, :], dtype=np.float64)
+            else:
+                arr = np.array(ds[variable][:, :, fi, :], dtype=np.float64)
+
+        # Mask land cells (stored as 0.0 dB) before converting to linear.
+        arr[arr <= 0] = np.nan
+        linear = 10.0 ** (arr / 20.0)
+
+        # Accumulate sum and count across this day's 144 time steps.
+        linear_sum += np.nansum(linear, axis=2)
+        valid_count += np.sum(~np.isnan(linear), axis=2).astype(np.int64)
+
+    # Compute mean: cells where valid_count == 0 are land → NaN.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean_linear = np.where(valid_count > 0, linear_sum / valid_count, np.nan)
+        month_mean = 20.0 * np.log10(mean_linear)  # back to dB
+
+    grid = np.flipud(month_mean.T).astype(np.float32)  # (417, 701), north-up
+
+    dx = float(lon[1] - lon[0])
+    dy = float(lat[1] - lat[0])
+    west  = float(lon.min()) - dx / 2
+    north = float(lat.max()) + dy / 2
+    transform = from_origin(west, north, dx, dy)
+
+    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+    with rasterio.open(
+        dst_path, "w", driver="GTiff",
+        height=grid.shape[0], width=grid.shape[1],
+        count=1, dtype="float32",
+        crs="EPSG:4326", transform=transform,
+        nodata=np.nan, compress="deflate",
+    ) as dst:
+        dst.write(grid, 1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -300,7 +390,10 @@ def main() -> None:
     parser.add_argument("--end", default=None,
                         help="Last date to convert, inclusive, as YYYY-MM-DD")
     parser.add_argument("--overwrite", action="store_true",
-                        help="Re-convert days whose output file already exists")
+                        help="Re-convert days/months whose output file already exists")
+    parser.add_argument("--monthly", action="store_true",
+                        help="Produce one GeoTIFF per calendar month (monthly mean) "
+                             "instead of one per day")
     args = parser.parse_args()
 
     files = find_daily_files(args.src, args.start, args.end)
@@ -309,20 +402,42 @@ def main() -> None:
         sys.exit(1)
 
     out_subdir = os.path.join(args.dst, f"{args.variable}_f{int(args.freq)}_d{int(args.depth)}")
-    print(f"Found {len(files)} daily files. Writing to {out_subdir}/")
 
-    converted = skipped = 0
-    for i, (date, src_path) in enumerate(files, 1):
-        dst_path = os.path.join(out_subdir, f"{date}.tif")
-        if os.path.exists(dst_path) and not args.overwrite:
-            skipped += 1
-            continue
-        convert_one(src_path, dst_path, args.variable, args.freq, args.depth)
-        converted += 1
-        if i % 10 == 0 or i == len(files):
-            print(f"  {i}/{len(files)} ({converted} converted, {skipped} skipped)")
+    if args.monthly:
+        # Group daily files by YYYY-MM.
+        months: dict[str, list[tuple[str, str]]] = {}
+        for date, src_path in files:
+            ym = date[:7]  # "YYYY-MM"
+            months.setdefault(ym, []).append((date, src_path))
 
-    print(f"Done. {converted} converted, {skipped} already present.")
+        print(f"Found {len(files)} daily files across {len(months)} months. Writing to {out_subdir}/")
+        converted = skipped = 0
+        for i, (ym, month_files) in enumerate(sorted(months.items()), 1):
+            dst_path = os.path.join(out_subdir, f"{ym}.tif")
+            if os.path.exists(dst_path) and not args.overwrite:
+                skipped += 1
+                print(f"  [{i}/{len(months)}] {ym} — skipped (already exists)")
+                continue
+            print(f"  [{i}/{len(months)}] {ym} — averaging {len(month_files)} days ...", flush=True)
+            t0 = time.time()
+            convert_monthly(month_files, dst_path, args.variable, args.freq, args.depth)
+            elapsed = time.time() - t0
+            print(f"  [{i}/{len(months)}] {ym} — done in {elapsed:.0f}s", flush=True)
+            converted += 1
+        print(f"Done. {converted} converted, {skipped} already present.")
+    else:
+        print(f"Found {len(files)} daily files. Writing to {out_subdir}/")
+        converted = skipped = 0
+        for i, (date, src_path) in enumerate(files, 1):
+            dst_path = os.path.join(out_subdir, f"{date}.tif")
+            if os.path.exists(dst_path) and not args.overwrite:
+                skipped += 1
+                continue
+            convert_one(src_path, dst_path, args.variable, args.freq, args.depth)
+            converted += 1
+            if i % 10 == 0 or i == len(files):
+                print(f"  {i}/{len(files)} ({converted} converted, {skipped} skipped)")
+        print(f"Done. {converted} converted, {skipped} already present.")
 
 
 if __name__ == "__main__":
