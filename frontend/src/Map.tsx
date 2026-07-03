@@ -192,9 +192,11 @@ function ShipMap() {
   const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
   const [showBathymetry, setShowBathymetry] = useState(false);
   const [bathyOpacity, setBathyOpacity] = useState(0.75);
+  const [bathyLoading, setBathyLoading] = useState(false);
   const [showNoise, setShowNoise] = useState(false);
   const [noiseOpacity, setNoiseOpacity] = useState(0.5);
-  const [basemap, setBasemap] = useState("esri-imagery");
+  const [noiseLoading, setNoiseLoading] = useState(false);
+  const [basemap, setBasemap] = useState("esri-ocean");
   const [serverError, setServerError] = useState<string | null>(null);
   const [regionVessels, setRegionVessels] = useState<Vessel[]>([]);
   const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(
@@ -390,6 +392,9 @@ function ShipMap() {
       visible: false,
     });
     bathyLayerRef.current = bathyLayer;
+    let bathyPending = 0;
+    bathyLayer.getSource()!.on("tileloadstart", () => { bathyPending++; setBathyLoading(true); });
+    bathyLayer.getSource()!.on(["tileloadend", "tileloaderror"], () => { if (--bathyPending <= 0) { bathyPending = 0; setBathyLoading(false); } });
 
     // ocean noise modelling — static raster overlay, one day's mean dB grid
     const noiseExtent = [
@@ -406,6 +411,8 @@ function ShipMap() {
       visible: false,
     });
     noiseLayerRef.current = noiseLayer;
+    noiseLayer.getSource()!.on("imageloadstart", () => setNoiseLoading(true));
+    noiseLayer.getSource()!.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
 
     const map = new Map({
       target: mapRef.current,
@@ -1534,8 +1541,11 @@ function ShipMap() {
                   onChange={() => setShowBathymetry((p) => !p)}
                   className="accent-[#3d5a80] w-4 h-4 rounded"
                 />
-                <div>
-                  <div className="text-sm font-medium text-slate-600">Bathymetry</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-600">Bathymetry</span>
+                    {bathyLoading && <span className="inline-block w-3 h-3 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />}
+                  </div>
                   <div className="text-[11px] text-slate-400">NRCan / DFO — Scotian Shelf &amp; NL Shelves</div>
                 </div>
               </label>
@@ -1547,7 +1557,12 @@ function ShipMap() {
                     onChange={(e) => setBathyOpacity(Number(e.target.value) / 100)}
                     className="panel-slider w-24"
                   />
-                  <span className="text-[11px] text-slate-400 w-7 text-right shrink-0">{Math.round(bathyOpacity * 100)}%</span>
+                  <input
+                    type="number" min={0} max={100} value={Math.round(bathyOpacity * 100)}
+                    onChange={(e) => setBathyOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)}
+                    className="w-8 text-[11px] text-slate-400 text-right bg-transparent border-none outline-none"
+                  />
+                  <span className="text-[11px] text-slate-400">%</span>
                 </div>
               )}
             </div>
@@ -1559,8 +1574,11 @@ function ShipMap() {
                   onChange={() => setShowNoise((p) => !p)}
                   className="accent-[#3d5a80] w-4 h-4 rounded"
                 />
-                <div>
-                  <div className="text-sm font-medium text-slate-600">Vessel noise (2020-02-01)</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-600">Vessel noise (2020-02-01)</span>
+                    {noiseLoading && <span className="inline-block w-3 h-3 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />}
+                  </div>
                   <div className="text-[11px] text-slate-400">Modelled underwater noise, 10m depth, 50Hz — daily mean</div>
                 </div>
               </label>
@@ -1572,7 +1590,12 @@ function ShipMap() {
                     onChange={(e) => setNoiseOpacity(Number(e.target.value) / 100)}
                     className="panel-slider w-24"
                   />
-                  <span className="text-[11px] text-slate-400 w-7 text-right shrink-0">{Math.round(noiseOpacity * 100)}%</span>
+                  <input
+                    type="number" min={0} max={100} value={Math.round(noiseOpacity * 100)}
+                    onChange={(e) => setNoiseOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)}
+                    className="w-8 text-[11px] text-slate-400 text-right bg-transparent border-none outline-none"
+                  />
+                  <span className="text-[11px] text-slate-400">%</span>
                 </div>
               )}
             </div>
