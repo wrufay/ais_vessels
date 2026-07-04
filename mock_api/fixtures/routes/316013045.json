@@ -1,0 +1,88 @@
+{
+  "mmsi": 316013045,
+  "points": [
+    {
+      "time": 1735685892,
+      "longitude": -66.06232,
+      "latitude": 45.25901,
+      "sog": 0.0,
+      "cog": 188.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735685928,
+      "longitude": -66.06167,
+      "latitude": 45.258335,
+      "sog": 0.0,
+      "cog": 182.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686030,
+      "longitude": -66.06234,
+      "latitude": 45.259026,
+      "sog": 0.0,
+      "cog": 241.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686090,
+      "longitude": -66.06234,
+      "latitude": 45.259014,
+      "sog": 0.0,
+      "cog": 313.2,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686109,
+      "longitude": -66.06167,
+      "latitude": 45.258335,
+      "sog": 0.0,
+      "cog": 153.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686170,
+      "longitude": -66.062325,
+      "latitude": 45.25901,
+      "sog": 0.0,
+      "cog": 79.5,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686290,
+      "longitude": -66.06167,
+      "latitude": 45.258335,
+      "sog": 0.0,
+      "cog": 91.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686311,
+      "longitude": -66.062325,
+      "latitude": 45.259026,
+      "sog": 0.0,
+      "cog": 341.6,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686470,
+      "longitude": -66.06167,
+      "latitude": 45.258335,
+      "sog": 0.0,
+      "cog": 139.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686471,
+      "longitude": -66.06167,
+      "latitude": 45.258335,
+      "sog": 0.0,
+      "cog": 139.0,
+      "source": "CCG_terrestrial"
+    }
+  ],
+  "count": 10,
+  "total": 405521,
+  "sampled": true
+}

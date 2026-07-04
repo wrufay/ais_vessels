@@ -1,0 +1,88 @@
+{
+  "mmsi": 316053522,
+  "points": [
+    {
+      "time": 1735685438,
+      "longitude": -61.38279,
+      "latitude": 45.58712,
+      "sog": 0.0,
+      "cog": 93.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735685984,
+      "longitude": -61.382793,
+      "latitude": 45.587105,
+      "sog": 0.0,
+      "cog": 176.8,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686024,
+      "longitude": -61.381668,
+      "latitude": 45.586666,
+      "sog": 0.0,
+      "cog": 84.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686026,
+      "longitude": -61.381668,
+      "latitude": 45.586666,
+      "sog": 0.0,
+      "cog": 84.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686105,
+      "longitude": -61.382805,
+      "latitude": 45.587112,
+      "sog": 0.0,
+      "cog": 159.1,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686126,
+      "longitude": -61.382793,
+      "latitude": 45.58711,
+      "sog": 0.0,
+      "cog": 178.3,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686177,
+      "longitude": -61.382786,
+      "latitude": 45.587116,
+      "sog": 0.0,
+      "cog": 170.2,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686185,
+      "longitude": -61.382786,
+      "latitude": 45.587116,
+      "sog": 0.0,
+      "cog": 170.2,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686204,
+      "longitude": -61.381668,
+      "latitude": 45.586666,
+      "sog": 0.0,
+      "cog": 286.0,
+      "source": "CCG_terrestrial"
+    },
+    {
+      "time": 1735686246,
+      "longitude": -61.382782,
+      "latitude": 45.587105,
+      "sog": 0.0,
+      "cog": 349.2,
+      "source": "CCG_terrestrial"
+    }
+  ],
+  "count": 10,
+  "total": 383555,
+  "sampled": true
+}

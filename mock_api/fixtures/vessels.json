@@ -1,0 +1,61 @@
+{
+  "vessels": [
+    {
+      "mmsi": 316012539,
+      "vessel_name": "ATLANTIC BEAVER",
+      "ship_type": 52,
+      "source": "CCG_terrestrial",
+      "point_count": 428151
+    },
+    {
+      "mmsi": 316163000,
+      "vessel_name": "ATLANTIC HEMLOCK",
+      "ship_type": 52,
+      "source": "CCG_terrestrial",
+      "point_count": 387184
+    },
+    {
+      "mmsi": 316001070,
+      "vessel_name": "ATLANTIC SPRUCE",
+      "ship_type": 52,
+      "source": "CCG_terrestrial",
+      "point_count": 429736
+    },
+    {
+      "mmsi": 316054148,
+      "vessel_name": "FOUNDATION PILOT",
+      "ship_type": 50,
+      "source": "CCG_terrestrial",
+      "point_count": 393654
+    },
+    {
+      "mmsi": 316003143,
+      "vessel_name": "IRVING HAZELNUT",
+      "ship_type": 70,
+      "source": "CCG_terrestrial",
+      "point_count": 395224
+    },
+    {
+      "mmsi": 316053522,
+      "vessel_name": "MUIR PILOT",
+      "ship_type": 50,
+      "source": "CCG_terrestrial",
+      "point_count": 383555
+    },
+    {
+      "mmsi": 316036132,
+      "vessel_name": "NOLHAN AVA",
+      "ship_type": 70,
+      "source": "CCG_terrestrial",
+      "point_count": 379681
+    },
+    {
+      "mmsi": 316013045,
+      "vessel_name": "SPITFIRE    III",
+      "ship_type": 52,
+      "source": "CCG_terrestrial",
+      "point_count": 405521
+    }
+  ],
+  "count": 8
+}
