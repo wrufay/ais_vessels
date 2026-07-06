@@ -1,9 +1,15 @@
 """Render local ocean noise modelling GeoTIFFs (produced by
 pipeline/noise_to_geotiff.py) as PNG raster overlays for the map.
 
-Each GeoTIFF is one day's mean dB grid for a single (variable, frequency,
-depth) combination, on a fixed 701x417 EPSG:4326 grid. NaN cells are outside
-the model's ocean domain (land / no-data).
+Each GeoTIFF is a mean dB grid — daily (YYYY-MM-DD.tif) or monthly
+(YYYY-MM.tif) — for a single (variable, frequency, depth) combination, on a
+fixed 701x417 EPSG:4326 grid. NaN cells are outside the model's ocean domain
+(land / no-data).
+
+The overlay is for visualisation only: the field is Gaussian-smoothed and
+each image is colour-stretched to its own percentile range (see the note in
+render_noise_overlay), so it is not a source of exact or cross-comparable
+dB values.
 """
 
 import io
@@ -29,7 +35,11 @@ NOISE_VARIABLES = {"vessel_noise", "combined_noise", "wind_noise"}
 def render_noise_overlay(
     date: str, variable: str = "vessel_noise", freq: float = 50, depth: float = 10
 ) -> bytes:
-    """Return a colormapped PNG (RGBA, transparent no-data) for one day."""
+    """Return a colormapped PNG (RGBA, transparent no-data).
+
+    `date` is "YYYY-MM-DD" for a daily overlay or "YYYY-MM" for a monthly one,
+    matching the GeoTIFF filenames written by the pipeline.
+    """
     if variable not in NOISE_VARIABLES:
         raise ValueError(f"Unknown variable: {variable}")
 
@@ -48,6 +58,9 @@ def render_noise_overlay(
     smoothed = gaussian_filter(filled, sigma=1.5)
     smoothed[nodata] = np.nan
 
+    # NOTE: vmin/vmax are per-image percentiles, so colours are NOT comparable
+    # across overlays — each is stretched to its own 2nd-98th dB range. For
+    # cross-day/-month comparison, replace this with fixed vmin/vmax.
     finite = smoothed[~nodata]
     vmin, vmax = np.percentile(finite, [2, 98]) if finite.size else (0.0, 1.0)
 

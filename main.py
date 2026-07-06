@@ -262,7 +262,7 @@ def get_noise_extent():
 
 @app.get("/api/noise/overlay")
 def get_noise_overlay(
-    date: str = Query(..., description="YYYY-MM-DD"),
+    date: str = Query(..., description="YYYY-MM-DD (daily) or YYYY-MM (monthly)"),
     variable: str = Query("vessel_noise"),
     freq: float = Query(50),
     depth: float = Query(10),

@@ -1,28 +1,15 @@
 """
 noise_to_geotiff.py
 ====================
-Converts daily ocean noise modelling NetCDFs (mounted from a remote sshfs
-share at /mnt/shared_remote) into local, single-band GeoTIFFs that the
-FastAPI backend can serve as map overlay images.
 
-Background — why convert at all?
----------------------------------
-The source files live on a network-mounted filesystem (sshfs from a remote
-HPC node). Reading from it is slow (~17 s/file) and unreliable — the mount
-can disconnect, and Docker containers cannot access it without a fragile
-bind-mount of a FUSE filesystem. Each source file is also a large 5-D array
-(lon × lat × frequency × depth × time) whereas the map overlay only ever
-needs a single 2-D slice. Converting once to a compact local GeoTIFF means:
-  - the backend reads from local disk in milliseconds instead of ~17 s
-  - the Docker container has no dependency on the remote mount
-  - each output file is ~630 KB (deflate-compressed float32) vs ~337 MB
-    for the full double-precision NetCDF array read over the network
+This script converts daily ocean noise modelling NetCDFs located at /mnt/shared_remote/
+into local, single-band GeoTIFFs that the FastAPI backend can serve as map overlay images.
 
 Source data layout
 ------------------
   /mnt/shared_remote/
     202002/
-      20200201.nc   ← one file per day
+      20200201.nc  
       20200202.nc
       ...
     202003/
@@ -47,33 +34,15 @@ Each .nc file covers one calendar day and has these dimensions and variables:
     combined_noise(x,y,f,d,t) – vessel + wind noise combined
     wind_noise(x,y,f,t)    – wind-driven ambient noise (no depth dim)
 
-  No-data convention:
-    Cells outside the acoustic model's ocean domain (i.e. on land or beyond
-    the shelf-edge boundary) are stored as exactly 0.0 dB, not NaN. We
-    convert these to NaN in the output GeoTIFF so downstream code can
-    distinguish real low-noise values from masked land cells.
 
 What this script produces
 --------------------------
-For each day, one (variable, frequency, depth) combination is extracted:
-  1. The 144 time steps are averaged into a single daily-mean 2-D grid.
-  2. The grid is transposed and flipped to north-up orientation for GeoTIFF
-     convention (rows run south→north in the NetCDF, north→south in an image).
-  3. Zero-valued cells (land / no-data) are set to NaN.
-  4. A rasterio affine transform is computed from the cell-centre coordinates,
-     converting from grid indices to EPSG:4326 lon/lat degrees. The transform
-     uses the pixel-corner convention: the transform origin is the north-west
-     corner of the top-left pixel, not its centre.
-  5. The result is written as a single-band float32 GeoTIFF with deflate
-     compression and NaN as the nodata value.
+For each day, one (variable, frequency, depth) combination is extracted,
+averaged across the 144 time steps into a single daily-mean 2-D grid, and
+written as a float32 GeoTIFF in EPSG:4326 with NaN for land/no-data cells.
 
-Output directory structure:
-  <dst>/<variable>_f<freq>_d<depth>/
-    2020-02-01.tif
-    2020-02-02.tif
-    ...
+Output: <dst>/<variable>_f<freq>_d<depth>/YYYY-MM-DD.tif
 
-  Example: pipeline/noise_data/vessel_noise_f50_d10/2020-02-01.tif
 
 The script is resumable — it skips any day whose output file already exists,
 so you can run it in batches or after interruption without reprocessing.
@@ -89,6 +58,9 @@ Usage examples
   # Convert combined noise at 100 Hz / 50 m depth
   python noise_to_geotiff.py --variable combined_noise --freq 100 --depth 50
 
+  # Produce monthly means instead of daily (outputs YYYY-MM.tif)
+  python noise_to_geotiff.py --monthly
+
   # Force re-conversion of days that already have output
   python noise_to_geotiff.py --overwrite
 
@@ -100,7 +72,7 @@ Performance note
 Each source file requires reading ~337 MB of double-precision data over the
 sshfs network mount (~17 s/file on this machine). Converting all ~450 days
 takes roughly 2 hours. Run it in a screen/tmux session or as a background
-job. Progress is printed every 10 files.
+job. Progress is printed per month with elapsed time.
 
 Dependencies
 ------------
@@ -131,20 +103,19 @@ DATE_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})\.nc$")
 def _nearest_index(values: np.ndarray, target: float) -> int:
     """Return the index of the element in `values` closest to `target`.
 
-    Used to find the frequency or depth level that best matches the requested
-    value, since the NetCDF stores only a fixed set of discrete levels (e.g.
-    frequency = [50, 100, 200, 500, 1000] Hz).
+    NetCDF stores a fixed set of frequency and depth levels (e.g. frequency = [50, 100, 200, 500, 1000] Hz)
+    so a requested value is snapped to the nearest available one.
     """
     return int(np.argmin(np.abs(values - target)))
 
 
 def find_daily_files(src_dir: str, start: str | None, end: str | None) -> list[tuple[str, str]]:
-    """Walk src_dir and return a sorted list of (date, path) pairs.
+    """Scan src_dir and return a sorted list of (date, path) pairs.
 
-    Scans all YYYYMM/ subdirectories for YYYYMMDD.nc files. Filters to the
-    [start, end] date range if provided (ISO strings, both inclusive).
-    Directories or files that don't match the expected naming pattern are
-    silently skipped (e.g. loc/, slurmout/, size.2024.txt).
+    Scans all YYYYMM/ subdirectories for YYYYMMDD.nc files, returning those within
+    the [start, end] date range if given (ISO strings, both inclusive)
+    Anything not matching the expected naming pattern is skipped.
+
 
     Parameters
     ----------
@@ -183,24 +154,29 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
 
     Steps
     -----
-    1. Open the NetCDF and read the coordinate arrays (lon, lat, frequency,
-       depth) to find the index of the requested freq/depth level.
-    2. Slice the chosen variable at [all_lon, all_lat, freq_idx, depth_idx,
-       all_time], giving a (701, 417, 144) array.
-    3. Average over the time axis to get a single daily-mean (701, 417) grid.
-    4. Transpose to (lat, lon) = (417, 701) and flip vertically so that the
-       first row corresponds to the northernmost latitude — this is the
-       standard image/GeoTIFF convention (north-up).
-    5. Cast to float32 (source data is float64; halves the file size with no
-       meaningful precision loss for dB values).
-    6. Set cells at or below 0 dB to NaN. The acoustic model stores land cells
-       and cells outside its domain as exactly 0.0, not as a conventional
-       nodata value, so this threshold is the agreed-upon land mask.
-    7. Compute the affine transform. rasterio's from_origin() takes the
+    1. Open the NetCDF and slice the chosen variable at the requested
+       frequency/depth level, giving a (701, 417, 144) array of the day's
+       144 ten-minute time steps. (except for wind_noise, which has no depth dimension.)
+
+    2. Mask land / no-data cells (stored as exactly 0.0 dB) to NaN. This is
+       done BEFORE the next step, because 0 dB converts to a valid-looking
+       pressure and would otherwise pollute the average.
+
+    3. Average in linear pressure space, not in dB. Convert dB to pressure
+       (SPL_linear = 10^(SPL_dB / 20)), take the mean over the 144 time steps,
+       then convert back to dB (SPL_dB = 20 * log10(mean)). Averaging dB
+       directly underweights loud events, so it must be done in linear space.
+
+    4. Transpose to (lat, lon) = (417, 701) and flip vertically so the first
+       row is the northernmost latitude (GeoTIFF convention) and cast to float32,
+       which halves the file size.
+
+    5. Compute the affine transform. rasterio's from_origin() takes the
        north-west corner of the top-left pixel (not its centre), so we shift
        the cell-centre coordinates outward by half a pixel in each direction.
-    8. Write the GeoTIFF with deflate compression. Deflate works well here
-       because the NaN no-data region (land) compresses very efficiently.
+
+    6. Write a single-band float32 GeoTIFF with deflate compression and NaN
+       as the nodata value. 
 
     Parameters
     ----------
@@ -211,15 +187,16 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
         created if it does not exist.
     variable:
         NetCDF variable name: "vessel_noise", "combined_noise", or
-        "wind_noise". wind_noise has no depth dimension; the depth argument
-        is ignored for it (the script currently only handles variables with
-        both f and d dimensions — wind_noise would need a separate branch).
+        "wind_noise". Depth argument is ignored for wind_noise.
     freq:
-        Target frequency in Hz. The nearest available frequency band is used.
+        Target frequency in Hz - nearest available frequency band is used.
     depth:
-        Target depth in metres. The nearest available depth level is used.
+        Target depth in metres - nearest available depth level is used.
     """
     with nc.Dataset(src_path) as ds:
+        if variable not in ds.variables:
+            print(f"    skipping {os.path.basename(src_path)} — '{variable}' not found", flush=True)
+            return
         lon = np.array(ds["longitude"][:])   # shape (701,), degrees east
         lat = np.array(ds["latitude"][:])    # shape (417,), degrees north
         fi = _nearest_index(np.array(ds["frequency"][:]), freq)
@@ -230,41 +207,23 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
         else:
             arr = np.array(ds[variable][:, :, fi, :], dtype=np.float64)      # (701, 417, 144)
 
-    # Land / no-data mask first. The model stores land cells as exactly 0.0 dB.
-    # We must mask before converting to linear because 0 dB → 10^(0/20) = 1.0 µPa,
-    # which is indistinguishable from a real (very quiet) ocean cell.
+    # Mask land (0.0 dB) before converting: 0 dB → 1.0 µPa would otherwise
+    # pass as a real quiet-ocean cell.
     arr[arr <= 0] = np.nan
 
-    # Convert dB to linear pressure (µPa): SPL_linear = 10^(SPL_dB / 20)
-    # Averaging must happen in linear space. Averaging dB values directly is
-    # equivalent to a geometric mean of pressures, which underweights loud events
-    # and violates energy conservation.
+    # Average in linear space, then back to dB (see Steps 2-3).
     linear = 10.0 ** (arr / 20.0)
+    with np.errstate(invalid="ignore", divide="ignore"):  # all-NaN land cols
+        day_mean_linear = np.nanmean(linear, axis=2)
+        day_mean = 20.0 * np.log10(day_mean_linear)  # (701, 417), dB
 
-    # Average the 144 ten-minute time steps into one daily-mean linear value,
-    # then convert back to dB: SPL_dB = 20 * log10(SPL_linear)
-    # errstate suppresses the expected "mean of empty slice" warning for land cells
-    # (all-NaN columns) — those cells become NaN in the output, which is correct.
-    with np.errstate(invalid="ignore", divide="ignore"):
-        day_mean_linear = np.nanmean(linear, axis=2)          # (701, 417)
-        day_mean = 20.0 * np.log10(day_mean_linear)          # (701, 417), dB
-
-    # Transpose from (lon, lat) to (lat, lon) = (417, 701) so that axis 0
-    # is latitude (rows) and axis 1 is longitude (columns), matching image
-    # and GeoTIFF conventions. Then flip vertically: the NetCDF lat axis runs
-    # south→north (lat[0]=41°, lat[-1]=46°), but GeoTIFF rows run north→south
-    # so that pixel (0,0) is the north-west corner of the raster.
+    # North-up GeoTIFF orientation: (lon,lat) → (lat,lon), then flip N-S.
     grid = np.flipud(day_mean.T).astype(np.float32)  # (417, 701)
 
-    # Build the affine transform. from_origin() expects the coordinates of the
-    # north-west corner of the top-left pixel (pixel-corner convention), not
-    # the cell centre. We shift outward by half a pixel:
-    #   west  = lon_min - dx/2    (left edge of the leftmost column)
-    #   north = lat_max + dy/2    (top edge of the topmost row)
-    # from_origin(west, north, xsize, ysize) sets affine.e = -ysize internally,
-    # so ysize should be the positive pixel height in degrees.
-    dx = float(lon[1] - lon[0])    # ~0.015°
-    dy = float(lat[1] - lat[0])    # ~0.01202°
+    # from_origin() wants the NW corner of the top-left pixel, so shift the
+    # cell-centre coords out by half a pixel.
+    dx = float(lon[1] - lon[0])
+    dy = float(lat[1] - lat[0])
     west  = float(lon.min()) - dx / 2
     north = float(lat.max()) + dy / 2
     transform = from_origin(west, north, dx, dy)
@@ -274,14 +233,14 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
         dst_path,
         "w",
         driver="GTiff",
-        height=grid.shape[0],   # 417 rows (latitude)
-        width=grid.shape[1],    # 701 columns (longitude)
+        height=grid.shape[0],   # rows = latitude
+        width=grid.shape[1],    # cols = longitude
         count=1,                # single band
         dtype="float32",
-        crs="EPSG:4326",        # geographic coordinates, WGS-84
+        crs="EPSG:4326",
         transform=transform,
         nodata=np.nan,
-        compress="deflate",     # ~630 KB output vs ~1.2 MB uncompressed
+        compress="deflate",
     ) as dst:
         dst.write(grid, 1)
 
@@ -312,13 +271,16 @@ def convert_monthly(
         Same semantics as convert_one.
     """
     lon = lat = fi = di = None
-    # Accumulators in linear pressure space (µPa). Using float64 to avoid
-    # precision loss when summing ~4000 time steps (144 × ~28 days).
+    # Running accumulators in linear space; float64 to avoid precision loss
+    # over ~4000 time steps (144 × ~28 days).
     linear_sum: np.ndarray | None = None
     valid_count: np.ndarray | None = None
 
-    for date, src_path in month_files:
+    for _, src_path in month_files:
         with nc.Dataset(src_path) as ds:
+            if variable not in ds.variables:
+                print(f"    skipping {os.path.basename(src_path)} — '{variable}' not found", flush=True)
+                continue
             if lon is None:
                 lon = np.array(ds["longitude"][:])
                 lat = np.array(ds["latitude"][:])
@@ -333,18 +295,17 @@ def convert_monthly(
             else:
                 arr = np.array(ds[variable][:, :, fi, :], dtype=np.float64)
 
-        # Mask land cells (stored as 0.0 dB) before converting to linear.
+        # Mask land (0.0 dB) before converting, then add this day into the
+        # running sum/count (see convert_one).
         arr[arr <= 0] = np.nan
         linear = 10.0 ** (arr / 20.0)
-
-        # Accumulate sum and count across this day's 144 time steps.
         linear_sum += np.nansum(linear, axis=2)
         valid_count += np.sum(~np.isnan(linear), axis=2).astype(np.int64)
 
-    # Compute mean: cells where valid_count == 0 are land → NaN.
+    # Mean over all days, back to dB; valid_count == 0 means land → NaN.
     with np.errstate(invalid="ignore", divide="ignore"):
         mean_linear = np.where(valid_count > 0, linear_sum / valid_count, np.nan)
-        month_mean = 20.0 * np.log10(mean_linear)  # back to dB
+        month_mean = 20.0 * np.log10(mean_linear)
 
     grid = np.flipud(month_mean.T).astype(np.float32)  # (417, 701), north-up
 
