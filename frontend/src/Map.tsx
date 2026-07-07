@@ -1168,7 +1168,28 @@ function ShipMap() {
             description="Select one or more regions to display them on the map."
           />
 
-          <div className="mt-4 flex flex-col gap-2.5">
+          <div className="mt-4 mb-4 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={drawing ? cancelDrawing : startDrawing}
+                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full"
+              >
+                {drawing ? "Cancel" : "Draw region"}
+              </button>
+              <label className="font-stack-headline text-xs text-slate-600">
+                {drawing ? "Double-click to finish drawing." : "Click map to add points."}
+              </label>
+            </div>
+            <div className="flex items-center justify-between">
+              <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
+                Upload
+                <input type="file" accept=".zip" className="hidden" onChange={handleShapefileUpload} />
+              </label>
+              <label className="font-stack-headline text-xs text-slate-600">
+                Use your own shapefile (.zip)
+              </label>
+            </div>
+            <hr className="border-slate-200" />
             <div className="flex items-center gap-2">
               <button
                 title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
@@ -1204,30 +1225,10 @@ function ShipMap() {
                 ))}
               </div>
             )}
-            <div className="flex items-center justify-between">
-              <button
-                onClick={drawing ? cancelDrawing : startDrawing}
-                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full"
-              >
-                {drawing ? "Cancel" : "Draw region"}
-              </button>
-              <label className="font-stack-headline text-xs text-slate-600">
-                {drawing ? "Double-click to finish drawing." : "Click map to add points."}
-              </label>
-            </div>
-            <div className="flex items-center justify-between">
-              <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
-                Upload
-                <input type="file" accept=".zip" className="hidden" onChange={handleShapefileUpload} />
-              </label>
-              <label className="font-stack-headline text-xs text-slate-600">
-                Use your own shapefile (.zip)
-              </label>
-            </div>
           </div>
         </div>
 
-        <hr className="border-slate-200 my-4" />
+        
 
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
           {/* CHA section */}
