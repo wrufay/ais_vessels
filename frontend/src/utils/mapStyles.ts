@@ -35,8 +35,8 @@ export const TYPE_NUM: Record<string, number> = {
 };
 
 // WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed
+export const REGION_WEBGL_VARIABLES = { mode: 0, dotSize: 4, dotOpacity: 0.6 };
 export const REGION_WEBGL_STYLE = {
-  variables: { mode: 0, dotSize: 4, dotOpacity: 0.6 },
   "circle-radius": ["var", "dotSize"],
   "circle-fill-color": [
     "case",

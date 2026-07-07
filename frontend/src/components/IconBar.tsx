@@ -22,6 +22,24 @@ const tracksIcon = (
   </svg>
 );
 
+const mooringIcon = (
+  <svg
+    className="w-4 h-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="5" r="2" />
+    <line x1="12" y1="7" x2="12" y2="19" />
+    <line x1="8" y1="19" x2="16" y2="19" />
+    <line x1="5" y1="15" x2="12" y2="19" />
+    <line x1="19" y1="15" x2="12" y2="19" />
+  </svg>
+);
+
 const regionsIcon = (
   <svg
     className="w-4 h-4"
@@ -52,41 +70,24 @@ const layersIcon = (
   </svg>
 );
 
-const customizeIcon = (
-  <svg
-    className="w-4 h-4"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-  </svg>
-);
-
 function IconBar({
   showVesselPanel,
   showRegionPanel,
   showLayerPanel,
-  showCustomizePanel,
+  showMooringPanel,
   setShowVesselPanel,
   setShowRegionPanel,
   setShowMooringPanel,
   setShowLayerPanel,
-  setShowCustomizePanel,
 }: {
   showVesselPanel: boolean;
   showRegionPanel: boolean;
   showLayerPanel: boolean;
-  showCustomizePanel: boolean;
+  showMooringPanel: boolean;
   setShowVesselPanel: Dispatch<SetStateAction<boolean>>;
   setShowRegionPanel: Dispatch<SetStateAction<boolean>>;
   setShowMooringPanel: Dispatch<SetStateAction<boolean>>;
   setShowLayerPanel: Dispatch<SetStateAction<boolean>>;
-  setShowCustomizePanel: Dispatch<SetStateAction<boolean>>;
 }) {
   return (
     <div className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center justify-center items-center">
@@ -100,7 +101,19 @@ function IconBar({
           setShowRegionPanel(false);
           setShowMooringPanel(false);
           setShowLayerPanel(false);
-          setShowCustomizePanel(false);
+        }}
+      />
+
+      <IconBarButton
+        label="Moorings"
+        title="View and manage mooring locations on the map."
+        icon={mooringIcon}
+        active={showMooringPanel}
+        onClick={() => {
+          setShowMooringPanel((p) => !p);
+          setShowVesselPanel(false);
+          setShowRegionPanel(false);
+          setShowLayerPanel(false);
         }}
       />
 
@@ -114,13 +127,12 @@ function IconBar({
           setShowVesselPanel(false);
           setShowMooringPanel(false);
           setShowLayerPanel(false);
-          setShowCustomizePanel(false);
         }}
       />
 
       <IconBarButton
-        label="Overlay"
-        title="Display overlaid features on the map (e.g. moorings, bathymetry)"
+        label="Map"
+        title="Switch base map and toggle data overlays."
         icon={layersIcon}
         active={showLayerPanel}
         onClick={() => {
@@ -128,21 +140,6 @@ function IconBar({
           setShowVesselPanel(false);
           setShowRegionPanel(false);
           setShowMooringPanel(false);
-          setShowCustomizePanel(false);
-        }}
-      />
-
-      <IconBarButton
-        label="Settings"
-        title="Customize map appearance"
-        icon={customizeIcon}
-        active={showCustomizePanel}
-        onClick={() => {
-          setShowCustomizePanel((p) => !p);
-          setShowVesselPanel(false);
-          setShowRegionPanel(false);
-          setShowMooringPanel(false);
-          setShowLayerPanel(false);
         }}
       />
 

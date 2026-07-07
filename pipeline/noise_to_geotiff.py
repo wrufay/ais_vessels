@@ -203,12 +203,15 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
         has_depth = ds[variable].ndim == 5  # wind_noise has no depth dimension
         if has_depth:
             di = _nearest_index(np.array(ds["depth"][:]), depth)
-            arr = np.array(ds[variable][:, :, fi, di, :], dtype=np.float64)  # (701, 417, 144)
+            raw = ds[variable][:, :, fi, di, :]
         else:
-            arr = np.array(ds[variable][:, :, fi, :], dtype=np.float64)      # (701, 417, 144)
+            raw = ds[variable][:, :, fi, :]
+        # Use filled() so netCDF masked values (e.g. wind_noise land cells
+        # stored as NaN) become np.nan rather than the default fill (~1e+20).
+        arr = np.ma.filled(raw, np.nan).astype(np.float64)  # (701, 417, 144)
 
-    # Mask land (0.0 dB) before converting: 0 dB → 1.0 µPa would otherwise
-    # pass as a real quiet-ocean cell.
+    # Mask any remaining 0.0 dB land cells (vessel_noise / combined_noise
+    # convention): 0 dB → 1.0 µPa would pass as a quiet-ocean cell.
     arr[arr <= 0] = np.nan
 
     # Average in linear space, then back to dB (see Steps 2-3).
@@ -290,10 +293,8 @@ def convert_monthly(
                 shape = (len(lon), len(lat))
                 linear_sum = np.zeros(shape, dtype=np.float64)
                 valid_count = np.zeros(shape, dtype=np.int64)
-            if di is not None:
-                arr = np.array(ds[variable][:, :, fi, di, :], dtype=np.float64)
-            else:
-                arr = np.array(ds[variable][:, :, fi, :], dtype=np.float64)
+            raw = ds[variable][:, :, fi, di, :] if di is not None else ds[variable][:, :, fi, :]
+            arr = np.ma.filled(raw, np.nan).astype(np.float64)
 
         # Mask land (0.0 dB) before converting, then add this day into the
         # running sum/count (see convert_one).

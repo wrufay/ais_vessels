@@ -32,6 +32,30 @@ NOISE_EXTENT = {"min_lon": -69.5, "max_lon": -59.0, "min_lat": 41.0, "max_lat": 
 NOISE_VARIABLES = {"vessel_noise", "combined_noise", "wind_noise"}
 
 
+def _load_grid(date: str, variable: str, freq: float, depth: float) -> np.ndarray:
+    if variable not in NOISE_VARIABLES:
+        raise ValueError(f"Unknown variable: {variable}")
+    path = os.path.join(
+        NOISE_DATA_DIR, f"{variable}_f{int(freq)}_d{int(depth)}", f"{date}.tif"
+    )
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    with rasterio.open(path) as ds:
+        return ds.read(1)
+
+
+def noise_range(
+    date: str, variable: str = "vessel_noise", freq: float = 50, depth: float = 10
+) -> tuple[float, float]:
+    """Return (vmin_dB, vmax_dB) — the 2nd and 98th percentile of the grid."""
+    grid = _load_grid(date, variable, freq, depth)
+    finite = grid[~np.isnan(grid)]
+    if not finite.size:
+        return 0.0, 1.0
+    vmin, vmax = np.percentile(finite, [2, 98])
+    return float(vmin), float(vmax)
+
+
 def render_noise_overlay(
     date: str, variable: str = "vessel_noise", freq: float = 50, depth: float = 10
 ) -> bytes:
@@ -40,17 +64,7 @@ def render_noise_overlay(
     `date` is "YYYY-MM-DD" for a daily overlay or "YYYY-MM" for a monthly one,
     matching the GeoTIFF filenames written by the pipeline.
     """
-    if variable not in NOISE_VARIABLES:
-        raise ValueError(f"Unknown variable: {variable}")
-
-    path = os.path.join(
-        NOISE_DATA_DIR, f"{variable}_f{int(freq)}_d{int(depth)}", f"{date}.tif"
-    )
-    if not os.path.exists(path):
-        raise FileNotFoundError(path)
-
-    with rasterio.open(path) as ds:
-        grid = ds.read(1)
+    grid = _load_grid(date, variable, freq, depth)
 
     nodata = np.isnan(grid)
     # fill no-data with mean before smoothing to avoid edge bleed, then restore

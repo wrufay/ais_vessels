@@ -7,6 +7,7 @@ Run:  cd mock_api && uvicorn main:app --reload --port 8000
 
 import json
 import os
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Response
@@ -14,6 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+# Re-use the real analysis code — noise TIFs are committed to the repo.
+sys.path.insert(0, str(Path(__file__).parent.parent / "analysis"))
+from noise import render_noise_overlay, noise_range, NOISE_EXTENT, NOISE_DATA_DIR  # noqa: E402
 
 app = FastAPI()
 
@@ -50,12 +55,53 @@ def get_vessel_route(
 
 @app.get("/api/noise/extent")
 def get_noise_extent():
-    return {
-        "minLon": -69.5,
-        "maxLon": -59.0,
-        "minLat": 41.0,
-        "maxLat": 46.0,
-    }
+    return NOISE_EXTENT
+
+
+@app.get("/api/noise/available")
+def get_noise_available():
+    import re
+    result: dict[str, list[dict]] = {}
+    try:
+        entries = os.listdir(NOISE_DATA_DIR)
+    except FileNotFoundError:
+        return result
+    for name in entries:
+        m = re.match(r"^(.+)_f(\d+)_d(\d+)$", name)
+        if m and os.path.isdir(os.path.join(NOISE_DATA_DIR, name)):
+            var, freq, depth = m.group(1), int(m.group(2)), int(m.group(3))
+            result.setdefault(var, []).append({"freq": freq, "depth": depth})
+    return result
+
+
+@app.get("/api/noise/dates")
+def get_noise_dates(
+    variable: str = Query("vessel_noise"),
+    freq: float = Query(50),
+    depth: float = Query(10),
+):
+    dir_path = os.path.join(NOISE_DATA_DIR, f"{variable}_f{int(freq)}_d{int(depth)}")
+    try:
+        files = os.listdir(dir_path)
+    except FileNotFoundError:
+        return []
+    return sorted(f[:-4] for f in files if f.endswith(".tif"))
+
+
+@app.get("/api/noise/range")
+def get_noise_range(
+    date: str = Query(...),
+    variable: str = Query("vessel_noise"),
+    freq: float = Query(50),
+    depth: float = Query(10),
+):
+    try:
+        vmin, vmax = noise_range(date, variable=variable, freq=freq, depth=depth)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No noise data for {date}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"vmin": round(vmin, 1), "vmax": round(vmax, 1)}
 
 
 @app.get("/api/noise/overlay")
@@ -65,7 +111,13 @@ def get_noise_overlay(
     freq: float = Query(50),
     depth: float = Query(10),
 ):
-    raise HTTPException(status_code=404, detail="No noise data in mock API")
+    try:
+        png = render_noise_overlay(date, variable=variable, freq=freq, depth=depth)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No noise data for {date}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return Response(content=png, media_type="image/png")
 
 
 class RegionRequest(BaseModel):

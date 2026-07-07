@@ -14,7 +14,7 @@ import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
 import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
-import WebGLPointsLayer from "ol/layer/WebGLPoints";
+import WebGLVectorLayer from "ol/layer/WebGLVector";
 import VectorSource from "ol/source/Vector";
 import { Style, Stroke, Fill, Icon } from "ol/style";
 import Draw from "ol/interaction/Draw";
@@ -33,6 +33,7 @@ import {
   classifyType,
   formatTime,
   REGION_WEBGL_STYLE,
+  REGION_WEBGL_VARIABLES,
   TYPE_NUM,
   makeFeatureStyle,
   makeMooringCanvas,
@@ -49,7 +50,6 @@ import RegionListItem from "./components/RegionListItem";
 import SidePanel from "./components/SidePanel";
 import IconBar from "./components/IconBar";
 import CursorCoordinates from "./components/CursorCoordinates";
-import SizingSlider from "./components/SizingSlider";
 import ClosePanelBtn from "./components/ClosePanelBtn";
 
 const API = import.meta.env.VITE_API_URL ?? "";
@@ -118,11 +118,7 @@ function ShipMap() {
   const basemapLayerRef = useRef<TileLayer | null>(null);
   const noiseLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
-  const regionTrackLayerRef = useRef<WebGLPointsLayer | null>(null);
-  const highlightSourceRef = useRef(new VectorSource());
-  const highlightLayerRef = useRef<VectorLayer | null>(null);
-  const hoveredRegionVesselRef = useRef<number | null>(null);
-  const regionRouteCacheRef = useRef<Record<number, RoutePoint[]>>({});
+  const regionTrackLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
   const regionDisplayModeRef = useRef<"grey" | "type" | "speed">("grey");
 
   interface Popup {
@@ -139,7 +135,6 @@ function ShipMap() {
   }
 
   const [vessels, setVessels] = useState<Vessel[]>([]);
-  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Vessel | null>(null);
   const [start, setStart] = useState("2025-08-01");
   const [end, setEnd] = useState("2025-08-31");
@@ -180,9 +175,9 @@ function ShipMap() {
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [showCustomizePanel, setShowCustomizePanel] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [lastOpenedPanel, setLastOpenedPanel] = useState<
-    "vessel" | "region" | "layer" | "customize"
+    "vessel" | "region" | "layer" | "mooring"
   >("vessel");
   const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(
     new Set()
@@ -196,12 +191,15 @@ function ShipMap() {
   const [showNoise, setShowNoise] = useState(false);
   const [noiseOpacity, setNoiseOpacity] = useState(0.5);
   const [noiseLoading, setNoiseLoading] = useState(false);
+  const [noiseVariable, setNoiseVariable] = useState("vessel_noise");
+  const [noiseDate, setNoiseDate] = useState("2020-02");
+  const [noiseFreq, setNoiseFreq] = useState(50);
+  const [noiseDepth, setNoiseDepth] = useState(10);
+  const [noiseRange, setNoiseRange] = useState<{ vmin: number; vmax: number } | null>(null);
+  const [noiseAvailable, setNoiseAvailable] = useState<Record<string, { freq: number; depth: number }[]>>({});
+  const [noiseDates, setNoiseDates] = useState<string[]>([]);
   const [basemap, setBasemap] = useState("esri-ocean");
   const [serverError, setServerError] = useState<string | null>(null);
-  const [regionVessels, setRegionVessels] = useState<Vessel[]>([]);
-  const [hoveredRegionVessel, setHoveredRegionVessel] = useState<number | null>(
-    null
-  );
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
   const [regionDisplayMode, setRegionDisplayMode] = useState<
     "grey" | "type" | "speed"
@@ -231,21 +229,21 @@ function ShipMap() {
     if (showVesselPanel) setLastOpenedPanel("vessel");
     else if (showRegionPanel) setLastOpenedPanel("region");
     else if (showLayerPanel) setLastOpenedPanel("layer");
-    else if (showCustomizePanel) setLastOpenedPanel("customize");
-  }, [showVesselPanel, showRegionPanel, showLayerPanel, showCustomizePanel]);
+    else if (showMooringPanel) setLastOpenedPanel("mooring");
+  }, [showVesselPanel, showRegionPanel, showLayerPanel, showMooringPanel]);
   const anyPanelOpen =
-    showVesselPanel || showRegionPanel || showLayerPanel || showCustomizePanel;
+    showVesselPanel || showRegionPanel || showLayerPanel || showMooringPanel;
   function closeActivePanel() {
     setShowVesselPanel(false);
     setShowRegionPanel(false);
     setShowLayerPanel(false);
-    setShowCustomizePanel(false);
+    setShowMooringPanel(false);
   }
   function openLastPanel() {
     if (lastOpenedPanel === "vessel") setShowVesselPanel(true);
     else if (lastOpenedPanel === "region") setShowRegionPanel(true);
     else if (lastOpenedPanel === "layer") setShowLayerPanel(true);
-    else if (lastOpenedPanel === "customize") setShowCustomizePanel(true);
+    else if (lastOpenedPanel === "mooring") setShowMooringPanel(true);
   }
   const mooringSizeRef = useRef(10);
   const vesselSizeRef = useRef(5);
@@ -347,17 +345,12 @@ function ShipMap() {
     routeLayerRef.current = routeLayer;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const regionTrackLayer = new WebGLPointsLayer({
+    const regionTrackLayer = new WebGLVectorLayer({
       source: regionTrackSourceRef.current,
       style: REGION_WEBGL_STYLE as any,
+      variables: REGION_WEBGL_VARIABLES,
     });
     regionTrackLayerRef.current = regionTrackLayer;
-
-    const highlightLayer = new VectorLayer({
-      source: highlightSourceRef.current,
-      style: makeFeatureStyle(true, true),
-    });
-    highlightLayerRef.current = highlightLayer;
 
     // DFO bathymetry WMS only supports EPSG:4326 — build a tile grid for it
     const proj4326 = getProjection("EPSG:4326")!;
@@ -433,7 +426,6 @@ function ShipMap() {
         chaLayer,
         mooringLayer,
         regionTrackLayer,
-        highlightLayer,
         routeLayer,
         new VectorLayer({
           source: drawSourceRef.current,
@@ -460,6 +452,8 @@ function ShipMap() {
             setDrawnPolygon(null);
             setRegionName(null);
             setSelectedChaName(null);
+            regionTrackSourceRef.current.clear();
+            setViewVesselsMode(false);
           } else {
             setDrawnPolygon(cha.geojson);
             setRegionName(cha.name);
@@ -542,6 +536,50 @@ function ShipMap() {
   useEffect(() => {
     noiseLayerRef.current?.setVisible(showNoise);
   }, [showNoise]);
+
+  useEffect(() => {
+    fetch(`${API}/api/noise/available`)
+      .then((r) => r.json())
+      .then(setNoiseAvailable)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const options = noiseAvailable[noiseVariable];
+    if (!options || options.length === 0) return;
+    const freqs = [...new Set(options.map((o) => o.freq))].sort((a, b) => a - b);
+    if (!freqs.includes(noiseFreq)) setNoiseFreq(freqs[0]);
+    const depths = [...new Set(options.filter((o) => o.freq === (freqs.includes(noiseFreq) ? noiseFreq : freqs[0])).map((o) => o.depth))].sort((a, b) => a - b);
+    if (!depths.includes(noiseDepth)) setNoiseDepth(depths[0]);
+  }, [noiseVariable, noiseAvailable]);
+
+  useEffect(() => {
+    fetch(`${API}/api/noise/dates?variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((dates: string[]) => {
+        setNoiseDates(dates);
+        if (dates.length > 0 && !dates.includes(noiseDate)) setNoiseDate(dates[dates.length - 1]);
+      })
+      .catch(() => {});
+  }, [noiseVariable, noiseFreq, noiseDepth]);
+
+  useEffect(() => {
+    if (!noiseLayerRef.current) return;
+    const noiseExtent = [
+      ...fromLonLat([-69.5, 41.0]),
+      ...fromLonLat([-59.0, 46.0]),
+    ] as [number, number, number, number];
+    const url = `${API}/api/noise/overlay?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
+    const newSource = new ImageStatic({ url, imageExtent: noiseExtent, projection: "EPSG:3857" });
+    newSource.on("imageloadstart", () => setNoiseLoading(true));
+    newSource.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
+    noiseLayerRef.current.setSource(newSource);
+
+    fetch(`${API}/api/noise/range?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => setNoiseRange(data))
+      .catch(() => setNoiseRange(null));
+  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth]);
 
   useEffect(() => {
     noiseLayerRef.current?.setOpacity(noiseOpacity);
@@ -644,7 +682,7 @@ function ShipMap() {
     });
   }
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleShapefileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -731,10 +769,6 @@ function ShipMap() {
 
   function renderRegionPositions(positions: RegionPosition[]) {
     regionTrackSourceRef.current.clear();
-    highlightSourceRef.current.clear();
-    hoveredRegionVesselRef.current = null;
-    setHoveredRegionVessel(null);
-    regionRouteCacheRef.current = {};
     console.log(`[region] rendering ${positions.length} positions`);
     positions.forEach((p) => {
       regionTrackSourceRef.current.addFeature(
@@ -752,54 +786,6 @@ function ShipMap() {
         regionTrackSourceRef.current.getFeatures().length
       } features`
     );
-  }
-
-  function hoverRegionVessel(mmsi: number) {
-    hoveredRegionVesselRef.current = mmsi;
-    setHoveredRegionVessel(mmsi);
-    const cached = regionRouteCacheRef.current[mmsi];
-    if (cached) {
-      renderHighlight(mmsi, cached);
-      return;
-    }
-    const params = new URLSearchParams({
-      start: `${start}T00:00:00`,
-      end: `${end}T23:59:59`,
-    });
-    fetch(`${API}/api/vessel/${mmsi}/route?${params}`)
-      .then((r) => r.json())
-      .then((data: { points: RoutePoint[] }) => {
-        const pts = data.points || [];
-        regionRouteCacheRef.current[mmsi] = pts;
-        if (hoveredRegionVesselRef.current === mmsi) renderHighlight(mmsi, pts);
-      })
-      .catch(() => {});
-  }
-
-  function renderHighlight(mmsi: number, pts: RoutePoint[]) {
-    highlightSourceRef.current.clear();
-    pts.forEach((p, i) => {
-      highlightSourceRef.current.addFeature(
-        new Feature({
-          geometry: new Point(fromLonLat([p.longitude, p.latitude])),
-          mmsi,
-          sog: p.sog,
-          cog: p.cog,
-          time: p.time,
-          lat: p.latitude,
-          lon: p.longitude,
-          source: p.source,
-          isStart: i === 0,
-          isEnd: i === pts.length - 1,
-        })
-      );
-    });
-  }
-
-  function unhoverRegionVessel() {
-    hoveredRegionVesselRef.current = null;
-    setHoveredRegionVessel(null);
-    highlightSourceRef.current.clear();
   }
 
   function startDrawing() {
@@ -856,24 +842,6 @@ function ShipMap() {
     setDrawing(false);
   }
 
-  function clearRegion() {
-    drawSourceRef.current.clear();
-    regionTrackSourceRef.current.clear();
-    highlightSourceRef.current.clear();
-    regionRouteCacheRef.current = {};
-    hoveredRegionVesselRef.current = null;
-    regionDisplayModeRef.current = "grey";
-    setRegionVessels([]);
-    setHoveredRegionVessel(null);
-    setViewVesselsMode(false);
-    setRegionDisplayMode("grey");
-    setDrawnPolygon(null);
-    setRegionStats(null);
-    setRegionTime(null);
-    setRegionName(null);
-    setSelectedChaName(null);
-    chaSourceRef.current.changed();
-  }
 
   function loadRegionStats() {
     if (!drawnPolygon) return;
@@ -901,8 +869,6 @@ function ShipMap() {
     if (regionLoading) return;
     setRegionLoading(true);
     regionTrackSourceRef.current.clear();
-    highlightSourceRef.current.clear();
-    regionRouteCacheRef.current = {};
     fetch(`${API}/api/region/vessels`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -910,45 +876,25 @@ function ShipMap() {
     })
       .then((r) => r.json())
       .then((d: { vessel_mmsis: number[]; positions: RegionPosition[] }) => {
-        const rv = vessels.filter((v) =>
-          (d.vessel_mmsis ?? []).includes(v.mmsi)
-        );
-        setRegionVessels(rv);
         renderRegionPositions(d.positions ?? []);
         setViewVesselsMode(true);
-        setShowVesselPanel(true);
-        setShowRegionPanel(false);
       })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
   }
 
-  const activeVesselList = regionVessels.length > 0 ? regionVessels : vessels;
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return activeVesselList.filter((v) => {
+    return vessels.filter((v) => {
       if (filters.type.size > 0 && !filters.type.has(classifyType(v.ship_type)))
         return false;
       if (filters.source !== "all" && v.source !== filters.source) return false;
-      if (
-        filters.dfo === "dfo" &&
-        !(v.vessel_name || "").toLowerCase().includes("ccgs")
-      )
+      if (filters.dfo === "dfo" && !(v.vessel_name || "").toLowerCase().includes("ccgs"))
         return false;
-      if (
-        filters.dfo === "non-dfo" &&
-        (v.vessel_name || "").toLowerCase().includes("ccgs")
-      )
+      if (filters.dfo === "non-dfo" && (v.vessel_name || "").toLowerCase().includes("ccgs"))
         return false;
-      return (
-        String(v.mmsi).includes(q) ||
-        (v.vessel_name || "").toLowerCase().includes(q) ||
-        String(v.ship_type || "")
-          .toLowerCase()
-          .includes(q)
-      );
+      return true;
     });
-  }, [activeVesselList, search, filters]);
+  }, [vessels, filters]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
@@ -959,6 +905,53 @@ function ShipMap() {
         lat={cursorCoord?.lat ?? null}
         lon={cursorCoord?.lon ?? null}
       />
+
+      {/* Upload modal */}
+      {showUploadModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setShowUploadModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-[480px] max-w-[90vw] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
+              <h2 className="text-sm font-semibold text-slate-700">Upload data</h2>
+              <button onClick={() => setShowUploadModal(false)} className="text-slate-400 hover:text-slate-600 transition">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div className="px-6 py-5 flex flex-col gap-4">
+              <div className="border border-slate-200 rounded-lg p-4 flex flex-col gap-2.5">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-[#3d5a80] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21" />
+                  </svg>
+                  <span className="text-xs font-semibold text-slate-600">Region / Shapefile</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">Upload a zipped Shapefile (.zip) to define a custom region and analyse vessel activity within it.</p>
+                <label className="self-start cursor-pointer px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs font-medium hover:bg-[#2e4460] transition">
+                  Choose .zip
+                  <input type="file" className="hidden" accept=".zip" onChange={handleShapefileUpload} />
+                </label>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-4 flex flex-col gap-2.5">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-[#3d5a80] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="19"/><line x1="8" y1="19" x2="16" y2="19"/>
+                  </svg>
+                  <span className="text-xs font-semibold text-slate-600">Mooring data</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">Upload mooring locations to display on the map. Use the CSV template for the correct format.</p>
+                <div className="flex items-center gap-2">
+                  <label className="cursor-pointer px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs font-medium hover:bg-[#2e4460] transition">
+                    Choose .csv
+                    <input type="file" className="hidden" accept=".csv" onChange={handleMooringUpload} />
+                  </label>
+                  <button onClick={downloadMooringTemplate} className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-500 text-xs font-medium hover:border-slate-400 hover:text-slate-700 transition">
+                    Download template
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Server error banner */}
       {serverError && (
@@ -988,12 +981,11 @@ function ShipMap() {
         showVesselPanel={showVesselPanel}
         showRegionPanel={showRegionPanel}
         showLayerPanel={showLayerPanel}
-        showCustomizePanel={showCustomizePanel}
+        showMooringPanel={showMooringPanel}
         setShowVesselPanel={setShowVesselPanel}
         setShowRegionPanel={setShowRegionPanel}
         setShowMooringPanel={setShowMooringPanel}
         setShowLayerPanel={setShowLayerPanel}
-        setShowCustomizePanel={setShowCustomizePanel}
       />
 
       {/* Persistent panel toggle button */}
@@ -1006,7 +998,7 @@ function ShipMap() {
 
       {/* Vessel panel — slides in from the right */}
       <SidePanel open={showVesselPanel}>
-        <div className="px-5 pt-8 pb-4 shrink-0">
+        <div className="px-5 pt-8 shrink-0">
           <PanelHeader
             description="Click a vessel to see its track."
             name="Tracks"
@@ -1019,7 +1011,7 @@ function ShipMap() {
           />
 
           {/* Search for a vessel input bar */}
-          <div className="relative mb-4">
+          {/* <div className="relative mb-4">
             <svg
               className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
               viewBox="0 0 24 24"
@@ -1037,32 +1029,10 @@ function ShipMap() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-          </div>
+          </div> */}
         </div>
 
-        {viewVesselsMode && (
-          <div className="px-5 py-2.5 border-t border-slate-100 shrink-0 flex items-center gap-1.5">
-            {(["grey", "type", "speed"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setRegionDisplayMode(mode)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium font-geologica transition ${
-                  regionDisplayMode === mode
-                    ? "bg-[#3d5a80] text-white"
-                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                }`}
-              >
-                {mode === "grey"
-                  ? "Uniform"
-                  : mode === "type"
-                  ? "Ship type"
-                  : "Speed"}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between px-5 py-2.5 text-xs font-medium text-slate-400 border-t border-slate-100 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 text-xs shadow-sm font-medium text-slate-400 shrink-0">
           <button
             onClick={() => {
               setDraftFilters({ ...filters, type: new Set(filters.type) });
@@ -1086,24 +1056,10 @@ function ShipMap() {
           </button>
           <div className="flex items-center gap-2">
             <span className="tabular-nums">
-              {regionVessels.length > 0
-                ? `${filtered.length} / ${regionVessels.length}`
-                : filtered.length !== vessels.length
+              {filtered.length !== vessels.length
                 ? `${filtered.length} / ${vessels.length}`
                 : `${vessels.length}`}
             </span>
-            {regionVessels.length > 0 && (
-              <ClosePanelBtn
-                onClick={() => {
-                  setRegionVessels([]);
-                  regionTrackSourceRef.current.clear();
-                  highlightSourceRef.current.clear();
-                  regionRouteCacheRef.current = {};
-                  hoveredRegionVesselRef.current = null;
-                  setHoveredRegionVessel(null);
-                }}
-              />
-            )}
           </div>
         </div>
         <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2 pt-2">
@@ -1135,18 +1091,8 @@ function ShipMap() {
                     loadRoute(v);
                   }
                 }}
-                onMouseEnter={() => {
-                  if (regionVessels.length > 0) hoverRegionVessel(v.mmsi);
-                }}
-                onMouseLeave={() => {
-                  if (regionVessels.length > 0) unhoverRegionVessel();
-                }}
                 className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition animate-slide-up ${
-                  active
-                    ? "bg-slate-100"
-                    : hoveredRegionVessel === v.mmsi
-                    ? "bg-slate-100"
-                    : "hover:bg-slate-50"
+                  active ? "bg-slate-100" : "hover:bg-slate-50"
                 }`}
               >
                 <div
@@ -1177,77 +1123,107 @@ function ShipMap() {
             );
           })}
         </div>
+        <div className="border-t border-slate-100 mx-2 mt-2" />
+        <div className="px-3 py-3 flex flex-col gap-1">
+          {/* Vessel tracks sizing */}
+          <div className="flex flex-col">
+            <button onClick={() => setVesselOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
+              <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${vesselOpen ? "rotate-90" : ""}`}>▶</span>
+              <span className="text-xs text-slate-600 flex-1">Vessel tracks</span>
+              <div className="flex items-center gap-1">
+                {(["#0a8754", "#ffc857", "#ee6c4d"] as const).map((color) => (
+                  <img key={color} src={makeVesselCanvas(color, vesselSize).toDataURL()} style={{ opacity: vesselOpacity, width: vesselSize * 2, height: vesselSize * 2 }} />
+                ))}
+              </div>
+            </button>
+            {vesselOpen && (
+              <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                  <input type="range" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Number(e.target.value))} className="panel-slider w-24" />
+                  <div className="flex items-center shrink-0">
+                    <input type="number" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                    <span className="text-[11px] text-slate-400">px</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                  <input type="range" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
+                  <div className="flex items-center shrink-0">
+                    <input type="number" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                    <span className="text-[11px] text-slate-400">%</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </SidePanel>
 
       {/* Regions panel — slides in from the right */}
       <SidePanel open={showRegionPanel}>
-        <div className="px-5 pt-8 pb-4 shrink-0">
+        <div className="px-5 pt-8 shrink-0">
           <PanelHeader
             name="Regions"
             description="Select one or more regions to display them on the map."
           />
 
-          {/* Region action pills */}
-          <div className="flex flex-wrap gap-2">
-            <button
-              title="Generate plots of daily mean spead, types and vessel traffic density heat-map."
-              disabled={!drawnPolygon || regionLoading}
-              onClick={loadRegionStats}
-              className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              Analyse region
-            </button>
-            <button
-              title="See all vessel traffic in selected region"
-              disabled={!drawnPolygon || regionLoading}
-              onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
-              className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              See all traffic
-            </button>
-            {/* show selected region */}
-            <div
-              title="Click on a region to select it."
-              className="font-inter text-slate-400 text-xs bg-slate-100 px-2 py-0.5 rounded-xs"
-            >
-              {regionName ? `Selected: ${regionName}` : "No region selected."}
+          <div className="mt-4 flex flex-col gap-2.5">
+            <div className="flex items-center gap-2">
+              <button
+                title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
+                disabled={!drawnPolygon || regionLoading}
+                onClick={loadRegionStats}
+                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {regionLoading ? "Loading…" : "Analyse region"}
+              </button>
+              <button
+                title="See all vessel traffic in selected region"
+                disabled={!drawnPolygon || regionLoading}
+                onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
+                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                See all traffic
+              </button>
             </div>
-          </div>
-        </div>
-
-        <hr className="border-slate-200 my-4" />
-
-        <div className="px-5 shrink-0">
-          {/* Feature: Draw a custom region on the map */}
-          <div className="mb-2 flex flex-row justify-between items-center">
-            <button
-              onClick={drawing ? cancelDrawing : startDrawing}
-              className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full"
-            >
-              {drawing ? "Cancel" : "Draw region"}
-            </button>
-            <label className="font-stack-headline text-xs text-slate-600">
-              {drawing
-                ? "Double-click to finish drawing."
-                : "Click map to add points"}
-              .
-            </label>
-          </div>
-
-          {/* Feature: Upload a shapefile as a region */}
-          <div className=" flex flex-row justify-between items-center">
-            <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
-              Upload
-              <input
-                type="file"
-                accept=".zip"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-            </label>
-            <label className="font-stack-headline text-xs text-slate-600">
-              Use your own shapefile (.zip)
-            </label>
+            {viewVesselsMode && (
+              <div className="flex items-center gap-1.5">
+                {(["grey", "type", "speed"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setRegionDisplayMode(mode)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium font-geologica transition ${
+                      regionDisplayMode === mode
+                        ? "bg-[#3d5a80] text-white"
+                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    }`}
+                  >
+                    {mode === "grey" ? "Uniform" : mode === "type" ? "Ship type" : "Speed"}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <button
+                onClick={drawing ? cancelDrawing : startDrawing}
+                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full"
+              >
+                {drawing ? "Cancel" : "Draw region"}
+              </button>
+              <label className="font-stack-headline text-xs text-slate-600">
+                {drawing ? "Double-click to finish drawing." : "Click map to add points."}
+              </label>
+            </div>
+            <div className="flex items-center justify-between">
+              <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
+                Upload
+                <input type="file" accept=".zip" className="hidden" onChange={handleShapefileUpload} />
+              </label>
+              <label className="font-stack-headline text-xs text-slate-600">
+                Use your own shapefile (.zip)
+              </label>
+            </div>
           </div>
         </div>
 
@@ -1273,6 +1249,8 @@ function ShipMap() {
                   setRegionName(null);
                   setSelectedChaName(null);
                   chaSourceRef.current.changed();
+                  regionTrackSourceRef.current.clear();
+                  setViewVesselsMode(false);
                 }
               }}
             />
@@ -1297,6 +1275,8 @@ function ShipMap() {
                   setRegionName(null);
                   setSelectedChaName(null);
                   chaSourceRef.current.changed();
+                  regionTrackSourceRef.current.clear();
+                  setViewVesselsMode(false);
                 }
               }}
             />
@@ -1342,6 +1322,8 @@ function ShipMap() {
                       setRegionName(null);
                       setSelectedChaName(null);
                       chaSourceRef.current.changed();
+                      regionTrackSourceRef.current.clear();
+                      setViewVesselsMode(false);
                     }
                   }}
                   onRemove={(e) => {
@@ -1355,8 +1337,6 @@ function ShipMap() {
                       setRegionName(null);
                       drawSourceRef.current.clear();
                       regionTrackSourceRef.current.clear();
-                      highlightSourceRef.current.clear();
-                      setRegionVessels([]);
                       setViewVesselsMode(false);
                       setRegionStats(null);
                     }
@@ -1366,166 +1346,145 @@ function ShipMap() {
             </>
           )}
         </div>
-      </SidePanel>
-
-      {/* Overlay panel — slides in from the right */}
-      <SidePanel open={showLayerPanel}>
-        {/* DETAIL LAYERS SECTION */}
-        {/* MOORINGS */}
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className="px-5 pt-8 pb-4 shrink-0">
-            <PanelHeader
-              name="Moorings"
-              description="Input desired time frame to see locations."
-              className="mb-4"
-            />
-            <DateRangePicker
-              start={start}
-              end={end}
-              onStartChange={setStart}
-              onEndChange={setEnd}
-              className="mb-6"
-            />
-
-            {/* upload onw csv  */}
-            <p className="text-slate-400 text-xs font-stack-headline border border-slate-300 rounded-full py-2 px-4">
-              <label className="border-b border-transparent hover:border-slate-800 cursor-pointer text-slate-800 hover:text-slate-800 transition">
-                Upload your own
-                <input
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  onChange={handleMooringUpload}
-                />
-              </label>{" "}
-              using{" "}
-              <span
-                onClick={downloadMooringTemplate}
-                className="border-b border-slate-400 cursor-pointer transition"
-              >
-                {" "}
-                CSV template
-              </span>
-            </p>
-          </div>
-
-          <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
-            {/* AMAR section */}
-            <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
-              AMAR
-            </div>
-            {AMAR_MOORINGS.filter(
-              (m) => m.deployment <= end && m.recovery >= start
-            ).length === 0 && (
-              <p className="text-xs text-slate-400 px-3 py-1">
-                None active in this period.
-              </p>
-            )}
-            {AMAR_MOORINGS.filter(
-              (m) => m.deployment <= end && m.recovery >= start
-            ).map((m) => (
-              <div
-                key={m.name}
-                className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
-                onMouseEnter={() => {
-                  highlightedMooringRef.current = m.name;
-                  mooringSourceRef.current.changed();
-                }}
-                onMouseLeave={() => {
-                  highlightedMooringRef.current = null;
-                  mooringSourceRef.current.changed();
-                }}
-                onClick={() => {
-                  if (mooringPopup?.mooring.name === m.name) {
-                    setMooringPopup(null);
-                    return;
-                  }
-                  const pixel = mapObj.current?.getPixelFromCoordinate(
-                    fromLonLat([m.lon, m.lat])
-                  );
-                  if (pixel)
-                    setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
-                }}
-              >
+        <div className="border-t border-slate-100 mx-2 mt-2" />
+        <div className="px-3 py-3 flex flex-col gap-1">
+          <div className="flex flex-col">
+            <button onClick={() => setRegionDotOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
+              <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${regionDotOpen ? "rotate-90" : ""}`}>▶</span>
+              <span className="text-xs text-slate-600 flex-1">Region vessels</span>
+              <div style={{ width: regionDotSize * 2, height: regionDotSize * 2, borderRadius: "50%", backgroundColor: "#5a5a5a", opacity: regionDotOpacity, flexShrink: 0 }} />
+            </button>
+            {regionDotOpen && (
+              <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                  <span className="text-sm font-medium text-slate-600">
-                    {m.name}
-                  </span>
+                  <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                  <input type="range" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Number(e.target.value))} className="panel-slider w-24" />
+                  <div className="flex items-center shrink-0">
+                    <input type="number" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                    <span className="text-[11px] text-slate-400">px</span>
+                  </div>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  {m.depth}m · {m.deployment} → {m.recovery}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                  <input type="range" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
+                  <div className="flex items-center shrink-0">
+                    <input type="number" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                    <span className="text-[11px] text-slate-400">%</span>
+                  </div>
                 </div>
               </div>
-            ))}
-
-            {/* Uploaded section */}
-            {uploadedMoorings.length > 0 && (
-              <>
-                <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
-                  Uploaded
-                </div>
-                {uploadedMoorings.filter(
-                  (m) => m.deployment <= end && m.recovery >= start
-                ).length === 0 && (
-                  <p className="text-xs text-slate-400 px-3 py-1">
-                    None active in this period.
-                  </p>
-                )}
-                {uploadedMoorings
-                  .filter((m) => m.deployment <= end && m.recovery >= start)
-                  .map((m) => (
-                    <div
-                      key={m.name}
-                      className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
-                      onMouseEnter={() => {
-                        highlightedMooringRef.current = m.name;
-                        mooringSourceRef.current.changed();
-                      }}
-                      onMouseLeave={() => {
-                        highlightedMooringRef.current = null;
-                        mooringSourceRef.current.changed();
-                      }}
-                      onClick={() => {
-                        if (mooringPopup?.mooring.name === m.name) {
-                          setMooringPopup(null);
-                          return;
-                        }
-                        const pixel = mapObj.current?.getPixelFromCoordinate(
-                          fromLonLat([m.lon, m.lat])
-                        );
-                        if (pixel)
-                          setMooringPopup({
-                            x: pixel[0],
-                            y: pixel[1],
-                            mooring: m,
-                          });
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                        <span className="text-sm font-medium text-slate-600">
-                          {m.name}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        {m.depth}m · {m.deployment} → {m.recovery}
-                      </div>
-                    </div>
-                  ))}
-              </>
             )}
           </div>
         </div>
+      </SidePanel>
 
-        <div className="border-t border-slate-100 my-2" />
+      {/* Overlay panel — slides in from the right */}
+      {/* Mooring panel */}
+      <SidePanel open={showMooringPanel}>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="px-5 pt-8 shrink-0">
+            <PanelHeader
+              name="Moorings"
+              description="Filter by date to see active mooring locations."
+              className="mb-4"
+            />
+            <DateRangePicker start={start} end={end} onStartChange={setStart} onEndChange={setEnd} />
+            <div className="mt-3 flex flex-row justify-between items-center">
+              <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
+                Upload
+                <input type="file" accept=".csv" className="hidden" onChange={handleMooringUpload} />
+              </label>
+              <span onClick={downloadMooringTemplate} className="font-stack-headline text-xs text-slate-600 border-b border-slate-400 cursor-pointer">
+                CSV template
+              </span>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4 mt-4">
+            <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">AMAR</div>
+            {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
+              <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+            )}
+            {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
+              <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
+                onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }}
+                onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }}
+                onClick={() => {
+                  if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
+                  const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
+                  if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
+                }}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                  <span className="text-sm font-medium text-slate-600">{m.name}</span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+              </div>
+            ))}
+            {uploadedMoorings.length > 0 && (
+              <>
+                <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">Uploaded</div>
+                {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
+                  <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+                )}
+                {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
+                  <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
+                    onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }}
+                    onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }}
+                    onClick={() => {
+                      if (mooringPopup?.mooring.name === m.name) { setMooringPopup(null); return; }
+                      const pixel = mapObj.current?.getPixelFromCoordinate(fromLonLat([m.lon, m.lat]));
+                      if (pixel) setMooringPopup({ x: pixel[0], y: pixel[1], mooring: m });
+                    }}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
+                      <span className="text-sm font-medium text-slate-600">{m.name}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="border-t border-slate-100 mx-2 mt-2" />
+          <div className="px-3 py-3 flex flex-col gap-1 shrink-0">
+            <div className="flex flex-col">
+              <button onClick={() => setMooringOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
+                <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${mooringOpen ? "rotate-90" : ""}`}>▶</span>
+                <span className="text-xs text-slate-600 flex-1">Moorings</span>
+                <img src={makeMooringCanvas(false, mooringSize).toDataURL()} style={{ opacity: mooringOpacity, width: mooringSize * 2, height: mooringSize * 2 }} />
+              </button>
+              {mooringOpen && (
+                <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                    <input type="range" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Number(e.target.value))} className="panel-slider w-24" />
+                    <div className="flex items-center shrink-0">
+                      <input type="number" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Math.min(20, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400">px</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                    <input type="range" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
+                    <div className="flex items-center shrink-0">
+                      <input type="number" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400">%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </SidePanel>
 
+      <SidePanel open={showLayerPanel}>
         {/* LAYERS */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-5 pt-8 pb-4 shrink-0">
             <PanelHeader
-              name="Layers"
-              description="Select detailed map layers to overlay."
+              name="Map"
+              description="Switch base map and toggle data overlays."
               className=""
             />
           </div>
@@ -1576,43 +1535,87 @@ function ShipMap() {
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-600">Vessel noise (2020-02-01)</span>
+                    <span className="text-sm font-medium text-slate-600">Noise model</span>
                     {noiseLoading && <span className="inline-block w-3 h-3 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />}
                   </div>
-                  <div className="text-[11px] text-slate-400">Modelled underwater noise, 10m depth, 50Hz — daily mean</div>
+                  <div className="text-[11px] text-slate-400">Modelled underwater sound pressure level</div>
                 </div>
               </label>
               {showNoise && (
-                <div className="mt-2 ml-7 flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 w-12 shrink-0">Opacity</span>
-                  <input
-                    type="range" min={0} max={100} value={Math.round(noiseOpacity * 100)}
-                    onChange={(e) => setNoiseOpacity(Number(e.target.value) / 100)}
-                    className="panel-slider w-24"
-                  />
-                  <input
-                    type="number" min={0} max={100} value={Math.round(noiseOpacity * 100)}
-                    onChange={(e) => setNoiseOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)}
-                    className="w-8 text-[11px] text-slate-400 text-right bg-transparent border-none outline-none"
-                  />
-                  <span className="text-[11px] text-slate-400">%</span>
+                <div className="mt-2 ml-7 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-12 shrink-0">Opacity</span>
+                    <input
+                      type="range" min={0} max={100} value={Math.round(noiseOpacity * 100)}
+                      onChange={(e) => setNoiseOpacity(Number(e.target.value) / 100)}
+                      className="panel-slider w-24"
+                    />
+                    <input
+                      type="number" min={0} max={100} value={Math.round(noiseOpacity * 100)}
+                      onChange={(e) => setNoiseOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)}
+                      className="w-8 text-[11px] text-slate-400 text-right bg-transparent border-none outline-none"
+                    />
+                    <span className="text-[11px] text-slate-400">%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-12 shrink-0">Variable</span>
+                    <select value={noiseVariable} onChange={(e) => setNoiseVariable(e.target.value)}
+                      className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
+                      <option value="vessel_noise">Vessel noise</option>
+                      <option value="combined_noise">Combined noise</option>
+                      <option value="wind_noise">Wind noise</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 w-12 shrink-0">Date</span>
+                    <select value={noiseDate} onChange={(e) => setNoiseDate(e.target.value)}
+                      className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
+                      {(noiseDates.length > 0 ? noiseDates : [noiseDate]).map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  {(() => {
+                    const freqs = [...new Set((noiseAvailable[noiseVariable] ?? []).map(o => o.freq))].sort((a, b) => a - b);
+                    const depths = [...new Set((noiseAvailable[noiseVariable] ?? []).filter(o => o.freq === noiseFreq).map(o => o.depth))].sort((a, b) => a - b);
+                    return <>
+                      {freqs.length > 1 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-400 w-12 shrink-0">Freq</span>
+                          <select value={noiseFreq} onChange={(e) => setNoiseFreq(Number(e.target.value))}
+                            className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
+                            {freqs.map(f => <option key={f} value={f}>{f} Hz</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {noiseVariable !== "wind_noise" && depths.length > 1 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-400 w-12 shrink-0">Depth</span>
+                          <select value={noiseDepth} onChange={(e) => setNoiseDepth(Number(e.target.value))}
+                            className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
+                            {depths.map(d => <option key={d} value={d}>{d} m</option>)}
+                          </select>
+                        </div>
+                      )}
+                    </>;
+                  })()}
+                  <div className="mt-1 flex flex-col gap-1">
+                    <div
+                      className="h-2.5 rounded-full w-full"
+                      style={{ background: "linear-gradient(to right, #4575b4, #91bfdb, #e0f3f8, #ffffbf, #fee090, #fc8d59, #d73027)" }}
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>{noiseRange ? `${noiseRange.vmin.toFixed(1)} dB` : "Low dB"}</span>
+                      <span>{noiseRange ? `${noiseRange.vmax.toFixed(1)} dB` : "High dB"}</span>
+                    </div>
+                    <div className="text-[9px] text-slate-300 italic">relative scale per render</div>
+                  </div>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      </SidePanel>
-
-      {/* Customize panel */}
-      <SidePanel open={showCustomizePanel}>
-        <div className="px-5 pt-8 pb-4 shrink-0">
-          <PanelHeader
-            name="Customize"
-            description="Adjust the appearance of map elements."
-          />
-          <div className="mt-6 flex flex-col gap-6">
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Base map</p>
+          <div className="border-t border-slate-100 mx-2 mt-2" />
+          <div className="px-5 py-4 shrink-0">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Base map</p>
+            <div className="flex flex-col gap-1">
               {BASEMAPS.map((b) => (
                 <label key={b.id} title={b.tooltip} className="flex items-center gap-2 cursor-pointer py-0.5">
                   <input
@@ -1626,95 +1629,6 @@ function ShipMap() {
                   <span className="text-sm text-slate-700">{b.label}</span>
                 </label>
               ))}
-            </div>
-            <div className="border-t border-slate-100" />
-            {/* Mooring dots */}
-            <div className="flex flex-col">
-              <button onClick={() => setMooringOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-                <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${mooringOpen ? "rotate-90" : ""}`}>▶</span>
-                <span className="text-xs text-slate-600 flex-1">Mooring dots</span>
-                <img src={makeMooringCanvas(false, mooringSize).toDataURL()} style={{ opacity: mooringOpacity, width: mooringSize * 2, height: mooringSize * 2 }} />
-              </button>
-              {mooringOpen && (
-                <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
-                    <input type="range" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Number(e.target.value))} className="panel-slider w-24" />
-                    <div className="flex items-center shrink-0">
-                      <input type="number" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Math.min(20, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400">px</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
-                    <input type="range" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
-                    <div className="flex items-center shrink-0">
-                      <input type="number" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400">%</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* Vessel tracks */}
-            <div className="flex flex-col">
-              <button onClick={() => setVesselOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-                <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${vesselOpen ? "rotate-90" : ""}`}>▶</span>
-                <span className="text-xs text-slate-600 flex-1">Vessel tracks</span>
-                <div className="flex items-center gap-1">
-                  {(["#0a8754", "#ffc857", "#ee6c4d"] as const).map((color) => (
-                    <img key={color} src={makeVesselCanvas(color, vesselSize).toDataURL()} style={{ opacity: vesselOpacity, width: vesselSize * 2, height: vesselSize * 2 }} />
-                  ))}
-                </div>
-              </button>
-              {vesselOpen && (
-                <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
-                    <input type="range" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Number(e.target.value))} className="panel-slider w-24" />
-                    <div className="flex items-center shrink-0">
-                      <input type="number" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400">px</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
-                    <input type="range" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
-                    <div className="flex items-center shrink-0">
-                      <input type="number" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400">%</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* Region vessels */}
-            <div className="flex flex-col">
-              <button onClick={() => setRegionDotOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-                <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${regionDotOpen ? "rotate-90" : ""}`}>▶</span>
-                <span className="text-xs text-slate-600 flex-1">Region vessels</span>
-                <div style={{ width: regionDotSize * 2, height: regionDotSize * 2, borderRadius: "50%", backgroundColor: "#5a5a5a", opacity: regionDotOpacity, flexShrink: 0 }} />
-              </button>
-              {regionDotOpen && (
-                <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
-                    <input type="range" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Number(e.target.value))} className="panel-slider w-24" />
-                    <div className="flex items-center shrink-0">
-                      <input type="number" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400">px</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
-                    <input type="range" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
-                    <div className="flex items-center shrink-0">
-                      <input type="number" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400">%</span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

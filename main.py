@@ -19,7 +19,7 @@ from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES  # noqa: E402 # type: ignore
-from noise import render_noise_overlay, NOISE_EXTENT  # noqa: E402 # type: ignore
+from noise import render_noise_overlay, noise_range, NOISE_EXTENT, NOISE_DATA_DIR  # noqa: E402 # type: ignore
 
 DATABASE_URL: str = os.environ["DATABASE_URL"]
 
@@ -258,6 +258,55 @@ def analyse_region(req: RegionRequest):
 @app.get("/api/noise/extent")
 def get_noise_extent():
     return NOISE_EXTENT
+
+
+@app.get("/api/noise/available")
+def get_noise_available():
+    """Return available (variable, freq, depth) combinations by scanning noise_data/."""
+    import re
+    result: dict[str, list[dict]] = {}
+    try:
+        entries = os.listdir(NOISE_DATA_DIR)
+    except FileNotFoundError:
+        return result
+    for name in entries:
+        m = re.match(r"^(.+)_f(\d+)_d(\d+)$", name)
+        if m and os.path.isdir(os.path.join(NOISE_DATA_DIR, name)):
+            var, freq, depth = m.group(1), int(m.group(2)), int(m.group(3))
+            result.setdefault(var, []).append({"freq": freq, "depth": depth})
+    return result
+
+
+@app.get("/api/noise/dates")
+def get_noise_dates(
+    variable: str = Query("vessel_noise"),
+    freq: float = Query(50),
+    depth: float = Query(10),
+):
+    """Return sorted list of available date strings for a given variable/freq/depth."""
+    dir_path = os.path.join(NOISE_DATA_DIR, f"{variable}_f{int(freq)}_d{int(depth)}")
+    try:
+        files = os.listdir(dir_path)
+    except FileNotFoundError:
+        return []
+    dates = sorted(f[:-4] for f in files if f.endswith(".tif"))
+    return dates
+
+
+@app.get("/api/noise/range")
+def get_noise_range(
+    date: str = Query(..., description="YYYY-MM-DD (daily) or YYYY-MM (monthly)"),
+    variable: str = Query("vessel_noise"),
+    freq: float = Query(50),
+    depth: float = Query(10),
+):
+    try:
+        vmin, vmax = noise_range(date, variable=variable, freq=freq, depth=depth)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No noise data for {date}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"vmin": round(vmin, 1), "vmax": round(vmax, 1)}
 
 
 @app.get("/api/noise/overlay")
