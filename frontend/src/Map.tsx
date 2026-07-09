@@ -42,6 +42,7 @@ import {
   drawnRegionLabel,
   downloadPlot,
   setSelectedChaName,
+  getSelectedChaName,
   setClickedChaNames,
 } from "./utils/mapStyles";
 import PanelHeader from "./components/PanelHeader";
@@ -798,7 +799,6 @@ function ShipMap() {
 
     drawSourceRef.current.clear();
     const draw = new Draw({
-      source: drawSourceRef.current,
       type: "Polygon",
       stopClick: true,
     });
@@ -808,14 +808,10 @@ function ShipMap() {
         dataProjection: "EPSG:4326",
         featureProjection: "EPSG:3857",
       });
-      setDrawnPolygon(geojson);
       setDrawing(false);
       setUserSelectedRegions((prev) => {
         const n = prev.filter((r) => r.type === "drawn").length + 1;
         const name = `Drawn region ${n}`;
-        setRegionName(name);
-        setSelectedChaName(name);
-        chaSourceRef.current.changed();
         setClickedRegionNames((prevClicked) => {
           const next = new Set(prevClicked);
           next.add(name);
@@ -826,7 +822,6 @@ function ShipMap() {
       });
       mapObj.current!.removeInteraction(draw);
       drawRef.current = null;
-      drawSourceRef.current.clear();
     });
 
     drawRef.current = draw;
@@ -1245,13 +1240,17 @@ function ShipMap() {
               onClick={() => {
                 const hiding = clickedRegionNames.has(r.name);
                 toggleClickedRegion(r.name);
-                if (hiding && regionName === r.name) {
-                  setDrawnPolygon(null);
-                  setRegionName(null);
-                  setSelectedChaName(null);
-                  chaSourceRef.current.changed();
-                  regionTrackSourceRef.current.clear();
-                  setViewVesselsMode(false);
+                if (hiding) {
+                  if (getSelectedChaName() === r.name) {
+                    setSelectedChaName(null);
+                    chaSourceRef.current.changed();
+                  }
+                  if (regionName === r.name) {
+                    setDrawnPolygon(null);
+                    setRegionName(null);
+                    regionTrackSourceRef.current.clear();
+                    setViewVesselsMode(false);
+                  }
                 }
               }}
             />
@@ -1271,13 +1270,17 @@ function ShipMap() {
               onClick={() => {
                 const hiding = clickedRegionNames.has(r.name);
                 toggleClickedRegion(r.name);
-                if (hiding && regionName === r.name) {
-                  setDrawnPolygon(null);
-                  setRegionName(null);
-                  setSelectedChaName(null);
-                  chaSourceRef.current.changed();
-                  regionTrackSourceRef.current.clear();
-                  setViewVesselsMode(false);
+                if (hiding) {
+                  if (getSelectedChaName() === r.name) {
+                    setSelectedChaName(null);
+                    chaSourceRef.current.changed();
+                  }
+                  if (regionName === r.name) {
+                    setDrawnPolygon(null);
+                    setRegionName(null);
+                    regionTrackSourceRef.current.clear();
+                    setViewVesselsMode(false);
+                  }
                 }
               }}
             />
@@ -1318,13 +1321,17 @@ function ShipMap() {
                   onClick={() => {
                     const hiding = clickedRegionNames.has(r.name);
                     toggleClickedRegion(r.name);
-                    if (hiding && regionName === r.name) {
-                      setDrawnPolygon(null);
-                      setRegionName(null);
-                      setSelectedChaName(null);
-                      chaSourceRef.current.changed();
-                      regionTrackSourceRef.current.clear();
-                      setViewVesselsMode(false);
+                    if (hiding) {
+                      if (getSelectedChaName() === r.name) {
+                        setSelectedChaName(null);
+                        chaSourceRef.current.changed();
+                      }
+                      if (regionName === r.name) {
+                        setDrawnPolygon(null);
+                        setRegionName(null);
+                        regionTrackSourceRef.current.clear();
+                        setViewVesselsMode(false);
+                      }
                     }
                   }}
                   onRemove={(e) => {
