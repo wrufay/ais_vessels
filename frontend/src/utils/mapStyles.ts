@@ -40,7 +40,7 @@ export const VESSEL_PALETTE = [
   "#59a14f", "#edc948", "#b07aa1", "#ff9da7",
 ];
 
-export const REGION_WEBGL_VARIABLES = { mode: 0, dotSize: 4, dotOpacity: 0.6 };
+export const REGION_WEBGL_VARIABLES = { mode: 0, dotSize: 4, dotOpacity: 0.6, hoveredMmsi: -1 };
 export const REGION_WEBGL_STYLE = {
   "circle-radius": ["var", "dotSize"],
   "circle-fill-color": [
@@ -60,7 +60,14 @@ export const REGION_WEBGL_STYLE = {
     ],
     "#5a5a5a",
   ],
-  "circle-opacity": ["var", "dotOpacity"],
+  "circle-opacity": [
+    "case",
+    ["==", ["var", "hoveredMmsi"], -1],
+    ["var", "dotOpacity"],
+    ["==", ["get", "mmsi"], ["var", "hoveredMmsi"]],
+    1.0,
+    ["*", ["var", "dotOpacity"], 0.15],
+  ],
 };
 
 const _vesselCanvasCache: Record<string, HTMLCanvasElement> = {};
