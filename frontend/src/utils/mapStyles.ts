@@ -35,6 +35,11 @@ export const TYPE_NUM: Record<string, number> = {
 };
 
 // WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed
+export const VESSEL_PALETTE = [
+  "#4e79a7", "#f28e2b", "#e15759", "#76b7b2",
+  "#59a14f", "#edc948", "#b07aa1", "#ff9da7",
+];
+
 export const REGION_WEBGL_VARIABLES = { mode: 0, dotSize: 4, dotOpacity: 0.6 };
 export const REGION_WEBGL_STYLE = {
   "circle-radius": ["var", "dotSize"],
@@ -46,6 +51,12 @@ export const REGION_WEBGL_STYLE = {
     ["match", ["get", "type_num"],
       1, "#0072BD", 2, "#D95319", 3, "#EDB120", 4, "#7E2F8E", 5, "#77AC30", 6, "#4DBEEE",
       "#A2142F",
+    ],
+    ["==", ["var", "mode"], 3],
+    ["match", ["%", ["get", "vesselIndex"], 8],
+      0, "#4e79a7", 1, "#f28e2b", 2, "#e15759", 3, "#76b7b2",
+      4, "#59a14f", 5, "#edc948", 6, "#b07aa1", 7, "#ff9da7",
+      "#5a5a5a",
     ],
     "#5a5a5a",
   ],

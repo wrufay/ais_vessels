@@ -37,3 +37,22 @@ A "Measure" button in the bottom-left corner (above the lat/long display) activa
 - OL event handlers (click, pointermove) are registered once in `useEffect([], [])` — they are stale closures. All measure state accessed inside them uses refs (`measuringRef`, `measureStartRef`, `measureLineFeatureRef`), not React state
 - Do NOT call `setMeasuring(false)` on measurement completion — it triggers the cleanup `useEffect` which wipes `measureSourceRef`. Only the Cancel button should set measuring to false
 - Measure layer uses a function style: `Point` features get a red `CircleStyle`, `LineString` features get a dashed gray stroke
+
+---
+
+## Feature Added
+
+### Per-vessel colouring in region traffic view
+
+Added a "Vessel" display mode to the region vessel layer alongside the existing Uniform / Ship type / Speed modes.
+
+**How it works:**
+- When `renderRegionPositions` runs, all unique MMSIs are sorted and assigned a stable integer index (`mmsiIndex[mmsi] = i`)
+- Each OL feature gets a `vesselIndex` attribute
+- The WebGL style uses `["match", ["%", ["get", "vesselIndex"], 8], 0, color0, 1, color1, ...]` to cycle through 8 palette colors
+- Switching to the mode passes `mode: 3` via `updateStyleVariables` — no re-render of features needed
+
+**Palette** (in `VESSEL_PALETTE`, `mapStyles.ts`):
+`#e63946`, `#f4a261`, `#2a9d8f`, `#6a4c93`, `#1982c4`, `#8ac926`, `#ff9f1c`, `#e040fb`
+
+**Gotcha:** `Map` is shadowed by the OL `Map` import in `Map.tsx`. Use `Record<number, number>` + `Object.fromEntries` instead of `new Map()` for index lookups.

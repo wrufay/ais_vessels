@@ -123,7 +123,7 @@ function ShipMap() {
   const noiseLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
-  const regionDisplayModeRef = useRef<"grey" | "type" | "speed">("grey");
+  const regionDisplayModeRef = useRef<"grey" | "type" | "speed" | "vessel">("grey");
   const measureSourceRef = useRef(new VectorSource());
   const measuringRef = useRef(false);
   const measureStartRef = useRef<number[] | null>(null);
@@ -219,7 +219,7 @@ function ShipMap() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
   const [regionDisplayMode, setRegionDisplayMode] = useState<
-    "grey" | "type" | "speed"
+    "grey" | "type" | "speed" | "vessel"
   >("grey");
   const defaultFilters = { type: new Set<string>(), source: "all", dfo: "all" };
   const [filters, setFilters] = useState<{
@@ -683,7 +683,7 @@ function ShipMap() {
   useEffect(() => {
     regionDisplayModeRef.current = regionDisplayMode;
     const modeNum =
-      regionDisplayMode === "type" ? 1 : regionDisplayMode === "speed" ? 2 : 0;
+      regionDisplayMode === "type" ? 1 : regionDisplayMode === "speed" ? 2 : regionDisplayMode === "vessel" ? 3 : 0;
     regionTrackLayerRef.current?.updateStyleVariables({ mode: modeNum });
   }, [regionDisplayMode]);
 
@@ -855,6 +855,8 @@ function ShipMap() {
   function renderRegionPositions(positions: RegionPosition[]) {
     regionTrackSourceRef.current.clear();
     console.log(`[region] rendering ${positions.length} positions`);
+    const mmsiList = [...new Set(positions.map((p) => p.mmsi))].sort();
+    const mmsiIndex: Record<number, number> = Object.fromEntries(mmsiList.map((m, i) => [m, i]));
     positions.forEach((p) => {
       regionTrackSourceRef.current.addFeature(
         new Feature({
@@ -863,6 +865,7 @@ function ShipMap() {
           sog: p.sog ?? 0,
           ship_type: p.ship_type,
           type_num: TYPE_NUM[classifyType(p.ship_type)] ?? 0,
+          vesselIndex: mmsiIndex[p.mmsi] ?? 0,
         })
       );
     });
@@ -1296,7 +1299,7 @@ function ShipMap() {
             </div>
             {viewVesselsMode && (
               <div className="flex items-center gap-1.5">
-                {(["grey", "type", "speed"] as const).map((mode) => (
+                {(["grey", "type", "speed", "vessel"] as const).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setRegionDisplayMode(mode)}
@@ -1306,7 +1309,7 @@ function ShipMap() {
                         : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                     }`}
                   >
-                    {mode === "grey" ? "Uniform" : mode === "type" ? "Ship type" : "Speed"}
+                    {mode === "grey" ? "Uniform" : mode === "type" ? "Type" : mode === "speed" ? "Speed" : "Vessel"}
                   </button>
                 ))}
               </div>
