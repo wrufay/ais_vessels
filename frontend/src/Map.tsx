@@ -12,15 +12,18 @@ import { getTopLeft, getWidth } from "ol/extent";
 import { fromLonLat, toLonLat } from "ol/proj";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
+import LineString from "ol/geom/LineString";
 import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
 import WebGLVectorLayer from "ol/layer/WebGLVector";
 import VectorSource from "ol/source/Vector";
-import { Style, Stroke, Fill, Icon } from "ol/style";
+import { Style, Stroke, Fill, Icon, Circle as CircleStyle, Text } from "ol/style";
+import { getLength } from "ol/sphere";
 import Draw from "ol/interaction/Draw";
 import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
 import "ol/ol.css";
+import "./map.css";
 import {
   type PresetRegion,
   type Mooring,
@@ -121,6 +124,10 @@ function ShipMap() {
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
   const regionDisplayModeRef = useRef<"grey" | "type" | "speed">("grey");
+  const measureSourceRef = useRef(new VectorSource());
+  const measuringRef = useRef(false);
+  const measureStartRef = useRef<number[] | null>(null);
+  const measureLineFeatureRef = useRef<Feature | null>(null);
 
   interface Popup {
     x: number;
@@ -156,6 +163,15 @@ function ShipMap() {
   }, [regionName]);
   const [drawnPolygon, setDrawnPolygon] = useState<object | null>(null);
   const [drawing, setDrawing] = useState(false);
+  const [measuring, setMeasuring] = useState(false);
+  useEffect(() => {
+    measuringRef.current = measuring;
+    if (!measuring) {
+      measureStartRef.current = null;
+      measureLineFeatureRef.current = null;
+      measureSourceRef.current.clear();
+    }
+  }, [measuring]);
   const [userSelectedRegions, setUserSelectedRegions] = useState<
     { name: string; geojson: object; type: string }[]
   >([]);
@@ -435,6 +451,23 @@ function ShipMap() {
             fill: new Fill({ color: "rgba(152,193,217,0.1)" }),
           }),
         }),
+        new VectorLayer({
+          source: measureSourceRef.current,
+          style: (feature) => {
+            if (feature.getGeometry()?.getType() === "Point") {
+              return new Style({
+                image: new CircleStyle({
+                  radius: 4,
+                  fill: new Fill({ color: "#e63946" }),
+                  stroke: new Stroke({ color: "#fff", width: 1.5 }),
+                }),
+              });
+            }
+            return new Style({
+              stroke: new Stroke({ color: "#888", width: 1.5, lineDash: [4, 4] }),
+            });
+          },
+        }),
       ],
       view: new View({
         center: fromLonLat([-63.5, 44.5]),
@@ -443,6 +476,46 @@ function ShipMap() {
     });
 
     map.on("click", (e) => {
+      if (measuringRef.current) {
+        if (!measureStartRef.current) {
+          measureStartRef.current = e.coordinate;
+          const dot = new Feature({ geometry: new Point(e.coordinate) });
+          measureSourceRef.current.addFeature(dot);
+          const line = new Feature({ geometry: new LineString([e.coordinate, e.coordinate]) });
+          measureSourceRef.current.addFeature(line);
+          measureLineFeatureRef.current = line;
+        } else {
+          const line = measureLineFeatureRef.current;
+          const start = measureStartRef.current;
+          if (line && start) {
+            const lineGeom = line.getGeometry() as LineString;
+            lineGeom.setCoordinates([start, e.coordinate]);
+            const metres = getLength(lineGeom, { projection: "EPSG:3857" });
+            const label = metres >= 1000
+              ? `${(metres / 1000).toFixed(2)} km`
+              : `${Math.round(metres)} m`;
+            const mid = [(start[0] + e.coordinate[0]) / 2, (start[1] + e.coordinate[1]) / 2];
+            const labelFeature = new Feature({ geometry: new Point(mid) });
+            labelFeature.setStyle(new Style({
+              text: new Text({
+                text: label,
+                font: "bold 11px Inter, sans-serif",
+                fill: new Fill({ color: "#fff" }),
+                backgroundFill: new Fill({ color: "rgba(41,50,65,0.85)" }),
+                backgroundStroke: new Stroke({ color: "rgba(41,50,65,0.9)", width: 1 }),
+                padding: [3, 5, 3, 5],
+                offsetY: -14,
+              }),
+            }));
+            measureSourceRef.current.addFeature(labelFeature);
+          }
+          measureSourceRef.current.addFeature(new Feature({ geometry: new Point(e.coordinate) }));
+          measureStartRef.current = null;
+          measureLineFeatureRef.current = null;
+        }
+        return;
+      }
+
       // check CHA click first — select it as active region
       let chaClicked = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
@@ -500,6 +573,17 @@ function ShipMap() {
     map.on("pointermove", (e) => {
       const [lon, lat] = toLonLat(e.coordinate);
       setCursorCoord({ lat, lon });
+
+      if (measuringRef.current) {
+        if (measureStartRef.current && measureLineFeatureRef.current) {
+          (measureLineFeatureRef.current.getGeometry() as LineString).setCoordinates([
+            measureStartRef.current,
+            e.coordinate,
+          ]);
+        }
+        map.getTargetElement().style.cursor = "crosshair";
+        return;
+      }
 
       let overMooring = false;
       let overClickable = false;
@@ -900,6 +984,13 @@ function ShipMap() {
         lat={cursorCoord?.lat ?? null}
         lon={cursorCoord?.lon ?? null}
       />
+
+      <button
+        onClick={() => setMeasuring((m) => !m)}
+        className="absolute bottom-6 left-1 z-10 font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full bg-white/80"
+      >
+        {measuring ? "Cancel" : "Measure"}
+      </button>
 
       {/* Upload modal */}
       {showUploadModal && (
@@ -1360,7 +1451,7 @@ function ShipMap() {
             <button onClick={() => setRegionDotOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
               <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${regionDotOpen ? "rotate-90" : ""}`}>▶</span>
               <span className="text-xs text-slate-600 flex-1">Region vessels</span>
-              <div style={{ width: regionDotSize * 2, height: regionDotSize * 2, borderRadius: "50%", backgroundColor: "#5a5a5a", opacity: regionDotOpacity, flexShrink: 0 }} />
+              <div className="rounded-full bg-[#5a5a5a] shrink-0" style={{ width: regionDotSize * 2, height: regionDotSize * 2, opacity: regionDotOpacity }} />
             </button>
             {regionDotOpen && (
               <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
@@ -1607,8 +1698,7 @@ function ShipMap() {
                   })()}
                   <div className="mt-1 flex flex-col gap-1">
                     <div
-                      className="h-2.5 rounded-full w-full"
-                      style={{ background: "linear-gradient(to right, #4575b4, #91bfdb, #e0f3f8, #ffffbf, #fee090, #fc8d59, #d73027)" }}
+                      className="noise-gradient-bar h-2.5 rounded-full w-full"
                     />
                     <div className="flex justify-between text-[10px] text-slate-400">
                       <span>{noiseRange ? `${noiseRange.vmin.toFixed(1)} dB` : "Low dB"}</span>
