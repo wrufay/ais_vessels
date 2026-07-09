@@ -37,10 +37,10 @@ import {
   formatTime,
   REGION_WEBGL_STYLE,
   REGION_WEBGL_VARIABLES,
+  ROUTE_WEBGL_STYLE,
+  ROUTE_WEBGL_VARIABLES,
   TYPE_NUM,
-  makeFeatureStyle,
   makeMooringCanvas,
-  makeVesselCanvas,
   chaStyle,
   drawnRegionLabel,
   downloadPlot,
@@ -48,6 +48,7 @@ import {
   getSelectedChaName,
   setClickedChaNames,
 } from "./utils/mapStyles";
+import { Virtuoso } from "react-virtuoso";
 import PanelHeader from "./components/PanelHeader";
 import DateRangePicker from "./components/DateRangePicker";
 import RegionListItem from "./components/RegionListItem";
@@ -116,7 +117,7 @@ function ShipMap() {
   const highlightedMooringRef = useRef<string | null>(null);
   const drawRef = useRef<Draw | null>(null);
   const regionNameRef = useRef<string | null>(null);
-  const routeLayerRef = useRef<VectorLayer | null>(null);
+  const routeLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const bathyLayerRef = useRef<TileLayer | null>(null);
   const basemapLayerRef = useRef<TileLayer | null>(null);
@@ -273,14 +274,14 @@ function ShipMap() {
   }, [mooringSize]);
   useEffect(() => {
     vesselSizeRef.current = vesselSize;
-    routeLayerRef.current?.setStyle(makeFeatureStyle(true, true, vesselSize, vesselOpacityRef.current));
+    routeLayerRef.current?.updateStyleVariables({ dotSize: vesselSize });
   }, [vesselSize]);
   useEffect(() => {
     regionTrackLayerRef.current?.updateStyleVariables({ dotSize: regionDotSize });
   }, [regionDotSize]);
   useEffect(() => {
     vesselOpacityRef.current = vesselOpacity;
-    routeLayerRef.current?.setStyle(makeFeatureStyle(true, true, vesselSizeRef.current, vesselOpacity));
+    routeLayerRef.current?.updateStyleVariables({ dotOpacity: vesselOpacity });
   }, [vesselOpacity]);
   useEffect(() => {
     mooringOpacityRef.current = mooringOpacity;
@@ -356,9 +357,11 @@ function ShipMap() {
       },
     });
 
-    const routeLayer = new VectorLayer({
+    const routeLayer = new WebGLVectorLayer({
       source: sourceRef.current,
-      style: makeFeatureStyle(true, true),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      style: ROUTE_WEBGL_STYLE as any,
+      variables: ROUTE_WEBGL_VARIABLES,
     });
     routeLayerRef.current = routeLayer;
 
@@ -479,6 +482,7 @@ function ShipMap() {
     map.on("click", (e) => {
       if (measuringRef.current) {
         if (!measureStartRef.current) {
+          measureSourceRef.current.clear();
           measureStartRef.current = e.coordinate;
           const dot = new Feature({ geometry: new Point(e.coordinate) });
           measureSourceRef.current.addFeature(dot);
@@ -827,20 +831,18 @@ function ShipMap() {
           setPointTotal(data.sampled ? data.total ?? null : null);
           if (pts.length === 0) return;
 
-          pts.forEach((p, i) => {
-            const f = new Feature({
-              geometry: new Point(fromLonLat([p.longitude, p.latitude])),
-              sog: p.sog,
-              cog: p.cog,
-              time: p.time,
-              lat: p.latitude,
-              lon: p.longitude,
-              source: p.source,
-              isStart: i === 0,
-              isEnd: i === pts.length - 1,
-            });
-            sourceRef.current.addFeature(f);
-          });
+          sourceRef.current.addFeatures(pts.map((p, i) => new Feature({
+            geometry: new Point(fromLonLat([p.longitude, p.latitude])),
+            sog: p.sog,
+            cog: p.cog,
+            time: p.time,
+            lat: p.latitude,
+            lon: p.longitude,
+            source: p.source,
+            isStart: i === 0,
+            isEnd: i === pts.length - 1,
+            pointType: i === 0 ? 1 : i === pts.length - 1 ? 2 : 0,
+          })));
 
           const extent = sourceRef.current.getExtent();
           if (extent)
@@ -1159,23 +1161,24 @@ function ShipMap() {
             </span>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2 pt-2">
-          {filtered.length === 0 && (
-            <p className="text-sm text-slate-400 p-6 text-center">
-              {vessels.length === 0
-                ? "Loading vessels…"
-                : "No vessels match your search."}
-            </p>
-          )}
-          {filtered.map((v, i) => {
+        <Virtuoso
+          style={{ flex: 1, minHeight: 0 }}
+          className="px-2"
+          data={filtered}
+          components={{
+            EmptyPlaceholder: () => (
+              <p className="text-sm text-slate-400 p-6 text-center">
+                {vessels.length === 0 ? "Loading vessels…" : "No vessels match your search."}
+              </p>
+            ),
+          }}
+          itemContent={(_i, v) => {
             const type = classifyType(v.ship_type);
             const color = TYPE_COLORS[type] ?? TYPE_COLORS.unknown;
             const active = selected?.mmsi === v.mmsi;
             return (
               <button
-                key={v.mmsi}
                 id={`vessel-item-${v.mmsi}`}
-                style={{ animationDelay: `${Math.min(i * 12, 300)}ms` }}
                 onClick={() => {
                   if (active) {
                     setSelected(null);
@@ -1188,7 +1191,7 @@ function ShipMap() {
                     loadRoute(v);
                   }
                 }}
-                className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition animate-slide-up ${
+                className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition ${
                   active ? "bg-slate-100" : "hover:bg-slate-50"
                 }`}
                 onMouseEnter={() => {
@@ -1200,24 +1203,15 @@ function ShipMap() {
                     regionTrackLayerRef.current?.updateStyleVariables({ hoveredMmsi: -1 });
                 }}
               >
-                <div
-                  className={`font-inter text-xs truncate ${
-                    active ? "text-[#293241]" : "text-slate-600"
-                  }`}
-                >
+                <div className={`font-inter text-xs truncate ${active ? "text-[#293241]" : "text-slate-600"}`}>
                   {v.vessel_name || "Unknown vessel"}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-[11px] text-slate-500 capitalize font-geologica">
-                    <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ background: color }}
-                    />
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
                     {type}
                   </span>
-                  <span className="text-[11px] text-slate-400 tabular-nums">
-                    {v.mmsi}
-                  </span>
+                  <span className="text-[11px] text-slate-400 tabular-nums">{v.mmsi}</span>
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
                   {active && pointCount !== null && pointTotal !== null && pointTotal > pointCount
@@ -1226,8 +1220,8 @@ function ShipMap() {
                 </div>
               </button>
             );
-          })}
-        </div>
+          }}
+        />
         <div className="border-t border-slate-100 mx-2 mt-2" />
         <div className="px-3 py-3 flex flex-col gap-1">
           {/* Vessel tracks sizing */}
@@ -1237,7 +1231,7 @@ function ShipMap() {
               <span className="text-xs text-slate-600 flex-1">Vessel tracks</span>
               <div className="flex items-center gap-1">
                 {(["#0a8754", "#ffc857", "#ee6c4d"] as const).map((color) => (
-                  <img key={color} src={makeVesselCanvas(color, vesselSize).toDataURL()} style={{ opacity: vesselOpacity, width: vesselSize * 2, height: vesselSize * 2 }} />
+                  <div key={color} className="rounded-full" style={{ width: vesselSize * 2, height: vesselSize * 2, background: color, opacity: vesselOpacity }} />
                 ))}
               </div>
             </button>
@@ -1346,7 +1340,8 @@ function ShipMap() {
               label={r.name}
               dotColor="#3d5a80"
               tagLabel="CHA"
-              active={clickedRegionNames.has(r.name)}
+              checked={clickedRegionNames.has(r.name)}
+              highlighted={regionName === r.name}
               onClick={() => {
                 const hiding = clickedRegionNames.has(r.name);
                 toggleClickedRegion(r.name);
@@ -1377,7 +1372,8 @@ function ShipMap() {
               label={r.name}
               dotColor="#ee6c4d"
               tagLabel="WEA"
-              active={clickedRegionNames.has(r.name)}
+              checked={clickedRegionNames.has(r.name)}
+              highlighted={regionName === r.name}
               onClick={() => {
                 const hiding = clickedRegionNames.has(r.name);
                 toggleClickedRegion(r.name);
@@ -1410,7 +1406,8 @@ function ShipMap() {
                   label={r.name}
                   dotColor="#9b59b6"
                   tagLabel="Uploaded"
-                  active={clickedRegionNames.has(r.name)}
+                  checked={clickedRegionNames.has(r.name)}
+                  highlighted={regionName === r.name}
                   onClick={() => toggleClickedRegion(r.name)}
                 />
               ))}
@@ -1429,7 +1426,8 @@ function ShipMap() {
                   label={drawnRegionLabel(r.geojson)}
                   dotColor="#98c1d9"
                   tagLabel="Drawn"
-                  active={clickedRegionNames.has(r.name)}
+                  checked={clickedRegionNames.has(r.name)}
+                  highlighted={regionName === r.name}
                   onClick={() => {
                     const hiding = clickedRegionNames.has(r.name);
                     toggleClickedRegion(r.name);

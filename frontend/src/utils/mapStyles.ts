@@ -34,6 +34,36 @@ export const TYPE_NUM: Record<string, number> = {
   cargo: 1, tanker: 2, fishing: 3, passenger: 4, "search & rescue": 5, other: 6,
 };
 
+// WebGL style for the selected vessel route layer (pointType: 0=normal, 1=start, 2=end)
+export const ROUTE_WEBGL_VARIABLES = { dotSize: 5, dotOpacity: 1.0 };
+export const ROUTE_WEBGL_STYLE = {
+  "circle-radius": [
+    "case",
+    ["==", ["get", "pointType"], 1], ["*", ["var", "dotSize"], 1.4],
+    ["==", ["get", "pointType"], 2], ["*", ["var", "dotSize"], 1.4],
+    ["var", "dotSize"],
+  ],
+  "circle-fill-color": [
+    "case",
+    ["==", ["get", "pointType"], 1], "#98c1d9",
+    ["==", ["get", "pointType"], 2], "#ee6c4d",
+    ["case", [">", ["get", "sog"], 10], "#ee6c4d", [">", ["get", "sog"], 3], "#ffc857", "#0a8754"],
+  ],
+  "circle-stroke-color": [
+    "case",
+    ["==", ["get", "pointType"], 1], "#ffffff",
+    ["==", ["get", "pointType"], 2], "#ffffff",
+    ["case", [">", ["get", "sog"], 10], "#c44d2e", [">", ["get", "sog"], 3], "#c49830", "#076640"],
+  ],
+  "circle-stroke-width": [
+    "case",
+    ["==", ["get", "pointType"], 1], 2,
+    ["==", ["get", "pointType"], 2], 2,
+    1,
+  ],
+  "circle-opacity": ["var", "dotOpacity"],
+};
+
 // WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed
 export const VESSEL_PALETTE = [
   "#4e79a7", "#f28e2b", "#e15759", "#76b7b2",
