@@ -219,7 +219,6 @@ function ShipMap() {
   const [basemap, setBasemap] = useState("esri-ocean");
   const [serverError, setServerError] = useState<string | null>(null);
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
-  const [regionMmsis, setRegionMmsis] = useState<Set<number>>(new Set());
   const [regionDisplayMode, setRegionDisplayMode] = useState<
     "grey" | "type" | "speed" | "vessel"
   >("grey");
@@ -533,7 +532,6 @@ function ShipMap() {
             setSelectedChaName(null);
             regionTrackSourceRef.current.clear();
             setViewVesselsMode(false);
-            setRegionMmsis(new Set());
           } else {
             setDrawnPolygon(cha.geojson);
             setRegionName(cha.name);
@@ -858,7 +856,6 @@ function ShipMap() {
 
   function renderRegionPositions(positions: RegionPosition[]) {
     regionTrackSourceRef.current.clear();
-    regionTrackLayerRef.current?.updateStyleVariables({ hoveredMmsi: -1 });
     console.log(`[region] rendering ${positions.length} positions`);
     const mmsiList = [...new Set(positions.map((p) => p.mmsi))].sort();
     const mmsiIndex: Record<number, number> = Object.fromEntries(mmsiList.map((m, i) => [m, i]));
@@ -964,10 +961,7 @@ function ShipMap() {
       .then((r) => r.json())
       .then((d: { vessel_mmsis: number[]; positions: RegionPosition[] }) => {
         renderRegionPositions(d.positions ?? []);
-        setRegionMmsis(new Set(d.vessel_mmsis ?? []));
         setViewVesselsMode(true);
-        setShowRegionPanel(false);
-        setShowVesselPanel(true);
       })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
@@ -975,8 +969,6 @@ function ShipMap() {
 
   const filtered = useMemo(() => {
     return vessels.filter((v) => {
-      if (viewVesselsMode && regionMmsis.size > 0 && !regionMmsis.has(v.mmsi))
-        return false;
       if (filters.type.size > 0 && !filters.type.has(classifyType(v.ship_type)))
         return false;
       if (filters.source !== "all" && v.source !== filters.source) return false;
@@ -986,7 +978,7 @@ function ShipMap() {
         return false;
       return true;
     });
-  }, [vessels, filters, viewVesselsMode, regionMmsis]);
+  }, [vessels, filters]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
@@ -1194,14 +1186,6 @@ function ShipMap() {
                 className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition ${
                   active ? "bg-slate-100" : "hover:bg-slate-50"
                 }`}
-                onMouseEnter={() => {
-                  if (viewVesselsMode)
-                    regionTrackLayerRef.current?.updateStyleVariables({ hoveredMmsi: v.mmsi });
-                }}
-                onMouseLeave={() => {
-                  if (viewVesselsMode)
-                    regionTrackLayerRef.current?.updateStyleVariables({ hoveredMmsi: -1 });
-                }}
               >
                 <div className={`font-inter text-xs truncate ${active ? "text-[#293241]" : "text-slate-600"}`}>
                   {v.vessel_name || "Unknown vessel"}
@@ -1355,7 +1339,6 @@ function ShipMap() {
                     setRegionName(null);
                     regionTrackSourceRef.current.clear();
                     setViewVesselsMode(false);
-                    setRegionMmsis(new Set());
                   }
                 }
               }}
@@ -1387,7 +1370,6 @@ function ShipMap() {
                     setRegionName(null);
                     regionTrackSourceRef.current.clear();
                     setViewVesselsMode(false);
-                    setRegionMmsis(new Set());
                   }
                 }
               }}
@@ -1441,7 +1423,6 @@ function ShipMap() {
                         setRegionName(null);
                         regionTrackSourceRef.current.clear();
                         setViewVesselsMode(false);
-                        setRegionMmsis(new Set());
                       }
                     }
                   }}
@@ -1457,7 +1438,6 @@ function ShipMap() {
                       drawSourceRef.current.clear();
                       regionTrackSourceRef.current.clear();
                       setViewVesselsMode(false);
-                      setRegionMmsis(new Set());
                       setRegionStats(null);
                     }
                   }}

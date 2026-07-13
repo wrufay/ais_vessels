@@ -56,22 +56,3 @@ Added a "Vessel" display mode to the region vessel layer alongside the existing 
 `#e63946`, `#f4a261`, `#2a9d8f`, `#6a4c93`, `#1982c4`, `#8ac926`, `#ff9f1c`, `#e040fb`
 
 **Gotcha:** `Map` is shadowed by the OL `Map` import in `Map.tsx`. Use `Record<number, number>` + `Object.fromEntries` instead of `new Map()` for index lookups.
-
----
-
-## Feature Added
-
-### Hover highlight for region vessel dots
-
-When in region traffic view ("See all traffic"), hovering a vessel row in the vessel panel emphasizes that vessel's dots on the map and fades the rest.
-
-**How it works:**
-- `onMouseEnter`/`onMouseLeave` on vessel list buttons call `regionTrackLayerRef.current?.updateStyleVariables({ hoveredMmsi: v.mmsi })` and reset to `-1`
-- WebGL style uses `hoveredMmsi` var: matched vessel gets 1.8× radius and full opacity; unmatched get 15% opacity; when `hoveredMmsi === -1` all dots use the base opacity
-- No React state involved — `updateStyleVariables` pushes directly to the GPU
-
-**Architectural fix:** The vessel panel was previously hidden when the region panel was open. "See all traffic" now:
-1. Stores `vessel_mmsis` from the response into `regionMmsis` state (`Set<number>`)
-2. Filters the vessel panel list to show only vessels in the region (`filtered` useMemo checks `regionMmsis`)
-3. Auto-opens the vessel panel (`setShowVesselPanel(true)`)
-4. Clears `regionMmsis` (and vessel panel filter) whenever `setViewVesselsMode(false)` is called
