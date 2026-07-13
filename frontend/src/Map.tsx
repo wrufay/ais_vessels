@@ -52,7 +52,7 @@ import { Virtuoso } from "react-virtuoso";
 import PanelHeader from "./components/PanelHeader";
 import DateRangePicker from "./components/DateRangePicker";
 import RegionListItem from "./components/RegionListItem";
-import SidePanel from "./components/SidePanel";
+import SidePanel, { PANEL_DEFAULT_WIDTH } from "./components/SidePanel";
 import IconBar from "./components/IconBar";
 import CursorCoordinates from "./components/CursorCoordinates";
 import ClosePanelBtn from "./components/ClosePanelBtn";
@@ -104,6 +104,7 @@ interface RegionStats {
     vessel_types?: string;
     speed_overall?: string;
     vessel_density?: string;
+    vessel_density_error?: string;
   };
 }
 
@@ -116,7 +117,6 @@ function ShipMap() {
   const mooringSourceRef = useRef(new VectorSource());
   const highlightedMooringRef = useRef<string | null>(null);
   const drawRef = useRef<Draw | null>(null);
-  const regionNameRef = useRef<string | null>(null);
   const routeLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const bathyLayerRef = useRef<TileLayer | null>(null);
@@ -160,6 +160,7 @@ function ShipMap() {
   const [regionLoading, setRegionLoading] = useState(false);
   const [regionTime, setRegionTime] = useState<number | null>(null);
   const [regionName, setRegionName] = useState<string | null>(null);
+  const regionNameRef = useRef<string | null>(null);
   useEffect(() => {
     regionNameRef.current = regionName;
   }, [regionName]);
@@ -203,7 +204,6 @@ function ShipMap() {
   );
   const [uploadedRegions, setUploadedRegions] = useState<PresetRegion[]>([]);
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
-  const [hoveredMooring, setHoveredMooring] = useState<Mooring | null>(null);
   const [showBathymetry, setShowBathymetry] = useState(false);
   const [bathyOpacity, setBathyOpacity] = useState(0.75);
   const [bathyLoading, setBathyLoading] = useState(false);
@@ -245,6 +245,77 @@ function ShipMap() {
   const [vesselOpen, setVesselOpen] = useState(false);
   const [regionDotOpen, setRegionDotOpen] = useState(false);
   const [vesselListOpen, setVesselListOpen] = useState(true);
+  const [vesselListHeight, setVesselListHeight] = useState(240);
+  const vesselListDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  function onVesselListResizeMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    vesselListDragRef.current = { startY: e.clientY, startHeight: vesselListHeight };
+
+    function onMouseMove(ev: MouseEvent) {
+      if (!vesselListDragRef.current) return;
+      const delta = ev.clientY - vesselListDragRef.current.startY;
+      const next = Math.min(500, Math.max(120, vesselListDragRef.current.startHeight + delta));
+      setVesselListHeight(next);
+    }
+    function onMouseUp() {
+      vesselListDragRef.current = null;
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
+  const [regionListHeight, setRegionListHeight] = useState<number | null>(null);
+  const regionListElRef = useRef<HTMLDivElement>(null);
+  const regionListDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  function onRegionListResizeMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    const startHeight = regionListHeight ?? regionListElRef.current?.offsetHeight ?? 320;
+    regionListDragRef.current = { startY: e.clientY, startHeight };
+
+    function onMouseMove(ev: MouseEvent) {
+      if (!regionListDragRef.current) return;
+      const delta = ev.clientY - regionListDragRef.current.startY;
+      const next = Math.min(600, Math.max(120, regionListDragRef.current.startHeight + delta));
+      setRegionListHeight(next);
+    }
+    function onMouseUp() {
+      regionListDragRef.current = null;
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
+  const [mooringListHeight, setMooringListHeight] = useState<number | null>(null);
+  const mooringListElRef = useRef<HTMLDivElement>(null);
+  const mooringListDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  function onMooringListResizeMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    const startHeight = mooringListHeight ?? mooringListElRef.current?.offsetHeight ?? 384;
+    mooringListDragRef.current = { startY: e.clientY, startHeight };
+
+    function onMouseMove(ev: MouseEvent) {
+      if (!mooringListDragRef.current) return;
+      const delta = ev.clientY - mooringListDragRef.current.startY;
+      const next = Math.min(600, Math.max(120, mooringListDragRef.current.startHeight + delta));
+      setMooringListHeight(next);
+    }
+    function onMouseUp() {
+      mooringListDragRef.current = null;
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+  const [basemapOpen, setBasemapOpen] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
   useEffect(() => {
     if (showVesselPanel) setLastOpenedPanel("vessel");
     else if (showRegionPanel) setLastOpenedPanel("region");
@@ -532,8 +603,6 @@ function ShipMap() {
             setDrawnPolygon(null);
             setRegionName(null);
             setSelectedChaName(null);
-            regionTrackSourceRef.current.clear();
-            setViewVesselsMode(false);
           } else {
             setDrawnPolygon(cha.geojson);
             setRegionName(cha.name);
@@ -591,13 +660,10 @@ function ShipMap() {
         return;
       }
 
-      let overMooring = false;
       let overClickable = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         if (feature.get("mooring")) {
-          overMooring = true;
           overClickable = true;
-          setHoveredMooring(feature.get("mooring") as Mooring);
           return true;
         }
         if (feature.get("chaRegion")) {
@@ -605,7 +671,6 @@ function ShipMap() {
           return true;
         }
       });
-      if (!overMooring) setHoveredMooring(null);
 
       map.getTargetElement().style.cursor = overClickable
         ? "pointer"
@@ -760,6 +825,27 @@ function ShipMap() {
     };
     reader.readAsText(file);
     e.target.value = "";
+  }
+
+  function deactivateRegionIfActive(name: string) {
+    if (getSelectedChaName() === name) {
+      setSelectedChaName(null);
+      chaSourceRef.current.changed();
+    }
+    if (regionName === name) {
+      setDrawnPolygon(null);
+      setRegionName(null);
+      regionTrackSourceRef.current.clear();
+      setViewVesselsMode(false);
+    }
+  }
+
+  function handleRegionCheckboxClick(r: { name: string; geojson: object }) {
+    const hiding = clickedRegionNames.has(r.name);
+    toggleClickedRegion(r.name);
+    if (hiding) {
+      deactivateRegionIfActive(r.name);
+    }
   }
 
   function toggleClickedRegion(name: string) {
@@ -1075,14 +1161,6 @@ function ShipMap() {
         </div>
       )}
 
-      {/* Mooring hover tooltip */}
-      {hoveredMooring && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-[#293241] text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-sm pointer-events-none">
-          {hoveredMooring.name} · {hoveredMooring.depth}m ·{" "}
-          {hoveredMooring.deployment} → {hoveredMooring.recovery}
-        </div>
-      )}
-
       <IconBar
         showVesselPanel={showVesselPanel}
         showRegionPanel={showRegionPanel}
@@ -1103,7 +1181,7 @@ function ShipMap() {
       </div>
 
       {/* Vessel panel — slides in from the right */}
-      <SidePanel open={showVesselPanel}>
+      <SidePanel open={showVesselPanel} width={panelWidth} onWidthChange={setPanelWidth}>
         <div className="px-5 pt-8 shrink-0">
           <PanelHeader
             description="Click a vessel to see its track."
@@ -1175,7 +1253,7 @@ function ShipMap() {
               </button>
             </div>
             <Virtuoso
-              style={{ height: 240, overflowX: "hidden" }}
+              style={{ height: vesselListHeight, overflowX: "hidden" }}
               className="px-2 shrink-0"
               data={filtered}
               components={{
@@ -1227,6 +1305,10 @@ function ShipMap() {
             );
           }}
             />
+            <div
+              onMouseDown={onVesselListResizeMouseDown}
+              className="h-1.5 mx-2 -my-0.5 rounded-full cursor-row-resize hover:bg-[#98c1d9]/40 active:bg-[#98c1d9]/60"
+            />
           </>
         )}
         <div className="border-t border-slate-100 mx-2 mt-2" />
@@ -1235,7 +1317,7 @@ function ShipMap() {
           <div className="flex flex-col">
             <button onClick={() => setVesselOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
               <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${vesselOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="text-xs text-slate-600 flex-1">Vessel tracks</span>
+              <span className="text-xs text-slate-600 flex-1">Change size</span>
               <div className="flex items-center gap-1">
                 {(["#0a8754", "#ffc857", "#ee6c4d"] as const).map((color) => (
                   <div key={color} className="rounded-full" style={{ width: vesselSize * 2, height: vesselSize * 2, background: color, opacity: vesselOpacity }} />
@@ -1267,7 +1349,7 @@ function ShipMap() {
       </SidePanel>
 
       {/* Regions panel — slides in from the right */}
-      <SidePanel open={showRegionPanel}>
+      <SidePanel open={showRegionPanel} width={panelWidth} onWidthChange={setPanelWidth}>
         <div className="px-5 pt-8 shrink-0">
           <PanelHeader
             name="Regions"
@@ -1280,10 +1362,10 @@ function ShipMap() {
                 onClick={drawing ? cancelDrawing : startDrawing}
                 className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full"
               >
-                {drawing ? "Cancel" : "Draw region"}
+                {drawing ? "Cancel" : "Draw"}
               </button>
               <label className="font-stack-headline text-xs text-slate-600">
-                {drawing ? "Double-click to finish drawing." : "Click map to add points."}
+                {drawing ? "Double-click to finish" : "Click map to add points"}
               </label>
             </div>
             <div className="flex items-center justify-between">
@@ -1292,7 +1374,7 @@ function ShipMap() {
                 <input type="file" accept=".zip" className="hidden" onChange={handleShapefileUpload} />
               </label>
               <label className="font-stack-headline text-xs text-slate-600">
-                Use your own shapefile (.zip)
+               Shapefile (.zip)
               </label>
             </div>
             <hr className="border-slate-200" />
@@ -1303,7 +1385,7 @@ function ShipMap() {
                 onClick={loadRegionStats}
                 className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                {regionLoading ? "Loading…" : "Analyse region"}
+                {regionLoading ? "Loading…" : "Analyse"}
               </button>
               <button
                 title="See all vessel traffic in selected region"
@@ -1311,7 +1393,18 @@ function ShipMap() {
                 onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
                 className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                See all traffic
+                All traffic
+              </button>
+              <button
+                title="Clear region traffic dots"
+                disabled={!viewVesselsMode}
+                onClick={() => {
+                  regionTrackSourceRef.current.clear();
+                  setViewVesselsMode(false);
+                }}
+                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Clear
               </button>
             </div>
             {viewVesselsMode && (
@@ -1336,7 +1429,7 @@ function ShipMap() {
 
         
 
-        <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+        <div ref={regionListElRef} style={{ height: regionListHeight ?? undefined }} className="overflow-y-auto min-h-0 px-2 pb-4">
           {/* CHA section */}
           <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
             Critical Habitat Areas
@@ -1349,22 +1442,7 @@ function ShipMap() {
               tagLabel="CHA"
               checked={clickedRegionNames.has(r.name)}
               highlighted={regionName === r.name}
-              onClick={() => {
-                const hiding = clickedRegionNames.has(r.name);
-                toggleClickedRegion(r.name);
-                if (hiding) {
-                  if (getSelectedChaName() === r.name) {
-                    setSelectedChaName(null);
-                    chaSourceRef.current.changed();
-                  }
-                  if (regionName === r.name) {
-                    setDrawnPolygon(null);
-                    setRegionName(null);
-                    regionTrackSourceRef.current.clear();
-                    setViewVesselsMode(false);
-                  }
-                }
-              }}
+              onClick={() => handleRegionCheckboxClick(r)}
             />
           ))}
 
@@ -1380,22 +1458,7 @@ function ShipMap() {
               tagLabel="WEA"
               checked={clickedRegionNames.has(r.name)}
               highlighted={regionName === r.name}
-              onClick={() => {
-                const hiding = clickedRegionNames.has(r.name);
-                toggleClickedRegion(r.name);
-                if (hiding) {
-                  if (getSelectedChaName() === r.name) {
-                    setSelectedChaName(null);
-                    chaSourceRef.current.changed();
-                  }
-                  if (regionName === r.name) {
-                    setDrawnPolygon(null);
-                    setRegionName(null);
-                    regionTrackSourceRef.current.clear();
-                    setViewVesselsMode(false);
-                  }
-                }
-              }}
+              onClick={() => handleRegionCheckboxClick(r)}
             />
           ))}
 
@@ -1413,7 +1476,7 @@ function ShipMap() {
                   tagLabel="Uploaded"
                   checked={clickedRegionNames.has(r.name)}
                   highlighted={regionName === r.name}
-                  onClick={() => toggleClickedRegion(r.name)}
+                  onClick={() => handleRegionCheckboxClick(r)}
                 />
               ))}
             </>
@@ -1433,22 +1496,7 @@ function ShipMap() {
                   tagLabel="Drawn"
                   checked={clickedRegionNames.has(r.name)}
                   highlighted={regionName === r.name}
-                  onClick={() => {
-                    const hiding = clickedRegionNames.has(r.name);
-                    toggleClickedRegion(r.name);
-                    if (hiding) {
-                      if (getSelectedChaName() === r.name) {
-                        setSelectedChaName(null);
-                        chaSourceRef.current.changed();
-                      }
-                      if (regionName === r.name) {
-                        setDrawnPolygon(null);
-                        setRegionName(null);
-                        regionTrackSourceRef.current.clear();
-                        setViewVesselsMode(false);
-                      }
-                    }
-                  }}
+                  onClick={() => handleRegionCheckboxClick(r)}
                   onRemove={(e) => {
                     e.stopPropagation();
                     if (!window.confirm(`Remove this drawn region?`)) return;
@@ -1469,12 +1517,16 @@ function ShipMap() {
             </>
           )}
         </div>
+        <div
+          onMouseDown={onRegionListResizeMouseDown}
+          className="h-1.5 mx-2 -my-0.5 rounded-full cursor-row-resize hover:bg-[#98c1d9]/40 active:bg-[#98c1d9]/60"
+        />
         <div className="border-t border-slate-100 mx-2 mt-2" />
         <div className="px-3 py-3 flex flex-col gap-1">
           <div className="flex flex-col">
             <button onClick={() => setRegionDotOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
               <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${regionDotOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="text-xs text-slate-600 flex-1">Region vessels</span>
+              <span className="text-xs text-slate-600 flex-1">Change size</span>
               <div className="rounded-full bg-[#5a5a5a] shrink-0" style={{ width: regionDotSize * 2, height: regionDotSize * 2, opacity: regionDotOpacity }} />
             </button>
             {regionDotOpen && (
@@ -1503,7 +1555,7 @@ function ShipMap() {
 
       {/* Overlay panel — slides in from the right */}
       {/* Mooring panel */}
-      <SidePanel open={showMooringPanel}>
+      <SidePanel open={showMooringPanel} width={panelWidth} onWidthChange={setPanelWidth}>
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-5 pt-8 shrink-0">
             <PanelHeader
@@ -1522,7 +1574,7 @@ function ShipMap() {
               </span>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4 mt-4">
+          <div ref={mooringListElRef} style={{ height: mooringListHeight ?? undefined }} className="overflow-y-auto min-h-0 px-2 pb-4 mt-4">
             <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">AMAR</div>
             {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
               <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
@@ -1568,12 +1620,16 @@ function ShipMap() {
               </>
             )}
           </div>
+          <div
+            onMouseDown={onMooringListResizeMouseDown}
+            className="h-1.5 mx-2 -my-0.5 rounded-full cursor-row-resize hover:bg-[#98c1d9]/40 active:bg-[#98c1d9]/60"
+          />
           <div className="border-t border-slate-100 mx-2 mt-2" />
           <div className="px-3 py-3 flex flex-col gap-1 shrink-0">
             <div className="flex flex-col">
               <button onClick={() => setMooringOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
                 <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${mooringOpen ? "rotate-90" : ""}`}>▶</span>
-                <span className="text-xs text-slate-600 flex-1">Moorings</span>
+                <span className="text-xs text-slate-600 flex-1">Change size</span>
                 <img src={makeMooringCanvas(false, mooringSize).toDataURL()} style={{ opacity: mooringOpacity, width: mooringSize * 2, height: mooringSize * 2 }} />
               </button>
               {mooringOpen && (
@@ -1601,7 +1657,7 @@ function ShipMap() {
         </div>
       </SidePanel>
 
-      <SidePanel open={showLayerPanel}>
+      <SidePanel open={showLayerPanel} width={panelWidth} onWidthChange={setPanelWidth}>
         {/* LAYERS */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-5 pt-8 pb-4 shrink-0">
@@ -1611,7 +1667,7 @@ function ShipMap() {
               className=""
             />
           </div>
-          <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-4">
+          <div className="max-h-96 overflow-y-auto min-h-0 px-2 pb-4">
             <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
               Ocean
             </div>
@@ -1735,23 +1791,31 @@ function ShipMap() {
             </div>
           </div>
           <div className="border-t border-slate-100 mx-2 mt-2" />
-          <div className="px-5 py-4 shrink-0">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Base map</p>
-            <div className="flex flex-col gap-1">
-              {BASEMAPS.map((b) => (
-                <label key={b.id} title={b.tooltip} className="flex items-center gap-2 cursor-pointer py-0.5">
-                  <input
-                    type="radio"
-                    name="basemap"
-                    value={b.id}
-                    checked={basemap === b.id}
-                    onChange={() => setBasemap(b.id)}
-                    className="accent-[#3d5a80]"
-                  />
-                  <span className="text-sm text-slate-700">{b.label}</span>
-                </label>
-              ))}
-            </div>
+          <div className="px-3 py-3 shrink-0">
+            <button onClick={() => setBasemapOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
+              <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${basemapOpen ? "rotate-90" : ""}`}>▶</span>
+              <span className="text-xs text-slate-600 flex-1">Base map</span>
+              <span className="text-[11px] text-slate-400">
+                {BASEMAPS.find((b) => b.id === basemap)?.label}
+              </span>
+            </button>
+            {basemapOpen && (
+              <div className="pl-4 pr-1 flex flex-col gap-1 pb-1">
+                {BASEMAPS.map((b) => (
+                  <label key={b.id} title={b.tooltip} className="flex items-center gap-2 cursor-pointer py-0.5">
+                    <input
+                      type="radio"
+                      name="basemap"
+                      value={b.id}
+                      checked={basemap === b.id}
+                      onChange={() => setBasemap(b.id)}
+                      className="accent-[#3d5a80]"
+                    />
+                    <span className="text-sm text-slate-700">{b.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </SidePanel>
@@ -2016,6 +2080,11 @@ function ShipMap() {
                         className="w-full rounded-sm ring-1 ring-slate-100"
                       />
                     </figure>
+                  )}
+                  {regionStats.plots?.vessel_density_error && (
+                    <p className="text-xs text-slate-400 italic px-1">
+                      {regionStats.plots.vessel_density_error}
+                    </p>
                   )}
                 </>
               )}

@@ -237,10 +237,13 @@ def analyse_region(req: RegionRequest):
     unique_vessels = len({r["mmsi"] for r in inside})
 
     plots = {
-        "vessel_types":    plot_vessel_types(daily_counts),
-        "speed_overall":   plot_speed_overall(df[["day", "speed"]].rename(columns={"speed": "speed"})),
-        "vessel_density":  plot_vessel_density(df[["longitude", "latitude"]], minx, maxx, miny, maxy),
+        "vessel_types":  plot_vessel_types(daily_counts),
+        "speed_overall": plot_speed_overall(df[["day", "speed"]].rename(columns={"speed": "speed"})),
     }
+    try:
+        plots["vessel_density"] = plot_vessel_density(df[["longitude", "latitude"]], minx, maxx, miny, maxy)
+    except ValueError:
+        plots["vessel_density_error"] = "Not enough position data for a density map."
 
     return {
         "days": days,
