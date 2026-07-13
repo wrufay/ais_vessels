@@ -215,6 +215,8 @@ function ShipMap() {
   const [noiseFreq, setNoiseFreq] = useState(50);
   const [noiseDepth, setNoiseDepth] = useState(10);
   const [noiseRange, setNoiseRange] = useState<{ vmin: number; vmax: number } | null>(null);
+  const [noiseVminOverride, setNoiseVminOverride] = useState<number | "" | null>(null);
+  const [noiseVmaxOverride, setNoiseVmaxOverride] = useState<number | "" | null>(null);
   const [noiseAvailable, setNoiseAvailable] = useState<Record<string, { freq: number; depth: number }[]>>({});
   const [noiseDates, setNoiseDates] = useState<string[]>([]);
   const [basemap, setBasemap] = useState("esri-ocean");
@@ -725,7 +727,9 @@ function ShipMap() {
       ...fromLonLat([-69.5, 41.0]),
       ...fromLonLat([-59.0, 46.0]),
     ] as [number, number, number, number];
-    const url = `${API}/api/noise/overlay?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
+    let url = `${API}/api/noise/overlay?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
+    if (noiseVminOverride !== null && noiseVminOverride !== "") url += `&vmin=${noiseVminOverride}`;
+    if (noiseVmaxOverride !== null && noiseVmaxOverride !== "") url += `&vmax=${noiseVmaxOverride}`;
     const newSource = new ImageStatic({ url, imageExtent: noiseExtent, projection: "EPSG:3857" });
     newSource.on("imageloadstart", () => setNoiseLoading(true));
     newSource.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
@@ -735,7 +739,7 @@ function ShipMap() {
       .then((r) => r.ok ? r.json() : null)
       .then((data) => setNoiseRange(data))
       .catch(() => setNoiseRange(null));
-  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth]);
+  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride]);
 
   useEffect(() => {
     noiseLayerRef.current?.setOpacity(noiseOpacity);
@@ -1780,11 +1784,43 @@ function ShipMap() {
                     <div
                       className="noise-gradient-bar h-2.5 rounded-full w-full"
                     />
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>{noiseRange ? `${noiseRange.vmin.toFixed(1)} dB` : "Low dB"}</span>
-                      <span>{noiseRange ? `${noiseRange.vmax.toFixed(1)} dB` : "High dB"}</span>
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                      <input
+                        type="number"
+                        step={1}
+                        value={noiseVminOverride === "" ? "" : Math.round(noiseVminOverride ?? noiseRange?.vmin ?? 0)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") { setNoiseVminOverride(""); return; }
+                          const n = Number(raw.replace(/^0+(?=\d)/, ""));
+                          if (!Number.isNaN(n)) setNoiseVminOverride(n);
+                        }}
+                        className="spin-arrows w-16 text-slate-600 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 tabular-nums"
+                      />
+                      <span>dB</span>
+                      <input
+                        type="number"
+                        step={1}
+                        value={noiseVmaxOverride === "" ? "" : Math.round(noiseVmaxOverride ?? noiseRange?.vmax ?? 0)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") { setNoiseVmaxOverride(""); return; }
+                          const n = Number(raw.replace(/^0+(?=\d)/, ""));
+                          if (!Number.isNaN(n)) setNoiseVmaxOverride(n);
+                        }}
+                        className="spin-arrows w-16 text-slate-600 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 tabular-nums text-right"
+                      />
                     </div>
-                    <div className="text-[9px] text-slate-300 italic">relative scale per render</div>
+                    {(noiseVminOverride !== null || noiseVmaxOverride !== null) && (
+                      <div className="flex items-center justify-end">
+                        <button
+                          onClick={() => { setNoiseVminOverride(null); setNoiseVmaxOverride(null); }}
+                          className="text-[9px] text-[#98c1d9] hover:underline"
+                        >
+                          Reset to auto
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

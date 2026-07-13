@@ -318,9 +318,11 @@ def get_noise_overlay(
     variable: str = Query("vessel_noise"),
     freq: float = Query(50),
     depth: float = Query(10),
+    vmin: float | None = Query(None, description="Override the auto colour-scale minimum (dB)"),
+    vmax: float | None = Query(None, description="Override the auto colour-scale maximum (dB)"),
 ):
     try:
-        png = render_noise_overlay(date, variable=variable, freq=freq, depth=depth)
+        png = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:

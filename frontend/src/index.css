@@ -36,6 +36,16 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+input.spin-arrows[type="number"] {
+  -moz-appearance: auto;
+}
+input.spin-arrows[type="number"]::-webkit-inner-spin-button,
+input.spin-arrows[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: auto;
+  opacity: 1;
+  margin: 0;
+}
+
 .panel-slider {
   -webkit-appearance: none;
   appearance: none;
