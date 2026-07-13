@@ -244,6 +244,7 @@ function ShipMap() {
   const [mooringOpen, setMooringOpen] = useState(false);
   const [vesselOpen, setVesselOpen] = useState(false);
   const [regionDotOpen, setRegionDotOpen] = useState(false);
+  const [vesselListOpen, setVesselListOpen] = useState(true);
   useEffect(() => {
     if (showVesselPanel) setLastOpenedPanel("vessel");
     else if (showRegionPanel) setLastOpenedPanel("region");
@@ -1137,48 +1138,54 @@ function ShipMap() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-5 py-4 text-xs shadow-sm font-medium text-slate-400 shrink-0">
-          <button
-            onClick={() => {
-              setDraftFilters({ ...filters, type: new Set(filters.type) });
-              setShowTypeFilter(true);
-            }}
-            className={`uppercase tracking-wide transition ${
-              filters.type.size > 0 ||
-              filters.source !== "all" ||
-              filters.dfo !== "all"
-                ? "text-[#3d5a80]"
-                : "text-slate-400 hover:text-slate-600"
-            }`}
-          >
-            {(() => {
-              const n =
-                filters.type.size +
-                (filters.source !== "all" ? 1 : 0) +
-                (filters.dfo !== "all" ? 1 : 0);
-              return n > 0 ? `${n} filter${n > 1 ? "s" : ""}` : "Filter by…";
-            })()}
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="tabular-nums">
+        <div className="px-3 shrink-0">
+          <button onClick={() => setVesselListOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
+            <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${vesselListOpen ? "rotate-90" : ""}`}>▶</span>
+            <span className="text-xs text-slate-600 flex-1">Vessels</span>
+            <span className="text-[11px] text-slate-400 tabular-nums">
               {filtered.length !== vessels.length
                 ? `${filtered.length} / ${vessels.length}`
                 : `${vessels.length}`}
             </span>
-          </div>
+          </button>
         </div>
-        <Virtuoso
-          style={{ flex: 1, minHeight: 0 }}
-          className="px-2"
-          data={filtered}
-          components={{
-            EmptyPlaceholder: () => (
-              <p className="text-sm text-slate-400 p-6 text-center">
-                {vessels.length === 0 ? "Loading vessels…" : "No vessels match your search."}
-              </p>
-            ),
-          }}
-          itemContent={(_i, v) => {
+        {vesselListOpen && (
+          <>
+            <div className="flex items-center justify-between px-5 py-2 text-xs font-medium text-slate-400 shrink-0">
+              <button
+                onClick={() => {
+                  setDraftFilters({ ...filters, type: new Set(filters.type) });
+                  setShowTypeFilter(true);
+                }}
+                className={`uppercase tracking-wide transition ${
+                  filters.type.size > 0 ||
+                  filters.source !== "all" ||
+                  filters.dfo !== "all"
+                    ? "text-[#3d5a80]"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                {(() => {
+                  const n =
+                    filters.type.size +
+                    (filters.source !== "all" ? 1 : 0) +
+                    (filters.dfo !== "all" ? 1 : 0);
+                  return n > 0 ? `${n} filter${n > 1 ? "s" : ""}` : "Filter by…";
+                })()}
+              </button>
+            </div>
+            <Virtuoso
+              style={{ height: 240, overflowX: "hidden" }}
+              className="px-2 shrink-0"
+              data={filtered}
+              components={{
+                EmptyPlaceholder: () => (
+                  <p className="text-sm text-slate-400 p-6 text-center">
+                    {vessels.length === 0 ? "Loading vessels…" : "No vessels match your search."}
+                  </p>
+                ),
+              }}
+              itemContent={(_i, v) => {
             const type = classifyType(v.ship_type);
             const color = TYPE_COLORS[type] ?? TYPE_COLORS.unknown;
             const active = selected?.mmsi === v.mmsi;
@@ -1219,7 +1226,9 @@ function ShipMap() {
               </button>
             );
           }}
-        />
+            />
+          </>
+        )}
         <div className="border-t border-slate-100 mx-2 mt-2" />
         <div className="px-3 py-3 flex flex-col gap-1">
           {/* Vessel tracks sizing */}
