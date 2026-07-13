@@ -55,7 +55,9 @@
       "Bash(curl -s -X POST http://localhost:8001/api/region/vessels -H \"Content-Type: application/json\" --data @/tmp/claude-1003/-home-fwu-Desktop-projects-vessel-tracks/728b1cff-4e80-4a95-9e06-887bd8f930b1/scratchpad/roseway_query.json)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d['vessel_mmsis']\\), 'vessels'\\)\")",
       "Bash(time curl -s -X POST http://localhost:8001/api/analysis/region -H \"Content-Type: application/json\" --data @/tmp/claude-1003/-home-fwu-Desktop-projects-vessel-tracks/728b1cff-4e80-4a95-9e06-887bd8f930b1/scratchpad/roseway_query.json -o /tmp/claude-1003/-home-fwu-Desktop-projects-vessel-tracks/728b1cff-4e80-4a95-9e06-887bd8f930b1/scratchpad/analysis_result.json)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(gh repo *)",
+      "Bash(venv/bin/python3 -c ' *)"
     ]
   }
 }
