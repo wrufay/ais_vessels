@@ -145,6 +145,7 @@ function ShipMap() {
 
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [selected, setSelected] = useState<Vessel | null>(null);
+  const [search, setSearch] = useState("");
   const [start, setStart] = useState("2025-08-01");
   const [end, setEnd] = useState("2025-08-31");
   const [pointCount, setPointCount] = useState<number | null>(null);
@@ -968,17 +969,30 @@ function ShipMap() {
   }
 
   const filtered = useMemo(() => {
+    const q = search.toLowerCase();
     return vessels.filter((v) => {
       if (filters.type.size > 0 && !filters.type.has(classifyType(v.ship_type)))
         return false;
       if (filters.source !== "all" && v.source !== filters.source) return false;
-      if (filters.dfo === "dfo" && !(v.vessel_name || "").toLowerCase().includes("ccgs"))
+      if (
+        filters.dfo === "dfo" &&
+        !(v.vessel_name || "").toLowerCase().includes("ccgs")
+      )
         return false;
-      if (filters.dfo === "non-dfo" && (v.vessel_name || "").toLowerCase().includes("ccgs"))
+      if (
+        filters.dfo === "non-dfo" &&
+        (v.vessel_name || "").toLowerCase().includes("ccgs")
+      )
         return false;
-      return true;
+      return (
+        String(v.mmsi).includes(q) ||
+        (v.vessel_name || "").toLowerCase().includes(q) ||
+        String(v.ship_type || "")
+          .toLowerCase()
+          .includes(q)
+      );
     });
-  }, [vessels, filters]);
+  }, [vessels, search, filters]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
@@ -1102,7 +1116,7 @@ function ShipMap() {
           />
 
           {/* Search for a vessel input bar */}
-          {/* <div className="relative mb-4">
+          <div className="relative mb-4">
             <svg
               className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
               viewBox="0 0 24 24"
@@ -1120,7 +1134,7 @@ function ShipMap() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-          </div> */}
+          </div>
         </div>
 
         <div className="flex items-center justify-between px-5 py-4 text-xs shadow-sm font-medium text-slate-400 shrink-0">
