@@ -1095,13 +1095,6 @@ function ShipMap() {
         lon={cursorCoord?.lon ?? null}
       />
 
-      <button
-        onClick={() => setMeasuring((m) => !m)}
-        className="absolute bottom-6 left-1 z-10 font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full bg-white/80"
-      >
-        {measuring ? "Cancel" : "Measure"}
-      </button>
-
       {/* Upload modal */}
       {showUploadModal && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setShowUploadModal(false)}>
@@ -1174,6 +1167,17 @@ function ShipMap() {
         setShowRegionPanel={setShowRegionPanel}
         setShowMooringPanel={setShowMooringPanel}
         setShowLayerPanel={setShowLayerPanel}
+        measuring={measuring}
+        setMeasuring={setMeasuring}
+        drawnPolygon={drawnPolygon}
+        regionLoading={regionLoading}
+        viewVesselsMode={viewVesselsMode}
+        onAnalyse={loadRegionStats}
+        onAllTraffic={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
+        onClearTraffic={() => {
+          regionTrackSourceRef.current.clear();
+          setViewVesselsMode(false);
+        }}
       />
 
       {/* Persistent panel toggle button */}
@@ -1381,36 +1385,7 @@ function ShipMap() {
                Shapefile (.zip)
               </label>
             </div>
-            <hr className="border-slate-200" />
-            <div className="flex items-center gap-2">
-              <button
-                title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
-                disabled={!drawnPolygon || regionLoading}
-                onClick={loadRegionStats}
-                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                {regionLoading ? "Loading…" : "Analyse"}
-              </button>
-              <button
-                title="See all vessel traffic in selected region"
-                disabled={!drawnPolygon || regionLoading}
-                onClick={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
-                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                All traffic
-              </button>
-              <button
-                title="Clear region traffic dots"
-                disabled={!viewVesselsMode}
-                onClick={() => {
-                  regionTrackSourceRef.current.clear();
-                  setViewVesselsMode(false);
-                }}
-                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                Clear
-              </button>
-            </div>
+
             {viewVesselsMode && (
               <div className="flex items-center gap-1.5">
                 {(["grey", "type", "speed", "vessel"] as const).map((mode) => (

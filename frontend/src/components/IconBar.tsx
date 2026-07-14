@@ -79,15 +79,31 @@ function IconBar({
   setShowRegionPanel,
   setShowMooringPanel,
   setShowLayerPanel,
+  measuring,
+  setMeasuring,
+  drawnPolygon,
+  regionLoading,
+  viewVesselsMode,
+  onAnalyse,
+  onAllTraffic,
+  onClearTraffic,
 }: {
   showVesselPanel: boolean;
   showRegionPanel: boolean;
   showLayerPanel: boolean;
   showMooringPanel: boolean;
+  measuring: boolean;
+  drawnPolygon: object | null;
+  regionLoading: boolean;
+  viewVesselsMode: boolean;
   setShowVesselPanel: Dispatch<SetStateAction<boolean>>;
   setShowRegionPanel: Dispatch<SetStateAction<boolean>>;
   setShowMooringPanel: Dispatch<SetStateAction<boolean>>;
+  setMeasuring: Dispatch<SetStateAction<boolean>>;
   setShowLayerPanel: Dispatch<SetStateAction<boolean>>;
+  onAnalyse: () => void;
+  onAllTraffic: () => void;
+  onClearTraffic: () => void;
 }) {
   return (
     <div className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center justify-center items-center">
@@ -152,6 +168,42 @@ function IconBar({
           {label}
         </div>
       ))}
+
+      <hr className="w-full border-slate-200 my-0.5" />
+
+      <button
+        onClick={() => setMeasuring((m) => !m)}
+        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80"
+      >
+        {measuring ? "Cancel" : "Measure"}
+      </button>
+
+      <hr className="w-full border-slate-200 my-0.5" />
+
+      <button
+        title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
+        disabled={!drawnPolygon || regionLoading}
+        onClick={onAnalyse}
+        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        {regionLoading ? "..." : "Analyse"}
+      </button>
+      <button
+        title="See all vessel traffic in selected region"
+        disabled={!drawnPolygon || regionLoading}
+        onClick={onAllTraffic}
+        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        All traffic
+      </button>
+      <button
+        title="Clear region traffic dots"
+        disabled={!viewVesselsMode}
+        onClick={onClearTraffic}
+        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        Clear
+      </button>
     </div>
   );
 }
