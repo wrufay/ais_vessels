@@ -213,8 +213,12 @@ function ShipMap() {
   const [noiseVariable, setNoiseVariable] = useState("vessel_noise");
   const [noiseDate, setNoiseDate] = useState("2020-02");
   const [noiseFreq, setNoiseFreq] = useState(50);
+  // What the user typed — may not equal what's actually displayed. The server
+  // snaps this to the nearest depth it has actual GeoTIFF data for (see
+  // resolve_depth in analysis/noise.py); noiseRange.depth below is the real,
+  // resolved value and is what the "Nearest available: Xm" note reflects.
   const [noiseDepth, setNoiseDepth] = useState(10);
-  const [noiseRange, setNoiseRange] = useState<{ vmin: number; vmax: number } | null>(null);
+  const [noiseRange, setNoiseRange] = useState<{ vmin: number; vmax: number; depth: number } | null>(null);
   const [noiseVminOverride, setNoiseVminOverride] = useState<number | "" | null>(null);
   const [noiseVmaxOverride, setNoiseVmaxOverride] = useState<number | "" | null>(null);
   const [noiseAvailable, setNoiseAvailable] = useState<Record<string, { freq: number; depth: number }[]>>({});
@@ -1733,7 +1737,6 @@ function ShipMap() {
                   </div>
                   {(() => {
                     const freqs = [...new Set((noiseAvailable[noiseVariable] ?? []).map(o => o.freq))].sort((a, b) => a - b);
-                    const depths = [...new Set((noiseAvailable[noiseVariable] ?? []).filter(o => o.freq === noiseFreq).map(o => o.depth))].sort((a, b) => a - b);
                     return <>
                       {freqs.length > 1 && (
                         <div className="flex items-center gap-2">
@@ -1744,13 +1747,29 @@ function ShipMap() {
                           </select>
                         </div>
                       )}
-                      {noiseVariable !== "wind_noise" && depths.length > 1 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-slate-400 w-12 shrink-0">Depth</span>
-                          <select value={noiseDepth} onChange={(e) => setNoiseDepth(Number(e.target.value))}
-                            className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
-                            {depths.map(d => <option key={d} value={d}>{d} m</option>)}
-                          </select>
+                      {noiseVariable !== "wind_noise" && (
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-400 w-12 shrink-0">Depth</span>
+                            {/* Free-form: NetCDF has 19 depth levels (10-500m), but only some
+                                are converted to GeoTIFF here — server snaps to the nearest
+                                available one (see resolve_depth in analysis/noise.py). */}
+                            <input
+                              type="number"
+                              min={10}
+                              max={500}
+                              step={1}
+                              value={noiseDepth}
+                              onChange={(e) => setNoiseDepth(Number(e.target.value))}
+                              className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1"
+                            />
+                            <span className="text-[10px] text-slate-400 shrink-0">m</span>
+                          </div>
+                          {noiseRange && noiseRange.depth !== noiseDepth && (
+                            <div className="text-[9px] text-slate-400 italic">
+                              Nearest available: {noiseRange.depth}m
+                            </div>
+                          )}
                         </div>
                       )}
                     </>;

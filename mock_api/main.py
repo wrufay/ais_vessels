@@ -266,15 +266,18 @@ def get_noise_range(
     date: str = Query(...),
     variable: str = Query("vessel_noise"),
     freq: float = Query(50),
+    # Any depth 10-500m is valid; snapped server-side to the nearest one
+    # actually converted (see resolve_depth in analysis/noise.py). The
+    # response's "depth" is what was ACTUALLY used — not necessarily this.
     depth: float = Query(10),
 ):
     try:
-        vmin, vmax = noise_range(date, variable=variable, freq=freq, depth=depth)
+        vmin, vmax, resolved_depth = noise_range(date, variable=variable, freq=freq, depth=depth)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"vmin": round(vmin, 1), "vmax": round(vmax, 1)}
+    return {"vmin": round(vmin, 1), "vmax": round(vmax, 1), "depth": resolved_depth}
 
 
 @app.get("/api/noise/overlay")
@@ -287,7 +290,7 @@ def get_noise_overlay(
     vmax: float | None = Query(None),
 ):
     try:
-        png = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
+        png, _resolved_depth = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:

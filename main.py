@@ -301,15 +301,20 @@ def get_noise_range(
     date: str = Query(..., description="YYYY-MM-DD (daily) or YYYY-MM (monthly)"),
     variable: str = Query("vessel_noise"),
     freq: float = Query(50),
-    depth: float = Query(10),
+    # Any of the 19 NetCDF depth levels (10-500m) is a valid input — it gets
+    # snapped server-side to the nearest one actually converted to GeoTIFF
+    # (see resolve_depth in analysis/noise.py). The response's "depth" field
+    # is what was ACTUALLY used, which the frontend must not assume equals
+    # this requested value.
+    depth: float = Query(10, description="Requested depth in metres; response reflects the nearest available depth actually used"),
 ):
     try:
-        vmin, vmax = noise_range(date, variable=variable, freq=freq, depth=depth)
+        vmin, vmax, resolved_depth = noise_range(date, variable=variable, freq=freq, depth=depth)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"vmin": round(vmin, 1), "vmax": round(vmax, 1)}
+    return {"vmin": round(vmin, 1), "vmax": round(vmax, 1), "depth": resolved_depth}
 
 
 @app.get("/api/noise/overlay")
@@ -322,7 +327,7 @@ def get_noise_overlay(
     vmax: float | None = Query(None, description="Override the auto colour-scale maximum (dB)"),
 ):
     try:
-        png = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
+        png, _resolved_depth = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:
