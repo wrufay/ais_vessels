@@ -57,7 +57,20 @@
       "Bash(time curl -s -X POST http://localhost:8001/api/analysis/region -H \"Content-Type: application/json\" --data @/tmp/claude-1003/-home-fwu-Desktop-projects-vessel-tracks/728b1cff-4e80-4a95-9e06-887bd8f930b1/scratchpad/roseway_query.json -o /tmp/claude-1003/-home-fwu-Desktop-projects-vessel-tracks/728b1cff-4e80-4a95-9e06-887bd8f930b1/scratchpad/analysis_result.json)",
       "Bash(git checkout *)",
       "Bash(gh repo *)",
-      "Bash(venv/bin/python3 -c ' *)"
+      "Bash(venv/bin/python3 -c ' *)",
+      "Bash(xxd)",
+      "Bash(cp /home/shared/Noise_Impact_Thresholds.xlsx /home/fwu/Noise_Impact_Thresholds.xlsx && ls -la /home/fwu/Noise_Impact_Thresholds.xlsx)",
+      "Bash(snap connections *)",
+      "Bash(chmod +x /home/fwu/Desktop/projects/vessel-tracks/pipeline/run_combined_noise_all_combos.sh)",
+      "Bash(bash -n /home/fwu/Desktop/projects/vessel-tracks/pipeline/run_combined_noise_all_combos.sh)",
+      "Bash(nohup pipeline/run_combined_noise_all_combos.sh)",
+      "Bash(echo \"launched, pid: $!\")",
+      "Bash(pkill -f run_combined_noise_all_combos.sh)",
+      "Bash(kill 3715952)"
+    ],
+    "additionalDirectories": [
+      "/home/shared",
+      "/home/fwu"
     ]
   }
 }

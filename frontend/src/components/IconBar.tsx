@@ -107,6 +107,17 @@ function IconBar({
 }) {
   return (
     <div className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center justify-center items-center">
+      
+
+      <button
+        onClick={() => setMeasuring((m) => !m)}
+        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80"
+      >
+        {measuring ? "Cancel" : "Measure"}
+      </button>
+
+      <hr className="w-full border-slate-200 my-0.5" />
+      
       <IconBarButton
         label="Tracks"
         title="View individual vessels displayed on the map."
@@ -161,25 +172,6 @@ function IconBar({
 
       <hr className="w-full border-slate-200 my-0.5" />
 
-      <div className="text-[9px] font-semibold text-slate-400 mb-0.5">Speed (kn)</div>
-      {([["#0a8754", "< 3"], ["#ffc857", "3–10"], ["#ee6c4d", "> 10"]] as const).map(([color, label]) => (
-        <div key={label} className="flex items-center justify-center gap-1.5 text-[9px] text-slate-400 w-full">
-          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-          {label}
-        </div>
-      ))}
-
-      <hr className="w-full border-slate-200 my-0.5" />
-
-      <button
-        onClick={() => setMeasuring((m) => !m)}
-        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80"
-      >
-        {measuring ? "Cancel" : "Measure"}
-      </button>
-
-      <hr className="w-full border-slate-200 my-0.5" />
-
       <button
         title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
         disabled={!drawnPolygon || regionLoading}
@@ -204,6 +196,17 @@ function IconBar({
       >
         Clear
       </button>
+
+
+      <hr className="w-full border-slate-200 my-0.5" />
+      {/* legend */}
+      <div className="text-[9px] font-semibold text-slate-400 mb-0.5">Speed (kn)</div>
+      {([["#0a8754", "< 3"], ["#ffc857", "3–10"], ["#ee6c4d", "> 10"]] as const).map(([color, label]) => (
+        <div key={label} className="flex items-center justify-center gap-1.5 text-[9px] text-slate-400 w-full">
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+          {label}
+        </div>
+      ))}
     </div>
   );
 }
