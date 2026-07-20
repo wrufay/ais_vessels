@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
@@ -56,6 +56,8 @@ import SidePanel, { PANEL_DEFAULT_WIDTH } from "./components/SidePanel";
 import IconBar from "./components/IconBar";
 import CursorCoordinates from "./components/CursorCoordinates";
 import ClosePanelBtn from "./components/ClosePanelBtn";
+import Tour from "./tour/Tour";
+import { createTourSteps } from "./tour/steps";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -318,6 +320,56 @@ function ShipMap() {
   }
   const [basemapOpen, setBasemapOpen] = useState(false);
   const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
+
+  // Guided tour — generic key -> DOM element registry. Steps (see tour/steps.tsx)
+  // reference elements by key; registerTarget/getTourTarget are how any element
+  // anywhere in this tree (icon bar or side panels) opts in as a tour target.
+  const [tourActive, setTourActive] = useState(false);
+  const tourTargetsRef = useRef<Record<string, HTMLElement | null>>({});
+  const registerTarget = useCallback(
+    (key: string) => (el: HTMLElement | null) => {
+      tourTargetsRef.current[key] = el;
+    },
+    []
+  );
+  const getTourTarget = useCallback((key: string): HTMLElement | null => {
+    // These two already have a stable ref for resize-drag measurement — reuse
+    // them instead of adding a second ref to the same element.
+    if (key === "mooringList") return mooringListElRef.current;
+    if (key === "regionList") return regionListElRef.current;
+    return tourTargetsRef.current[key] ?? null;
+  }, []);
+  const tourSteps = useMemo(
+    () =>
+      createTourSteps({
+        openVesselPanel: () => {
+          setShowRegionPanel(false);
+          setShowMooringPanel(false);
+          setShowLayerPanel(false);
+          setShowVesselPanel(true);
+          setVesselListOpen(true);
+        },
+        openMooringPanel: () => {
+          setShowVesselPanel(false);
+          setShowRegionPanel(false);
+          setShowLayerPanel(false);
+          setShowMooringPanel(true);
+        },
+        openRegionPanel: () => {
+          setShowVesselPanel(false);
+          setShowMooringPanel(false);
+          setShowLayerPanel(false);
+          setShowRegionPanel(true);
+        },
+        openMapPanel: () => {
+          setShowVesselPanel(false);
+          setShowRegionPanel(false);
+          setShowMooringPanel(false);
+          setShowLayerPanel(true);
+        },
+      }),
+    []
+  );
   useEffect(() => {
     if (showVesselPanel) setLastOpenedPanel("vessel");
     else if (showRegionPanel) setLastOpenedPanel("region");
@@ -1178,6 +1230,15 @@ function ShipMap() {
           regionTrackSourceRef.current.clear();
           setViewVesselsMode(false);
         }}
+        onStartTour={() => setTourActive(true)}
+        registerTarget={registerTarget}
+      />
+
+      <Tour
+        active={tourActive}
+        steps={tourSteps}
+        getTarget={getTourTarget}
+        onClose={() => setTourActive(false)}
       />
 
       {/* Persistent panel toggle button */}
@@ -1189,8 +1250,8 @@ function ShipMap() {
       </div>
 
       {/* Vessel panel — slides in from the right */}
-      <SidePanel open={showVesselPanel} width={panelWidth} onWidthChange={setPanelWidth}>
-        <div className="px-5 pt-8 shrink-0">
+      <SidePanel open={showVesselPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("vesselPanel")}>
+        <div ref={registerTarget("vesselSearch")} className="px-5 pt-8 shrink-0">
           <PanelHeader
             description="Click a vessel to see its track."
             name="Tracks"
@@ -1224,6 +1285,7 @@ function ShipMap() {
           </div>
         </div>
 
+        <div ref={registerTarget("vesselList")} className="flex flex-col shrink-0">
         <div className="px-3 shrink-0">
           <button onClick={() => setVesselListOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
             <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${vesselListOpen ? "rotate-90" : ""}`}>▶</span>
@@ -1319,8 +1381,9 @@ function ShipMap() {
             />
           </>
         )}
+        </div>
         <div className="border-t border-slate-100 mx-2 mt-2" />
-        <div className="px-3 py-3 flex flex-col gap-1">
+        <div ref={registerTarget("vesselSize")} className="px-3 py-3 flex flex-col gap-1">
           {/* Vessel tracks sizing */}
           <div className="flex flex-col">
             <button onClick={() => setVesselOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
@@ -1357,14 +1420,14 @@ function ShipMap() {
       </SidePanel>
 
       {/* Regions panel — slides in from the right */}
-      <SidePanel open={showRegionPanel} width={panelWidth} onWidthChange={setPanelWidth}>
+      <SidePanel open={showRegionPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("regionPanel")}>
         <div className="px-5 pt-8 shrink-0">
           <PanelHeader
             name="Regions"
             description="Select one or more regions to display them on the map."
           />
 
-          <div className="mt-4 mb-4 flex flex-col gap-2.5">
+          <div ref={registerTarget("regionCustomize")} className="mt-4 mb-4 flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <button
                 onClick={drawing ? cancelDrawing : startDrawing}
@@ -1534,7 +1597,7 @@ function ShipMap() {
 
       {/* Overlay panel — slides in from the right */}
       {/* Mooring panel */}
-      <SidePanel open={showMooringPanel} width={panelWidth} onWidthChange={setPanelWidth}>
+      <SidePanel open={showMooringPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("mooringPanel")}>
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-5 pt-8 shrink-0">
             <PanelHeader
@@ -1543,7 +1606,7 @@ function ShipMap() {
               className="mb-4"
             />
             <DateRangePicker start={start} end={end} onStartChange={setStart} onEndChange={setEnd} />
-            <div className="mt-3 flex flex-row justify-between items-center">
+            <div ref={registerTarget("mooringUpload")} className="mt-3 flex flex-row justify-between items-center">
               <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
                 Upload
                 <input type="file" accept=".csv" className="hidden" onChange={handleMooringUpload} />
@@ -1636,7 +1699,7 @@ function ShipMap() {
         </div>
       </SidePanel>
 
-      <SidePanel open={showLayerPanel} width={panelWidth} onWidthChange={setPanelWidth}>
+      <SidePanel open={showLayerPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("mapPanel")}>
         {/* LAYERS */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-5 pt-8 pb-4 shrink-0">
@@ -1646,7 +1709,7 @@ function ShipMap() {
               className=""
             />
           </div>
-          <div className="max-h-96 overflow-y-auto min-h-0 px-2 pb-4">
+          <div ref={registerTarget("mapLayers")} className="max-h-96 overflow-y-auto min-h-0 px-2 pb-4">
             <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
               Ocean
             </div>
@@ -1803,7 +1866,7 @@ function ShipMap() {
             </div>
           </div>
           <div className="border-t border-slate-100 mx-2 mt-2" />
-          <div className="px-3 py-3 shrink-0">
+          <div ref={registerTarget("mapBasemap")} className="px-3 py-3 shrink-0">
             <button onClick={() => setBasemapOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
               <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${basemapOpen ? "rotate-90" : ""}`}>▶</span>
               <span className="text-xs text-slate-600 flex-1">Base map</span>

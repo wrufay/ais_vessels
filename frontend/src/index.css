@@ -75,6 +75,17 @@ input.spin-arrows[type="number"]::-webkit-outer-spin-button {
   cursor: pointer;
 }
 
+.tour-overlay {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  transition: clip-path 0.25s ease;
+}
+
+.tour-spotlight-ring {
+  box-shadow: 0 0 0 2px #98c1d9, 0 0 16px 2px rgba(152, 193, 217, 0.6);
+  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+
 /* colour scheme
 3d5a80 - dusk blue
 98c1d9 - powder blue

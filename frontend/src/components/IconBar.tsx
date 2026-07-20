@@ -87,6 +87,8 @@ function IconBar({
   onAnalyse,
   onAllTraffic,
   onClearTraffic,
+  onStartTour,
+  registerTarget,
 }: {
   showVesselPanel: boolean;
   showRegionPanel: boolean;
@@ -104,10 +106,18 @@ function IconBar({
   onAnalyse: () => void;
   onAllTraffic: () => void;
   onClearTraffic: () => void;
+  onStartTour: () => void;
+  registerTarget: (key: string) => (el: HTMLElement | null) => void;
 }) {
   return (
     <div className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center justify-center items-center">
-      
+
+      <button
+        onClick={onStartTour}
+        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80"
+      >
+        Tour
+      </button>
 
       <button
         onClick={() => setMeasuring((m) => !m)}
@@ -117,86 +127,95 @@ function IconBar({
       </button>
 
       <hr className="w-full border-slate-200 my-0.5" />
-      
-      <IconBarButton
-        label="Tracks"
-        title="View individual vessels displayed on the map."
-        icon={tracksIcon}
-        active={showVesselPanel}
-        onClick={() => {
-          setShowVesselPanel((p) => !p);
-          setShowRegionPanel(false);
-          setShowMooringPanel(false);
-          setShowLayerPanel(false);
-        }}
-      />
 
-      <IconBarButton
-        label="Moorings"
-        title="View and manage mooring locations on the map."
-        icon={mooringIcon}
-        active={showMooringPanel}
-        onClick={() => {
-          setShowMooringPanel((p) => !p);
-          setShowVesselPanel(false);
-          setShowRegionPanel(false);
-          setShowLayerPanel(false);
-        }}
-      />
+      <div ref={registerTarget("iconTracks")}>
+        <IconBarButton
+          label="Tracks"
+          title="View individual vessels displayed on the map."
+          icon={tracksIcon}
+          active={showVesselPanel}
+          onClick={() => {
+            setShowVesselPanel((p) => !p);
+            setShowRegionPanel(false);
+            setShowMooringPanel(false);
+            setShowLayerPanel(false);
+          }}
+        />
+      </div>
 
-      <IconBarButton
-        label="Regions"
-        title="Analyze pre-defined and custom-select regions."
-        icon={regionsIcon}
-        active={showRegionPanel}
-        onClick={() => {
-          setShowRegionPanel((p) => !p);
-          setShowVesselPanel(false);
-          setShowMooringPanel(false);
-          setShowLayerPanel(false);
-        }}
-      />
+      <div ref={registerTarget("iconMoorings")}>
+        <IconBarButton
+          label="Moorings"
+          title="View and manage mooring locations on the map."
+          icon={mooringIcon}
+          active={showMooringPanel}
+          onClick={() => {
+            setShowMooringPanel((p) => !p);
+            setShowVesselPanel(false);
+            setShowRegionPanel(false);
+            setShowLayerPanel(false);
+          }}
+        />
+      </div>
 
-      <IconBarButton
-        label="Map"
-        title="Switch base map and toggle data overlays."
-        icon={layersIcon}
-        active={showLayerPanel}
-        onClick={() => {
-          setShowLayerPanel((p) => !p);
-          setShowVesselPanel(false);
-          setShowRegionPanel(false);
-          setShowMooringPanel(false);
-        }}
-      />
+      <div ref={registerTarget("iconRegions")}>
+        <IconBarButton
+          label="Regions"
+          title="Analyze pre-defined and custom-select regions."
+          icon={regionsIcon}
+          active={showRegionPanel}
+          onClick={() => {
+            setShowRegionPanel((p) => !p);
+            setShowVesselPanel(false);
+            setShowMooringPanel(false);
+            setShowLayerPanel(false);
+          }}
+        />
+      </div>
+
+      <div ref={registerTarget("iconMap")}>
+        <IconBarButton
+          label="Map"
+          title="Switch base map and toggle data overlays."
+          icon={layersIcon}
+          active={showLayerPanel}
+          onClick={() => {
+            setShowLayerPanel((p) => !p);
+            setShowVesselPanel(false);
+            setShowRegionPanel(false);
+            setShowMooringPanel(false);
+          }}
+        />
+      </div>
 
       <hr className="w-full border-slate-200 my-0.5" />
 
-      <button
-        title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
-        disabled={!drawnPolygon || regionLoading}
-        onClick={onAnalyse}
-        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
-      >
-        {regionLoading ? "..." : "Analyse"}
-      </button>
-      <button
-        title="See all vessel traffic in selected region"
-        disabled={!drawnPolygon || regionLoading}
-        onClick={onAllTraffic}
-        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
-      >
-        All traffic
-      </button>
-      <button
-        title="Clear region traffic dots"
-        disabled={!viewVesselsMode}
-        onClick={onClearTraffic}
-        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
-      >
-        Clear
-      </button>
-
+      <div ref={registerTarget("iconAnalyseGroup")} className="w-full flex flex-col gap-2">
+        <button
+          title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
+          disabled={!drawnPolygon || regionLoading}
+          onClick={onAnalyse}
+          className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          {regionLoading ? "..." : "Analyse"}
+        </button>
+        <button
+          title="See all vessel traffic in selected region"
+          disabled={!drawnPolygon || regionLoading}
+          onClick={onAllTraffic}
+          className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          All traffic
+        </button>
+        <button
+          title="Clear region traffic dots"
+          disabled={!viewVesselsMode}
+          onClick={onClearTraffic}
+          className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          Clear
+        </button>
+      </div>
 
       <hr className="w-full border-slate-200 my-0.5" />
       {/* legend */}

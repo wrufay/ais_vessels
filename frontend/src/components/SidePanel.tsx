@@ -9,11 +9,13 @@ function SidePanel({
   children,
   width,
   onWidthChange,
+  innerRef,
 }: {
   open: boolean;
   children: ReactNode;
   width: number;
   onWidthChange: (width: number) => void;
+  innerRef?: (el: HTMLDivElement | null) => void;
 }) {
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -41,6 +43,7 @@ function SidePanel({
 
   return (
     <div
+      ref={innerRef}
       style={{ width }}
       className={`absolute right-0 top-0 h-full bg-white z-20 flex flex-col shadow-sm transition-transform duration-300 ease-in-out ${
         open ? "translate-x-0" : "translate-x-full"
