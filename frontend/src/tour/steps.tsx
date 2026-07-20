@@ -21,8 +21,9 @@ export function createTourSteps(actions: TourActions): TourStep[] {
     {
       id: "intro",
       target: null,
+      dim: false,
       title: "Welcome",
-      body: "This tour walks through the main features of the app. Use the arrow keys or the Next/Back buttons to move around, click a dot to jump to any step, and press Esc or click the X anytime to exit.",
+      body: "Use arrow keys or Next/Back to move around. Press Esc or click X anytime to exit.",
     },
 
     // --- Vessel Tracks ---

@@ -65,7 +65,7 @@ function Tour({
 
   return createPortal(
     <>
-      <TourOverlay rect={rect} />
+      {step.dim !== false && <TourOverlay rect={rect} />}
       <TourCallout
         key={step.id}
         rect={rect}

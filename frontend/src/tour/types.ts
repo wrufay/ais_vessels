@@ -9,4 +9,6 @@ export interface TourStep {
   body: ReactNode;
   /** Side effect to run when this step becomes active — e.g. opening the panel it lives in. */
   onEnter?: () => void;
+  /** Set false to skip the dark/blurred backdrop for this step (e.g. the intro). Defaults to true. */
+  dim?: boolean;
 }

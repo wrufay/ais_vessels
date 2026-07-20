@@ -3,16 +3,14 @@ import type { ReactNode } from "react";
 const WIDTH = 288;
 const MARGIN = 12;
 
+// Deliberately no `transform` here for centering (e.g. translate(-50%,-50%)):
+// the box also carries the animate-slide-up class, whose keyframe animates
+// `transform` too — an animated transform overrides an inline one for its
+// duration (and holds the end-keyframe value after, via fill-mode `both`),
+// which would silently cancel out a centering transform. Centering is done
+// by the fixed, full-screen flex wrapper in TourCallout instead.
 function calloutStyle(rect: DOMRect | null): React.CSSProperties {
-  if (!rect) {
-    return {
-      position: "fixed",
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
-      width: WIDTH,
-    };
-  }
+  if (!rect) return { width: WIDTH };
   const spaceBelow = window.innerHeight - rect.bottom;
   const top =
     spaceBelow > 220 ? rect.bottom + MARGIN : Math.max(MARGIN, rect.top - MARGIN - 220);
@@ -44,7 +42,7 @@ function TourCallout({
   onClose: () => void;
   onDotClick: (index: number) => void;
 }) {
-  return (
+  const box = (
     <div
       style={calloutStyle(rect)}
       className="z-[102] bg-white shadow-xl p-4 flex flex-col gap-3 animate-slide-up"
@@ -100,6 +98,11 @@ function TourCallout({
       </div>
     </div>
   );
+
+  if (!rect) {
+    return <div className="fixed inset-0 z-[102] flex items-center justify-center">{box}</div>;
+  }
+  return box;
 }
 
 export default TourCallout;
