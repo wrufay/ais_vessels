@@ -15,4 +15,5 @@ pgdata_backup*.tar.gz
 *.db
 *.sqlite
 pipeline/*.log
+pipeline/noise_data/
 archive
