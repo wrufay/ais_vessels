@@ -1701,7 +1701,7 @@ function ShipMap() {
 
       <SidePanel open={showLayerPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("mapPanel")}>
         {/* LAYERS */}
-        <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
           <div className="px-5 pt-8 pb-4 shrink-0">
             <PanelHeader
               name="Map"
@@ -1709,7 +1709,7 @@ function ShipMap() {
               className=""
             />
           </div>
-          <div ref={registerTarget("mapLayers")} className="max-h-96 overflow-y-auto min-h-0 px-2 pb-4">
+          <div ref={registerTarget("mapLayers")} className="shrink-0 px-2 pb-4">
             <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
               Ocean
             </div>
@@ -1964,6 +1964,8 @@ function ShipMap() {
                 </div>
               </div>
               {/* Dropdowns for the other two */}
+              {/* Commented out (not removed) -- AIS source / DFO vessel filters
+                  aren't working correctly right now and would confuse users.
               {[
                 {
                   key: "source" as const,
@@ -2009,6 +2011,7 @@ function ShipMap() {
                   </select>
                 </div>
               ))}
+              */}
             </div>
             <div className="flex items-center justify-between px-6 pb-5">
               <button

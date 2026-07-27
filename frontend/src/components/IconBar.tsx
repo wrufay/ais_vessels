@@ -110,7 +110,11 @@ function IconBar({
   registerTarget: (key: string) => (el: HTMLElement | null) => void;
 }) {
   return (
-    <div className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center justify-center items-center">
+    // Outer: full viewport height, centers the bar vertically when it fits.
+    // Inner: capped to that same height, scrolls instead of clipping once
+    // the bar's content (buttons + legend) is taller than the screen.
+    <div className="absolute inset-y-0 left-0 z-20 flex items-center">
+    <div className="max-h-full overflow-y-auto flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center items-center">
 
       <button
         onClick={onStartTour}
@@ -226,6 +230,7 @@ function IconBar({
           {label}
         </div>
       ))}
+    </div>
     </div>
   );
 }

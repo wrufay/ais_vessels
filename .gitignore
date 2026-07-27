@@ -17,3 +17,4 @@ pgdata_backup*.tar.gz
 pipeline/*.log
 pipeline/noise_data/
 archive
+markdown/prompt.md

@@ -23,6 +23,17 @@ for f in "${FREQS[@]}"; do
     echo "=== combo $i/$total: combined_noise, freq=${f}Hz, depth=${d}m ==="
     venv/bin/python3 pipeline/noise_to_geotiff.py \
       --variable combined_noise --freq "$f" --depth "$d" --monthly
+    # Bash doesn't stop a `for` loop just because a command inside it
+    # failed -- without this explicit check it would silently plow through
+    # every remaining combo doing nothing (this is exactly what happened
+    # 2026-07-21 when /mnt/shared_remote dropped mid-run: combos 38-95 all
+    # "ran" and the script printed "All 95 combos complete" despite none of
+    # them actually converting anything).
+    status=$?
+    if [ "$status" -ne 0 ]; then
+      echo "=== combo $i/$total FAILED (exit $status) -- stopping so this doesn't run through the rest of the combos doing nothing. Fix the issue and rerun this script; already-converted combos are skipped automatically. ==="
+      exit "$status"
+    fi
     elapsed=$(( $(date +%s) - start ))
     echo "=== combo $i/$total done. elapsed so far: ${elapsed}s (~$((elapsed / 3600))h) ==="
   done
