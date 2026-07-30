@@ -105,6 +105,17 @@ def get_vessels(start: str | None = Query(None), end: str | None = Query(None)):
     return {"vessels": rows, "count": len(rows)}
 
 
+@app.get("/api/ccg/status")
+def get_ccg_status():
+    """Freshness of the live CCG terrestrial AIS feed. The mock DB has no
+    real CCG data, so this just returns null here (real backend has it)."""
+    rows = query(
+        "SELECT MAX(received_at) AS last_position_at FROM ais_positions WHERE source = 'CCG_terrestrial'"
+    )
+    last = rows[0]["last_position_at"] if rows else None
+    return {"last_position_at": last}
+
+
 MAX_ROUTE_POINTS = 500
 
 

@@ -99,6 +99,18 @@ DST_DIR = os.path.join(os.path.dirname(__file__), "noise_data")
 # Matches filenames like "20200201.nc" and captures year, month, day groups.
 DATE_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})\.nc$")
 
+# Sanity ceiling for vessel/combined noise, in dB re 1 uPa. Legitimate loud
+# readings across the dataset top out around 141 dB; some source files
+# contain glitched timesteps where a whole block of the grid is pinned to
+# the same value (154-178 dB) regardless of depth -- real underwater sound
+# always attenuates with depth, so depth-invariance across a huge area is
+# the signature of a bad model write, not a real loud event. Discovered via
+# 20200223.nc timestep 70, which pins x=542-700 (all y, all depth) to a
+# fixed per-frequency value. Because monthly averaging is done in linear
+# pressure space (see convert_monthly), a single such reading would
+# otherwise dominate a whole month's average at every pixel it touches.
+MAX_PLAUSIBLE_DB = 145.0
+
 
 def _nearest_index(values: np.ndarray, target: float) -> int:
     """Return the index of the element in `values` closest to `target`.
@@ -213,6 +225,9 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
     # Mask any remaining 0.0 dB land cells (vessel_noise / combined_noise
     # convention): 0 dB → 1.0 µPa would pass as a quiet-ocean cell.
     arr[arr <= 0] = np.nan
+    # Mask implausibly loud readings (see MAX_PLAUSIBLE_DB above) — glitched
+    # source timesteps, not real loud events.
+    arr[arr > MAX_PLAUSIBLE_DB] = np.nan
 
     # Average in linear space, then back to dB (see Steps 2-3).
     linear = 10.0 ** (arr / 20.0)
@@ -296,9 +311,11 @@ def convert_monthly(
             raw = ds[variable][:, :, fi, di, :] if di is not None else ds[variable][:, :, fi, :]
             arr = np.ma.filled(raw, np.nan).astype(np.float64)
 
-        # Mask land (0.0 dB) before converting, then add this day into the
-        # running sum/count (see convert_one).
+        # Mask land (0.0 dB) and implausibly loud glitched readings (see
+        # MAX_PLAUSIBLE_DB above) before converting, then add this day into
+        # the running sum/count (see convert_one).
         arr[arr <= 0] = np.nan
+        arr[arr > MAX_PLAUSIBLE_DB] = np.nan
         linear = 10.0 ** (arr / 20.0)
         linear_sum += np.nansum(linear, axis=2)
         valid_count += np.sum(~np.isnan(linear), axis=2).astype(np.int64)

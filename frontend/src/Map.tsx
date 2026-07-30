@@ -110,6 +110,17 @@ interface RegionStats {
   };
 }
 
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.round(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return `${days} d ago`;
+}
+
 function ShipMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapObj = useRef<Map | null>(null);
@@ -223,6 +234,7 @@ function ShipMap() {
   const [noiseDates, setNoiseDates] = useState<string[]>([]);
   const [basemap, setBasemap] = useState("esri-ocean");
   const [serverError, setServerError] = useState<string | null>(null);
+  const [ccgLastPositionAt, setCcgLastPositionAt] = useState<string | null>(null);
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
   const [regionDisplayMode, setRegionDisplayMode] = useState<
     "grey" | "type" | "speed" | "vessel"
@@ -827,6 +839,20 @@ function ShipMap() {
       .catch((e: Error) => setServerError(e.message));
   }, [start, end]);
 
+  // Live CCG terrestrial AIS feed freshness — polled periodically so the
+  // "updated X ago" display stays roughly current without a page reload.
+  useEffect(() => {
+    function fetchCcgStatus() {
+      fetch(`${API}/api/ccg/status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setCcgLastPositionAt(d?.last_position_at ?? null))
+        .catch(() => {});
+    }
+    fetchCcgStatus();
+    const id = setInterval(fetchCcgStatus, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   function downloadMooringTemplate() {
     const csv = [
       "name,lat,lon,depth,deployment,recovery",
@@ -1256,6 +1282,11 @@ function ShipMap() {
             description="Click a vessel to see its track."
             name="Tracks"
           />
+          <div className="text-[11px] text-slate-400 -mt-2 mb-3">
+            {ccgLastPositionAt
+              ? `Live AIS (CCG) updated ${formatRelativeTime(ccgLastPositionAt)}`
+              : "Live AIS (CCG) feed not available"}
+          </div>
           <DateRangePicker
             start={start}
             end={end}

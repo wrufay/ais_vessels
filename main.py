@@ -92,6 +92,17 @@ def get_vessels(start: str | None = Query(None), end: str | None = Query(None)):
     return {"vessels": rows, "count": len(rows)}
 
 
+@app.get("/api/ccg/status")
+def get_ccg_status():
+    """Freshness of the live CCG terrestrial AIS feed — most recent position
+    timestamp actually ingested, so the UI can show "updated N min ago"."""
+    rows = query(
+        "SELECT MAX(received_at) AS last_position_at FROM ais_positions WHERE source = 'CCG_terrestrial'"
+    )
+    last = rows[0]["last_position_at"] if rows else None
+    return {"last_position_at": last.isoformat() if last else None}
+
+
 MAX_ROUTE_POINTS = 500
 
 @app.get("/api/vessel/{mmsi}/route")
