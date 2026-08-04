@@ -65,16 +65,46 @@ purely technical one.
 import io
 import os
 
+import geopandas as gpd  # type: ignore
 import matplotlib
 import matplotlib.colors as mcolors
 import numpy as np
 import rasterio  # type: ignore
 from PIL import Image
+from rasterio.features import geometry_mask  # type: ignore
 from scipy.ndimage import gaussian_filter  # type: ignore
 
 NOISE_DATA_DIR = os.environ.get(
     "NOISE_DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "pipeline", "noise_data")
 )
+
+# "Clip to salmon region" toggle (see Map.tsx) -- masks the grid to this
+# polygon instead of cropping it, so the output keeps the same fixed
+# 701x417 / NOISE_EXTENT shape every other overlay uses and the frontend
+# doesn't need any extra positioning logic for the clipped case.
+BOUNDS_GDB_PATH = os.path.join(os.path.dirname(__file__), "..", "markdown", "bounds.gdb")
+BOUNDS_LAYER = "iBoF_CriticalHabitat_BoundingBox"
+_bounds_geometry_cache: list | None = None
+
+
+def _bounds_geometries() -> list:
+    """Lazily load + cache the clip polygon (reprojected to EPSG:4326, which
+    every GeoTIFF in NOISE_DATA_DIR uses) as a list of __geo_interface__
+    mappings for rasterio.features.geometry_mask."""
+    global _bounds_geometry_cache
+    if _bounds_geometry_cache is None:
+        gdf = gpd.read_file(BOUNDS_GDB_PATH, layer=BOUNDS_LAYER).to_crs("EPSG:4326")
+        _bounds_geometry_cache = [geom.__geo_interface__ for geom in gdf.geometry]
+    return _bounds_geometry_cache
+
+
+def _clip_to_bounds(grid: np.ndarray, transform) -> np.ndarray:
+    """Return a copy of grid with every cell outside the clip polygon set to
+    NaN. Shape/extent are unchanged (see BOUNDS_GDB_PATH comment above)."""
+    outside = geometry_mask(_bounds_geometries(), out_shape=grid.shape, transform=transform, invert=False)
+    clipped = grid.copy()
+    clipped[outside] = np.nan
+    return clipped
 
 # Static grid extent, shared by every converted GeoTIFF in this dataset.
 NOISE_EXTENT = {"min_lon": -69.5, "max_lon": -59.0, "min_lat": 41.0, "max_lat": 46.0}
@@ -113,11 +143,17 @@ def resolve_depth(variable: str, freq: float, depth: float) -> int:
     return min(available, key=lambda d: abs(d - depth))
 
 
-def _load_grid(date: str, variable: str, freq: float, depth: float) -> tuple[np.ndarray, int]:
+def _load_grid(
+    date: str, variable: str, freq: float, depth: float, clip: bool = False
+) -> tuple[np.ndarray, int]:
     """Return (grid, resolved_depth) — resolved_depth is the actual depth
     used after snapping `depth` to the nearest one available (see
     resolve_depth), which callers should surface to the user rather than
-    silently claiming to have served exactly what was requested."""
+    silently claiming to have served exactly what was requested.
+
+    clip=True masks the grid to BOUNDS_GDB_PATH's polygon (see
+    _clip_to_bounds) — shape/extent stay the same, cells outside the
+    polygon become NaN."""
     if variable not in NOISE_VARIABLES:
         raise ValueError(f"Unknown variable: {variable}")
     resolved_depth = resolve_depth(variable, freq, depth)
@@ -127,11 +163,15 @@ def _load_grid(date: str, variable: str, freq: float, depth: float) -> tuple[np.
     if not os.path.exists(path):
         raise FileNotFoundError(path)
     with rasterio.open(path) as ds:
-        return ds.read(1), resolved_depth
+        grid = ds.read(1)
+        if clip:
+            grid = _clip_to_bounds(grid, ds.transform)
+        return grid, resolved_depth
 
 
 def noise_range(
-    date: str, variable: str = "vessel_noise", freq: float = 50, depth: float = 10
+    date: str, variable: str = "vessel_noise", freq: float = 50, depth: float = 10,
+    clip: bool = False,
 ) -> tuple[float, float, int]:
     """Return (vmin_dB, vmax_dB, resolved_depth_m) — vmin/vmax are the 2nd
     and 98th percentile of the grid; resolved_depth_m is the depth actually
@@ -143,8 +183,12 @@ def noise_range(
     frontend calls on load to pre-fill the dB inputs before the user has
     customized anything. It is NOT what render_noise_overlay uses internally
     when a user-supplied vmin/vmax is passed to that function instead.
+
+    clip=True computes the percentiles over the clipped (BOUNDS_GDB_PATH)
+    region only, so the auto colour scale matches what's actually visible
+    when the "clip to salmon region" toggle is on.
     """
-    grid, resolved_depth = _load_grid(date, variable, freq, depth)
+    grid, resolved_depth = _load_grid(date, variable, freq, depth, clip=clip)
     finite = grid[~np.isnan(grid)]
     if not finite.size:
         return 0.0, 1.0, resolved_depth
@@ -154,7 +198,7 @@ def noise_range(
 
 def render_noise_overlay(
     date: str, variable: str = "vessel_noise", freq: float = 50, depth: float = 10,
-    vmin: float | None = None, vmax: float | None = None,
+    vmin: float | None = None, vmax: float | None = None, clip: bool = False,
 ) -> tuple[bytes, int]:
     """Return (colormapped PNG bytes (RGBA, transparent no-data), resolved_depth_m).
 
@@ -170,8 +214,12 @@ def render_noise_overlay(
     a user-chosen range, or a constant range for cross-day/-month
     comparison); any left as None fall back to that image's own 2nd/98th
     percentile, computed after smoothing.
+
+    clip=True masks everything outside BOUNDS_GDB_PATH's polygon to
+    transparent, keeping the same image extent (see _clip_to_bounds) so no
+    frontend positioning changes are needed for the clipped case.
     """
-    grid, resolved_depth = _load_grid(date, variable, freq, depth)
+    grid, resolved_depth = _load_grid(date, variable, freq, depth, clip=clip)
 
     nodata = np.isnan(grid)
     # fill no-data with mean before smoothing to avoid edge bleed, then restore

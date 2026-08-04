@@ -318,9 +318,10 @@ def get_noise_range(
     # is what was ACTUALLY used, which the frontend must not assume equals
     # this requested value.
     depth: float = Query(10, description="Requested depth in metres; response reflects the nearest available depth actually used"),
+    clip: bool = Query(False, description="Restrict the auto colour-scale percentiles to the clip-region polygon"),
 ):
     try:
-        vmin, vmax, resolved_depth = noise_range(date, variable=variable, freq=freq, depth=depth)
+        vmin, vmax, resolved_depth = noise_range(date, variable=variable, freq=freq, depth=depth, clip=clip)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:
@@ -336,9 +337,10 @@ def get_noise_overlay(
     depth: float = Query(10),
     vmin: float | None = Query(None, description="Override the auto colour-scale minimum (dB)"),
     vmax: float | None = Query(None, description="Override the auto colour-scale maximum (dB)"),
+    clip: bool = Query(False, description="Mask the overlay to the clip-region polygon (see markdown/bounds.gdb)"),
 ):
     try:
-        png, _resolved_depth = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
+        png, _resolved_depth = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax, clip=clip)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:

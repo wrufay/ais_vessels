@@ -232,6 +232,7 @@ function ShipMap() {
   const [noiseVmaxOverride, setNoiseVmaxOverride] = useState<number | "" | null>(null);
   const [noiseAvailable, setNoiseAvailable] = useState<Record<string, { freq: number; depth: number }[]>>({});
   const [noiseDates, setNoiseDates] = useState<string[]>([]);
+  const [noiseClipToSalmonRegion, setNoiseClipToSalmonRegion] = useState(false);
   const [basemap, setBasemap] = useState("esri-ocean");
   const [serverError, setServerError] = useState<string | null>(null);
   const [ccgLastPositionAt, setCcgLastPositionAt] = useState<string | null>(null);
@@ -794,16 +795,19 @@ function ShipMap() {
     let url = `${API}/api/noise/overlay?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
     if (noiseVminOverride !== null && noiseVminOverride !== "") url += `&vmin=${noiseVminOverride}`;
     if (noiseVmaxOverride !== null && noiseVmaxOverride !== "") url += `&vmax=${noiseVmaxOverride}`;
+    if (noiseClipToSalmonRegion) url += `&clip=true`;
     const newSource = new ImageStatic({ url, imageExtent: noiseExtent, projection: "EPSG:3857" });
     newSource.on("imageloadstart", () => setNoiseLoading(true));
     newSource.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
     noiseLayerRef.current.setSource(newSource);
 
-    fetch(`${API}/api/noise/range?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`)
+    let rangeUrl = `${API}/api/noise/range?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
+    if (noiseClipToSalmonRegion) rangeUrl += `&clip=true`;
+    fetch(rangeUrl)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => setNoiseRange(data))
       .catch(() => setNoiseRange(null));
-  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride]);
+  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride, noiseClipToSalmonRegion]);
 
   useEffect(() => {
     noiseLayerRef.current?.setOpacity(noiseOpacity);
@@ -1892,6 +1896,15 @@ function ShipMap() {
                       </div>
                     )}
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={noiseClipToSalmonRegion}
+                      onChange={() => setNoiseClipToSalmonRegion((p) => !p)}
+                      className="accent-[#3d5a80] w-3.5 h-3.5 rounded"
+                    />
+                    <span className="text-[11px] text-slate-400">Clip to salmon region</span>
+                  </label>
                 </div>
               )}
             </div>
