@@ -18,3 +18,4 @@ pipeline/*.log
 pipeline/noise_data/
 archive
 markdown/prompt.md
+/markdown/bounds.gdb
