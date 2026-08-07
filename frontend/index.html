@@ -3,6 +3,16 @@
   <head>
     <title>Scotian Shelf AIS Vessel Tracker</title>
     <link rel="icon" type="image/x-icon" href="./fav.ico" />
+    <script>
+      // Applied before React mounts so there's no flash of the wrong theme.
+      // "theme" in localStorage means the user manually overrode the toggle;
+      // absent means follow the OS preference (see useTheme.ts).
+      (function () {
+        var saved = localStorage.getItem("theme");
+        var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

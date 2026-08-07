@@ -1,6 +1,19 @@
 import type { Dispatch, SetStateAction } from "react";
 import IconBarButton from "./IconBarButton";
 
+const sunIcon = (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+  </svg>
+);
+
+const moonIcon = (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+  </svg>
+);
+
 const tracksIcon = (
   <svg
     className="w-4 h-4"
@@ -89,6 +102,8 @@ function IconBar({
   onClearTraffic,
   onStartTour,
   registerTarget,
+  isDark,
+  toggleTheme,
 }: {
   showVesselPanel: boolean;
   showRegionPanel: boolean;
@@ -108,29 +123,31 @@ function IconBar({
   onClearTraffic: () => void;
   onStartTour: () => void;
   registerTarget: (key: string) => (el: HTMLElement | null) => void;
+  isDark: boolean;
+  toggleTheme: () => void;
 }) {
   return (
     // Outer: full viewport height, centers the bar vertically when it fits.
     // Inner: capped to that same height, scrolls instead of clipping once
     // the bar's content (buttons + legend) is taller than the screen.
     <div className="absolute inset-y-0 left-0 z-20 flex items-center">
-    <div className="max-h-full overflow-y-auto flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 py-4 px-3 text-center items-center">
+    <div className="max-h-full overflow-y-auto flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 dark:bg-slate-900/90 py-4 px-3 text-center items-center">
 
       <button
         onClick={onStartTour}
-        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80"
+        className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80"
       >
         Tour
       </button>
 
       <button
         onClick={() => setMeasuring((m) => !m)}
-        className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80"
+        className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80"
       >
         {measuring ? "Cancel" : "Measure"}
       </button>
 
-      <hr className="w-full border-slate-200 my-0.5" />
+      <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
 
       <div ref={registerTarget("iconTracks")}>
         <IconBarButton
@@ -192,14 +209,14 @@ function IconBar({
         />
       </div>
 
-      <hr className="w-full border-slate-200 my-0.5" />
+      <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
 
       <div ref={registerTarget("iconAnalyseGroup")} className="w-full flex flex-col gap-2">
         <button
           title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
           disabled={!drawnPolygon || regionLoading}
           onClick={onAnalyse}
-          className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           {regionLoading ? "..." : "Analyse"}
         </button>
@@ -207,7 +224,7 @@ function IconBar({
           title="See all vessel traffic in selected region"
           disabled={!drawnPolygon || regionLoading}
           onClick={onAllTraffic}
-          className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           All traffic
         </button>
@@ -215,21 +232,31 @@ function IconBar({
           title="Clear region traffic dots"
           disabled={!viewVesselsMode}
           onClick={onClearTraffic}
-          className="w-full font-inter text-slate-600 text-[9px] px-1 py-0.5 border border-slate-400 rounded-full bg-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           Clear
         </button>
       </div>
 
-      <hr className="w-full border-slate-200 my-0.5" />
+      <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
       {/* legend */}
-      <div className="text-[9px] font-semibold text-slate-400 mb-0.5">Speed (kn)</div>
+      <div className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 mb-0.5">Speed (kn)</div>
       {([["#0a8754", "< 3"], ["#ffc857", "3–10"], ["#ee6c4d", "> 10"]] as const).map(([color, label]) => (
-        <div key={label} className="flex items-center justify-center gap-1.5 text-[9px] text-slate-400 w-full">
+        <div key={label} className="flex items-center justify-center gap-1.5 text-[9px] text-slate-400 dark:text-slate-500 w-full">
           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
           {label}
         </div>
       ))}
+
+      <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
+
+      <button
+        onClick={toggleTheme}
+        title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+        className="text-slate-600 dark:text-slate-300"
+      >
+        {isDark ? sunIcon : moonIcon}
+      </button>
     </div>
     </div>
   );

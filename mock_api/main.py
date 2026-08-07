@@ -281,10 +281,9 @@ def get_noise_range(
     # actually converted (see resolve_depth in analysis/noise.py). The
     # response's "depth" is what was ACTUALLY used — not necessarily this.
     depth: float = Query(10),
-    clip: bool = Query(False),
 ):
     try:
-        vmin, vmax, resolved_depth = noise_range(date, variable=variable, freq=freq, depth=depth, clip=clip)
+        vmin, vmax, resolved_depth = noise_range(date, variable=variable, freq=freq, depth=depth)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:
@@ -300,10 +299,9 @@ def get_noise_overlay(
     depth: float = Query(10),
     vmin: float | None = Query(None),
     vmax: float | None = Query(None),
-    clip: bool = Query(False),
 ):
     try:
-        png, _resolved_depth = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax, clip=clip)
+        png, _resolved_depth = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:

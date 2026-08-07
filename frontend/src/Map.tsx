@@ -56,6 +56,7 @@ import SidePanel, { PANEL_DEFAULT_WIDTH } from "./components/SidePanel";
 import IconBar from "./components/IconBar";
 import CursorCoordinates from "./components/CursorCoordinates";
 import ClosePanelBtn from "./components/ClosePanelBtn";
+import { useTheme } from "./useTheme";
 import Tour from "./tour/Tour";
 import { createTourSteps } from "./tour/steps";
 
@@ -232,8 +233,11 @@ function ShipMap() {
   const [noiseVmaxOverride, setNoiseVmaxOverride] = useState<number | "" | null>(null);
   const [noiseAvailable, setNoiseAvailable] = useState<Record<string, { freq: number; depth: number }[]>>({});
   const [noiseDates, setNoiseDates] = useState<string[]>([]);
-  const [noiseClipToSalmonRegion, setNoiseClipToSalmonRegion] = useState(false);
   const [basemap, setBasemap] = useState("esri-ocean");
+  const { isDark, toggleTheme } = useTheme();
+  useEffect(() => {
+    setBasemap(isDark ? "esri-imagery" : "esri-ocean");
+  }, [isDark]);
   const [serverError, setServerError] = useState<string | null>(null);
   const [ccgLastPositionAt, setCcgLastPositionAt] = useState<string | null>(null);
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
@@ -795,19 +799,16 @@ function ShipMap() {
     let url = `${API}/api/noise/overlay?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
     if (noiseVminOverride !== null && noiseVminOverride !== "") url += `&vmin=${noiseVminOverride}`;
     if (noiseVmaxOverride !== null && noiseVmaxOverride !== "") url += `&vmax=${noiseVmaxOverride}`;
-    if (noiseClipToSalmonRegion) url += `&clip=true`;
     const newSource = new ImageStatic({ url, imageExtent: noiseExtent, projection: "EPSG:3857" });
     newSource.on("imageloadstart", () => setNoiseLoading(true));
     newSource.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
     noiseLayerRef.current.setSource(newSource);
 
-    let rangeUrl = `${API}/api/noise/range?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
-    if (noiseClipToSalmonRegion) rangeUrl += `&clip=true`;
-    fetch(rangeUrl)
+    fetch(`${API}/api/noise/range?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => setNoiseRange(data))
       .catch(() => setNoiseRange(null));
-  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride, noiseClipToSalmonRegion]);
+  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride]);
 
   useEffect(() => {
     noiseLayerRef.current?.setOpacity(noiseOpacity);
@@ -1180,41 +1181,41 @@ function ShipMap() {
       {/* Upload modal */}
       {showUploadModal && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setShowUploadModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-[480px] max-w-[90vw] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
-              <h2 className="text-sm font-semibold text-slate-700">Upload data</h2>
-              <button onClick={() => setShowUploadModal(false)} className="text-slate-400 hover:text-slate-600 transition">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-[480px] max-w-[90vw] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Upload data</h2>
+              <button onClick={() => setShowUploadModal(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <div className="px-6 py-5 flex flex-col gap-4">
-              <div className="border border-slate-200 rounded-lg p-4 flex flex-col gap-2.5">
+              <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 flex flex-col gap-2.5">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4 text-[#3d5a80] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21" />
                   </svg>
-                  <span className="text-xs font-semibold text-slate-600">Region / Shapefile</span>
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Region / Shapefile</span>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed">Upload a zipped Shapefile (.zip) to define a custom region and analyse vessel activity within it.</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">Upload a zipped Shapefile (.zip) to define a custom region and analyse vessel activity within it.</p>
                 <label className="self-start cursor-pointer px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs font-medium hover:bg-[#2e4460] transition">
                   Choose .zip
                   <input type="file" className="hidden" accept=".zip" onChange={handleShapefileUpload} />
                 </label>
               </div>
-              <div className="border border-slate-200 rounded-lg p-4 flex flex-col gap-2.5">
+              <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 flex flex-col gap-2.5">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4 text-[#3d5a80] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="19"/><line x1="8" y1="19" x2="16" y2="19"/>
                   </svg>
-                  <span className="text-xs font-semibold text-slate-600">Mooring data</span>
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Mooring data</span>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed">Upload mooring locations to display on the map. Use the CSV template for the correct format.</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">Upload mooring locations to display on the map. Use the CSV template for the correct format.</p>
                 <div className="flex items-center gap-2">
                   <label className="cursor-pointer px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs font-medium hover:bg-[#2e4460] transition">
                     Choose .csv
                     <input type="file" className="hidden" accept=".csv" onChange={handleMooringUpload} />
                   </label>
-                  <button onClick={downloadMooringTemplate} className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-500 text-xs font-medium hover:border-slate-400 hover:text-slate-700 transition">
+                  <button onClick={downloadMooringTemplate} className="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 text-xs font-medium hover:border-slate-400 dark:hover:border-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition">
                     Download template
                   </button>
                 </div>
@@ -1262,6 +1263,8 @@ function ShipMap() {
         }}
         onStartTour={() => setTourActive(true)}
         registerTarget={registerTarget}
+        isDark={isDark}
+        toggleTheme={toggleTheme}
       />
 
       <Tour
@@ -1286,7 +1289,7 @@ function ShipMap() {
             description="Click a vessel to see its track."
             name="Tracks"
           />
-          <div className="text-[11px] text-slate-400 -mt-2 mb-3">
+          <div className="text-[11px] text-slate-400 dark:text-slate-500 -mt-2 mb-3">
             {ccgLastPositionAt
               ? `Live AIS (CCG) updated ${formatRelativeTime(ccgLastPositionAt)}`
               : "Live AIS (CCG) feed not available"}
@@ -1301,7 +1304,7 @@ function ShipMap() {
           {/* Search for a vessel input bar */}
           <div className="relative mb-4">
             <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-slate-500"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -1312,7 +1315,7 @@ function ShipMap() {
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <input
-              className="w-full bg-slate-50 border border-transparent rounded-sm pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-transparent rounded-sm pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 dark:text-slate-500 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
               placeholder="Search name, MMSI, or type…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -1323,9 +1326,9 @@ function ShipMap() {
         <div ref={registerTarget("vesselList")} className="flex flex-col shrink-0">
         <div className="px-3 shrink-0">
           <button onClick={() => setVesselListOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-            <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${vesselListOpen ? "rotate-90" : ""}`}>▶</span>
-            <span className="text-xs text-slate-600 flex-1">Vessels</span>
-            <span className="text-[11px] text-slate-400 tabular-nums">
+            <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${vesselListOpen ? "rotate-90" : ""}`}>▶</span>
+            <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Vessels</span>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
               {filtered.length !== vessels.length
                 ? `${filtered.length} / ${vessels.length}`
                 : `${vessels.length}`}
@@ -1334,7 +1337,7 @@ function ShipMap() {
         </div>
         {vesselListOpen && (
           <>
-            <div className="flex items-center justify-between px-5 py-2 text-xs font-medium text-slate-400 shrink-0">
+            <div className="flex items-center justify-between px-5 py-2 text-xs font-medium text-slate-400 dark:text-slate-500 shrink-0">
               <button
                 onClick={() => {
                   setDraftFilters({ ...filters, type: new Set(filters.type) });
@@ -1345,7 +1348,7 @@ function ShipMap() {
                   filters.source !== "all" ||
                   filters.dfo !== "all"
                     ? "text-[#3d5a80]"
-                    : "text-slate-400 hover:text-slate-600"
+                    : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                 }`}
               >
                 {(() => {
@@ -1363,7 +1366,7 @@ function ShipMap() {
               data={filtered}
               components={{
                 EmptyPlaceholder: () => (
-                  <p className="text-sm text-slate-400 p-6 text-center">
+                  <p className="text-sm text-slate-400 dark:text-slate-500 p-6 text-center">
                     {vessels.length === 0 ? "Loading vessels…" : "No vessels match your search."}
                   </p>
                 ),
@@ -1388,20 +1391,20 @@ function ShipMap() {
                   }
                 }}
                 className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition ${
-                  active ? "bg-slate-100" : "hover:bg-slate-50"
+                  active ? "bg-slate-100 dark:bg-slate-800" : "hover:bg-slate-50 dark:hover:bg-slate-800"
                 }`}
               >
-                <div className={`font-inter text-xs truncate ${active ? "text-[#293241]" : "text-slate-600"}`}>
+                <div className={`font-inter text-xs truncate ${active ? "text-[#293241]" : "text-slate-600 dark:text-slate-300"}`}>
                   {v.vessel_name || "Unknown vessel"}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-[11px] text-slate-500 capitalize font-geologica">
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-500 dark:text-slate-400 capitalize font-geologica">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
                     {type}
                   </span>
-                  <span className="text-[11px] text-slate-400 tabular-nums">{v.mmsi}</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">{v.mmsi}</span>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+                <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 tabular-nums">
                   {active && pointCount !== null && pointTotal !== null && pointTotal > pointCount
                     ? `showing ${pointCount.toLocaleString()} / ${pointTotal.toLocaleString()} pts`
                     : `${v.point_count.toLocaleString()} pts in range`}
@@ -1417,13 +1420,13 @@ function ShipMap() {
           </>
         )}
         </div>
-        <div className="border-t border-slate-100 mx-2 mt-2" />
+        <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
         <div ref={registerTarget("vesselSize")} className="px-3 py-3 flex flex-col gap-1">
           {/* Vessel tracks sizing */}
           <div className="flex flex-col">
             <button onClick={() => setVesselOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-              <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${vesselOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="text-xs text-slate-600 flex-1">Change size</span>
+              <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${vesselOpen ? "rotate-90" : ""}`}>▶</span>
+              <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Change size</span>
               <div className="flex items-center gap-1">
                 {(["#0a8754", "#ffc857", "#ee6c4d"] as const).map((color) => (
                   <div key={color} className="rounded-full" style={{ width: vesselSize * 2, height: vesselSize * 2, background: color, opacity: vesselOpacity }} />
@@ -1433,19 +1436,19 @@ function ShipMap() {
             {vesselOpen && (
               <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Size</span>
                   <input type="range" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Number(e.target.value))} className="panel-slider w-24" />
                   <div className="flex items-center shrink-0">
-                    <input type="number" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                    <span className="text-[11px] text-slate-400">px</span>
+                    <input type="number" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">px</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Opacity</span>
                   <input type="range" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
                   <div className="flex items-center shrink-0">
-                    <input type="number" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                    <span className="text-[11px] text-slate-400">%</span>
+                    <input type="number" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
                   </div>
                 </div>
               </div>
@@ -1466,20 +1469,20 @@ function ShipMap() {
             <div className="flex items-center justify-between">
               <button
                 onClick={drawing ? cancelDrawing : startDrawing}
-                className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full"
+                className="font-inter text-slate-600 dark:text-slate-300 text-xs px-2 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full"
               >
                 {drawing ? "Cancel" : "Draw"}
               </button>
-              <label className="font-stack-headline text-xs text-slate-600">
+              <label className="font-stack-headline text-xs text-slate-600 dark:text-slate-300">
                 {drawing ? "Double-click to finish" : "Click map to add points"}
               </label>
             </div>
             <div className="flex items-center justify-between">
-              <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
+              <label className="font-inter text-slate-600 dark:text-slate-300 text-xs px-2 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full cursor-pointer">
                 Upload
                 <input type="file" accept=".zip" className="hidden" onChange={handleShapefileUpload} />
               </label>
-              <label className="font-stack-headline text-xs text-slate-600">
+              <label className="font-stack-headline text-xs text-slate-600 dark:text-slate-300">
                Shapefile (.zip)
               </label>
             </div>
@@ -1493,7 +1496,7 @@ function ShipMap() {
                     className={`px-2.5 py-1 rounded-full text-xs font-medium font-geologica transition ${
                       regionDisplayMode === mode
                         ? "bg-[#3d5a80] text-white"
-                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
                     }`}
                   >
                     {mode === "grey" ? "Uniform" : mode === "type" ? "Type" : mode === "speed" ? "Speed" : "Vessel"}
@@ -1508,7 +1511,7 @@ function ShipMap() {
 
         <div ref={regionListElRef} style={{ height: regionListHeight ?? undefined }} className="overflow-y-auto min-h-0 px-2 pb-4">
           {/* CHA section */}
-          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
             Critical Habitat Areas
           </div>
           {CHA_REGIONS.map((r) => (
@@ -1524,7 +1527,7 @@ function ShipMap() {
           ))}
 
           {/* WEA section */}
-          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
+          <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
             Wind Energy Areas
           </div>
           {WEA_REGIONS.map((r) => (
@@ -1542,7 +1545,7 @@ function ShipMap() {
           {/* Uploaded regions */}
           {uploadedRegions.length > 0 && (
             <>
-              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
+              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Uploaded
               </div>
               {uploadedRegions.map((r) => (
@@ -1562,7 +1565,7 @@ function ShipMap() {
           {/* Your regions (drawn) — at bottom */}
           {userSelectedRegions.length > 0 && (
             <>
-              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
+              <div className="px-3 pt-4 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Your regions
               </div>
               {userSelectedRegions.map((r) => (
@@ -1598,30 +1601,30 @@ function ShipMap() {
           onMouseDown={onRegionListResizeMouseDown}
           className="h-1.5 mx-2 -my-0.5 rounded-full cursor-row-resize hover:bg-[#98c1d9]/40 active:bg-[#98c1d9]/60"
         />
-        <div className="border-t border-slate-100 mx-2 mt-2" />
+        <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
         <div className="px-3 py-3 flex flex-col gap-1">
           <div className="flex flex-col">
             <button onClick={() => setRegionDotOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-              <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${regionDotOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="text-xs text-slate-600 flex-1">Change size</span>
+              <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${regionDotOpen ? "rotate-90" : ""}`}>▶</span>
+              <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Change size</span>
               <div className="rounded-full bg-[#5a5a5a] shrink-0" style={{ width: regionDotSize * 2, height: regionDotSize * 2, opacity: regionDotOpacity }} />
             </button>
             {regionDotOpen && (
               <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Size</span>
                   <input type="range" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Number(e.target.value))} className="panel-slider w-24" />
                   <div className="flex items-center shrink-0">
-                    <input type="number" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                    <span className="text-[11px] text-slate-400">px</span>
+                    <input type="number" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">px</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Opacity</span>
                   <input type="range" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
                   <div className="flex items-center shrink-0">
-                    <input type="number" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                    <span className="text-[11px] text-slate-400">%</span>
+                    <input type="number" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
                   </div>
                 </div>
               </div>
@@ -1642,22 +1645,22 @@ function ShipMap() {
             />
             <DateRangePicker start={start} end={end} onStartChange={setStart} onEndChange={setEnd} />
             <div ref={registerTarget("mooringUpload")} className="mt-3 flex flex-row justify-between items-center">
-              <label className="font-inter text-slate-600 text-xs px-2 py-0.5 border border-slate-400 rounded-full cursor-pointer">
+              <label className="font-inter text-slate-600 dark:text-slate-300 text-xs px-2 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full cursor-pointer">
                 Upload
                 <input type="file" accept=".csv" className="hidden" onChange={handleMooringUpload} />
               </label>
-              <span onClick={downloadMooringTemplate} className="font-stack-headline text-xs text-slate-600 border-b border-slate-400 cursor-pointer">
+              <span onClick={downloadMooringTemplate} className="font-stack-headline text-xs text-slate-600 dark:text-slate-300 border-b border-slate-400 dark:border-slate-600 cursor-pointer">
                 CSV template
               </span>
             </div>
           </div>
           <div ref={mooringListElRef} style={{ height: mooringListHeight ?? undefined }} className="overflow-y-auto min-h-0 px-2 pb-4 mt-4">
-            <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">AMAR</div>
+            <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">AMAR</div>
             {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
-              <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 px-3 py-1">None active in this period.</p>
             )}
             {AMAR_MOORINGS.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-              <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
+              <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                 onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }}
                 onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }}
                 onClick={() => {
@@ -1667,19 +1670,19 @@ function ShipMap() {
                 }}>
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                  <span className="text-sm font-medium text-slate-600">{m.name}</span>
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{m.name}</span>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+                <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
               </div>
             ))}
             {uploadedMoorings.length > 0 && (
               <>
-                <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">Uploaded</div>
+                <div className="px-3 pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">Uploaded</div>
                 {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).length === 0 && (
-                  <p className="text-xs text-slate-400 px-3 py-1">None active in this period.</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 px-3 py-1">None active in this period.</p>
                 )}
                 {uploadedMoorings.filter((m) => m.deployment <= end && m.recovery >= start).map((m) => (
-                  <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 cursor-pointer"
+                  <div key={m.name} className="px-3 py-2.5 rounded-sm hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                     onMouseEnter={() => { highlightedMooringRef.current = m.name; mooringSourceRef.current.changed(); }}
                     onMouseLeave={() => { highlightedMooringRef.current = null; mooringSourceRef.current.changed(); }}
                     onClick={() => {
@@ -1689,9 +1692,9 @@ function ShipMap() {
                     }}>
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#293241] inline-block shrink-0" />
-                      <span className="text-sm font-medium text-slate-600">{m.name}</span>
+                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{m.name}</span>
                     </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
+                    <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{m.depth}m · {m.deployment} → {m.recovery}</div>
                   </div>
                 ))}
               </>
@@ -1701,30 +1704,30 @@ function ShipMap() {
             onMouseDown={onMooringListResizeMouseDown}
             className="h-1.5 mx-2 -my-0.5 rounded-full cursor-row-resize hover:bg-[#98c1d9]/40 active:bg-[#98c1d9]/60"
           />
-          <div className="border-t border-slate-100 mx-2 mt-2" />
+          <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
           <div className="px-3 py-3 flex flex-col gap-1 shrink-0">
             <div className="flex flex-col">
               <button onClick={() => setMooringOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-                <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${mooringOpen ? "rotate-90" : ""}`}>▶</span>
-                <span className="text-xs text-slate-600 flex-1">Change size</span>
+                <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${mooringOpen ? "rotate-90" : ""}`}>▶</span>
+                <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Change size</span>
                 <img src={makeMooringCanvas(false, mooringSize).toDataURL()} style={{ opacity: mooringOpacity, width: mooringSize * 2, height: mooringSize * 2 }} />
               </button>
               {mooringOpen && (
                 <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Size</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Size</span>
                     <input type="range" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Number(e.target.value))} className="panel-slider w-24" />
                     <div className="flex items-center shrink-0">
-                      <input type="number" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Math.min(20, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400">px</span>
+                      <input type="number" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Math.min(20, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500">px</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-14 shrink-0">Opacity</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Opacity</span>
                     <input type="range" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
                     <div className="flex items-center shrink-0">
-                      <input type="number" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 text-right bg-transparent border-b border-slate-200 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400">%</span>
+                      <input type="number" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
                     </div>
                   </div>
                 </div>
@@ -1745,10 +1748,10 @@ function ShipMap() {
             />
           </div>
           <div ref={registerTarget("mapLayers")} className="shrink-0 px-2 pb-4">
-            <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 uppercase tracking-wider">
+            <div className="px-3 pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Ocean
             </div>
-            <div className="px-3 py-2.5 rounded-sm hover:bg-slate-50">
+            <div className="px-3 py-2.5 rounded-sm hover:bg-slate-50 dark:hover:bg-slate-800">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -1758,15 +1761,15 @@ function ShipMap() {
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-600">Bathymetry</span>
-                    {bathyLoading && <span className="inline-block w-3 h-3 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />}
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Bathymetry</span>
+                    {bathyLoading && <span className="inline-block w-3 h-3 border-2 border-slate-300 dark:border-slate-600 border-t-slate-500 rounded-full animate-spin" />}
                   </div>
-                  <div className="text-[11px] text-slate-400">NRCan / DFO — Scotian Shelf &amp; NL Shelves</div>
+                  <div className="text-[11px] text-slate-400 dark:text-slate-500">NRCan / DFO — Scotian Shelf &amp; NL Shelves</div>
                 </div>
               </label>
               {showBathymetry && (
                 <div className="mt-2 ml-7 flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 w-12 shrink-0">Opacity</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Opacity</span>
                   <input
                     type="range" min={0} max={100} value={Math.round(bathyOpacity * 100)}
                     onChange={(e) => setBathyOpacity(Number(e.target.value) / 100)}
@@ -1775,13 +1778,13 @@ function ShipMap() {
                   <input
                     type="number" min={0} max={100} value={Math.round(bathyOpacity * 100)}
                     onChange={(e) => setBathyOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)}
-                    className="w-8 text-[11px] text-slate-400 text-right bg-transparent border-none outline-none"
+                    className="w-8 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-none outline-none"
                   />
-                  <span className="text-[11px] text-slate-400">%</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
                 </div>
               )}
             </div>
-            <div className="px-3 py-2.5 rounded-sm hover:bg-slate-50">
+            <div className="px-3 py-2.5 rounded-sm hover:bg-slate-50 dark:hover:bg-slate-800">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -1791,16 +1794,16 @@ function ShipMap() {
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-600">Noise model</span>
-                    {noiseLoading && <span className="inline-block w-3 h-3 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />}
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Noise model</span>
+                    {noiseLoading && <span className="inline-block w-3 h-3 border-2 border-slate-300 dark:border-slate-600 border-t-slate-500 rounded-full animate-spin" />}
                   </div>
-                  <div className="text-[11px] text-slate-400">Modelled underwater sound pressure level</div>
+                  <div className="text-[11px] text-slate-400 dark:text-slate-500">Modelled underwater sound pressure level</div>
                 </div>
               </label>
               {showNoise && (
                 <div className="mt-2 ml-7 flex flex-col gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-12 shrink-0">Opacity</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Opacity</span>
                     <input
                       type="range" min={0} max={100} value={Math.round(noiseOpacity * 100)}
                       onChange={(e) => setNoiseOpacity(Number(e.target.value) / 100)}
@@ -1809,23 +1812,23 @@ function ShipMap() {
                     <input
                       type="number" min={0} max={100} value={Math.round(noiseOpacity * 100)}
                       onChange={(e) => setNoiseOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)}
-                      className="w-8 text-[11px] text-slate-400 text-right bg-transparent border-none outline-none"
+                      className="w-8 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-none outline-none"
                     />
-                    <span className="text-[11px] text-slate-400">%</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-12 shrink-0">Variable</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Variable</span>
                     <select value={noiseVariable} onChange={(e) => setNoiseVariable(e.target.value)}
-                      className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
+                      className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
                       <option value="vessel_noise">Vessel noise</option>
                       <option value="combined_noise">Combined noise</option>
                       <option value="wind_noise">Wind noise</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 w-12 shrink-0">Date</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Date</span>
                     <select value={noiseDate} onChange={(e) => setNoiseDate(e.target.value)}
-                      className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
+                      className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
                       {(noiseDates.length > 0 ? noiseDates : [noiseDate]).map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
@@ -1836,18 +1839,18 @@ function ShipMap() {
                     return <>
                       {freqs.length > 1 && (
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-slate-400 w-12 shrink-0">Freq</span>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Freq</span>
                           <select value={noiseFreq} onChange={(e) => setNoiseFreq(Number(e.target.value))}
-                            className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
+                            className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
                             {freqs.map(f => <option key={f} value={f}>{f} Hz</option>)}
                           </select>
                         </div>
                       )}
                       {noiseVariable !== "wind_noise" && (
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-slate-400 w-12 shrink-0">Depth</span>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Depth</span>
                           <select value={noiseDepth} onChange={(e) => setNoiseDepth(Number(e.target.value))}
-                            className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 flex-1">
+                            className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
                             {depths.map(d => <option key={d} value={d}>{d} m</option>)}
                           </select>
                         </div>
@@ -1858,7 +1861,7 @@ function ShipMap() {
                     <div
                       className="noise-gradient-bar h-2.5 rounded-full w-full"
                     />
-                    <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400 dark:text-slate-500">
                       <input
                         type="number"
                         step={1}
@@ -1869,7 +1872,7 @@ function ShipMap() {
                           const n = Number(raw.replace(/^0+(?=\d)/, ""));
                           if (!Number.isNaN(n)) setNoiseVminOverride(n);
                         }}
-                        className="spin-arrows w-16 text-slate-600 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 tabular-nums"
+                        className="spin-arrows w-16 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 tabular-nums"
                       />
                       <span>dB</span>
                       <input
@@ -1882,7 +1885,7 @@ function ShipMap() {
                           const n = Number(raw.replace(/^0+(?=\d)/, ""));
                           if (!Number.isNaN(n)) setNoiseVmaxOverride(n);
                         }}
-                        className="spin-arrows w-16 text-slate-600 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 tabular-nums text-right"
+                        className="spin-arrows w-16 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 tabular-nums text-right"
                       />
                     </div>
                     {(noiseVminOverride !== null || noiseVmaxOverride !== null) && (
@@ -1896,25 +1899,16 @@ function ShipMap() {
                       </div>
                     )}
                   </div>
-                  <label className="flex items-center gap-2 cursor-pointer mt-1">
-                    <input
-                      type="checkbox"
-                      checked={noiseClipToSalmonRegion}
-                      onChange={() => setNoiseClipToSalmonRegion((p) => !p)}
-                      className="accent-[#3d5a80] w-3.5 h-3.5 rounded"
-                    />
-                    <span className="text-[11px] text-slate-400">Clip to salmon region</span>
-                  </label>
                 </div>
               )}
             </div>
           </div>
-          <div className="border-t border-slate-100 mx-2 mt-2" />
+          <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
           <div ref={registerTarget("mapBasemap")} className="px-3 py-3 shrink-0">
             <button onClick={() => setBasemapOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-              <span className={`text-[9px] text-slate-400 transition-transform duration-150 ${basemapOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="text-xs text-slate-600 flex-1">Base map</span>
-              <span className="text-[11px] text-slate-400">
+              <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${basemapOpen ? "rotate-90" : ""}`}>▶</span>
+              <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Base map</span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
                 {BASEMAPS.find((b) => b.id === basemap)?.label}
               </span>
             </button>
@@ -1930,7 +1924,7 @@ function ShipMap() {
                       onChange={() => setBasemap(b.id)}
                       className="accent-[#3d5a80]"
                     />
-                    <span className="text-sm text-slate-700">{b.label}</span>
+                    <span className="text-sm text-slate-700 dark:text-slate-200">{b.label}</span>
                   </label>
                 ))}
               </div>
@@ -1946,11 +1940,11 @@ function ShipMap() {
           onClick={() => setShowTypeFilter(false)}
         >
           <div
-            className="bg-white rounded-lg shadow-sm w-full max-w-sm animate-scale-in"
+            className="bg-white dark:bg-slate-900 rounded-lg shadow-sm w-full max-w-sm animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
-              <h2 className="text-base font-semibold text-slate-800">
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
                 Filter vessels
               </h2>
               <ClosePanelBtn
@@ -1961,7 +1955,7 @@ function ShipMap() {
             <div className="px-6 py-5 flex flex-col gap-5">
               {/* Vessel type — pills */}
               <div className="flex flex-col gap-2">
-                <span className="text-sm text-slate-600">Vessel type</span>
+                <span className="text-sm text-slate-600 dark:text-slate-300">Vessel type</span>
                 <div className="flex flex-wrap gap-1.5">
                   {(
                     [
@@ -1989,7 +1983,7 @@ function ShipMap() {
                         className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium font-geologica border transition ${
                           on
                             ? "border-transparent text-white"
-                            : "border-slate-200 text-slate-600 hover:border-slate-300"
+                            : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600"
                         }`}
                         style={on ? { backgroundColor: color } : {}}
                       >
@@ -2034,7 +2028,7 @@ function ShipMap() {
                   key={key}
                   className="flex items-center justify-between gap-4"
                 >
-                  <span className="text-sm text-slate-600 shrink-0">
+                  <span className="text-sm text-slate-600 dark:text-slate-300 shrink-0">
                     {label}
                   </span>
                   <select
@@ -2045,7 +2039,7 @@ function ShipMap() {
                         [key]: e.target.value,
                       }))
                     }
-                    className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition cursor-pointer"
+                    className="text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition cursor-pointer"
                   >
                     {options.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -2066,7 +2060,7 @@ function ShipMap() {
                     dfo: "all",
                   })
                 }
-                className="text-sm text-slate-400 hover:text-slate-600 transition"
+                className="text-sm text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition"
               >
                 Reset
               </button>
@@ -2094,27 +2088,27 @@ function ShipMap() {
         >
           {/* actual white area */}
           <div
-            className={`bg-white rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col ${
+            className={`bg-white dark:bg-slate-900 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col ${
               closingResults ? "animate-scale-out" : "animate-scale-in"
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between px-7 pt-6 pb-5 border-b border-slate-100 shrink-0">
+            <div className="flex items-start justify-between px-7 pt-6 pb-5 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <div>
-                <h2 className="text-xl font-inter font-semibold text-slate-800">
+                <h2 className="text-xl font-inter font-semibold text-slate-800 dark:text-slate-100">
                   {regionName ?? "Region Analysis"}
                 </h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  <span className="font-medium text-slate-600">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  <span className="font-medium text-slate-600 dark:text-slate-300">
                     Selected: {regionStats.unique_vessels}
                   </span>{" "}
                   vessels ·{" "}
-                  <span className="font-medium text-slate-600">
+                  <span className="font-medium text-slate-600 dark:text-slate-300">
                     {regionStats.total_positions.toLocaleString()}
                   </span>{" "}
                   positions · {start} to {end}
                   {regionTime !== null && (
-                    <span className="text-slate-400">
+                    <span className="text-slate-400 dark:text-slate-500">
                       {" "}
                       · {(regionTime / 1000).toFixed(1)}s
                     </span>
@@ -2125,7 +2119,7 @@ function ShipMap() {
             </div>
             <div className="overflow-y-auto px-7 py-6 space-y-7">
               {regionStats.total_positions === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-10">
+                <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-10">
                   No vessel activity found in this region for the selected
                   dates.
                 </p>
@@ -2134,7 +2128,7 @@ function ShipMap() {
                   {regionStats.plots?.vessel_types && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-600 font-stack-headline">
+                        <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 font-stack-headline">
                           Breakdown of vessel types by day.
                         </span>
                         <button
@@ -2158,7 +2152,7 @@ function ShipMap() {
                   {regionStats.plots?.speed_overall && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-600 font-stack-headline">
+                        <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 font-stack-headline">
                           Mean speed of all vessels, daily.
                         </span>
                         <button
@@ -2182,7 +2176,7 @@ function ShipMap() {
                   {regionStats.plots?.vessel_density && (
                     <figure>
                       <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-600 font-stack-headline">
+                        <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 font-stack-headline">
                           Regional traffic displayed in a heat map.
                         </span>
                         <button
@@ -2204,7 +2198,7 @@ function ShipMap() {
                     </figure>
                   )}
                   {regionStats.plots?.vessel_density_error && (
-                    <p className="text-xs text-slate-400 italic px-1">
+                    <p className="text-xs text-slate-400 dark:text-slate-500 italic px-1">
                       {regionStats.plots.vessel_density_error}
                     </p>
                   )}
@@ -2218,33 +2212,33 @@ function ShipMap() {
       {/* Mooring popup */}
       {mooringPopup && (
         <div
-          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-sm px-4 py-3 text-xs pointer-events-none animate-scale-in"
+          className="absolute z-30 bg-white dark:bg-slate-900 ring-1 ring-slate-900/5 rounded-sm shadow-sm px-4 py-3 text-xs pointer-events-none animate-scale-in"
           style={{ left: mooringPopup.x + 12, top: mooringPopup.y - 8 }}
         >
           <div className="font-semibold text-[#3d5a80] mb-1.5">
             {mooringPopup.mooring.name}
           </div>
-          <div className="text-slate-600 space-y-1 tabular-nums">
+          <div className="text-slate-600 dark:text-slate-300 space-y-1 tabular-nums">
             <div>
-              <span className="text-slate-400 inline-block w-20">Latitude</span>
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">Latitude</span>
               {mooringPopup.mooring.lat.toFixed(4)}°N
             </div>
             <div>
-              <span className="text-slate-400 inline-block w-20">
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">
                 Longitude
               </span>
               {mooringPopup.mooring.lon.toFixed(4)}°
             </div>
             <div>
-              <span className="text-slate-400 inline-block w-20">Depth</span>
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">Depth</span>
               {mooringPopup.mooring.depth}m
             </div>
             <div>
-              <span className="text-slate-400 inline-block w-20">Deployed</span>
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">Deployed</span>
               {mooringPopup.mooring.deployment}
             </div>
             <div>
-              <span className="text-slate-400 inline-block w-20">
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">
                 Recovered
               </span>
               {mooringPopup.mooring.recovery}
@@ -2256,33 +2250,33 @@ function ShipMap() {
       {/* Point popup */}
       {popup && (
         <div
-          className="absolute z-30 bg-white ring-1 ring-slate-900/5 rounded-sm shadow-sm px-4 py-3 text-xs pointer-events-none animate-scale-in"
+          className="absolute z-30 bg-white dark:bg-slate-900 ring-1 ring-slate-900/5 rounded-sm shadow-sm px-4 py-3 text-xs pointer-events-none animate-scale-in"
           style={{ left: popup.x + 12, top: popup.y - 8 }}
         >
           <div className="font-semibold text-[#3d5a80] mb-1.5">
             {popup.isStart ? "Start" : popup.isEnd ? "End" : popup.source}
           </div>
-          <div className="text-slate-600 space-y-1 tabular-nums">
+          <div className="text-slate-600 dark:text-slate-300 space-y-1 tabular-nums">
             <div>
-              <span className="text-slate-400 inline-block w-16">Time</span>
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">Time</span>
               {formatTime(popup.time)}
             </div>
             <div>
-              <span className="text-slate-400 inline-block w-16">Latitude</span>
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">Latitude</span>
               {popup.lat?.toFixed(5)}°N
             </div>
             <div>
-              <span className="text-slate-400 inline-block w-16">
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">
                 Longitude
               </span>
               {popup.lon?.toFixed(5)}°
             </div>
             <div>
-              <span className="text-slate-400 inline-block w-16">Speed</span>
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">Speed</span>
               {popup.sog != null ? `${popup.sog} kt` : "—"}
             </div>
             <div>
-              <span className="text-slate-400 inline-block w-16">Course</span>
+              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">Course</span>
               {popup.cog != null ? `${popup.cog}°` : "—"}
             </div>
           </div>

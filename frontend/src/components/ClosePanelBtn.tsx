@@ -8,7 +8,7 @@ function ClosePanelBtn({
   return (
     <button
       onClick={(e) => onClick(e)}
-      className="text-slate-600 opacity-80 hover:opacity-100 hover:scale-105 active:scale-95 transition"
+      className="text-slate-600 dark:text-slate-300 opacity-80 hover:opacity-100 hover:scale-105 active:scale-95 transition"
     >
       {displayType === "cross" ? (
         <svg
