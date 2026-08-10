@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import IconBarButton from "./IconBarButton";
+import { SPEED_STYLE } from "../utils/mapStyles";
 
 const sunIcon = (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -126,6 +127,12 @@ function IconBar({
   isDark: boolean;
   toggleTheme: () => void;
 }) {
+  // Only one panel is open at a time -- toggling one closes the other 3.
+  const panelSetters = [setShowVesselPanel, setShowRegionPanel, setShowMooringPanel, setShowLayerPanel];
+  function togglePanel(setShow: Dispatch<SetStateAction<boolean>>) {
+    panelSetters.forEach((setter) => (setter === setShow ? setter((p) => !p) : setter(false)));
+  }
+
   return (
     // Outer: full viewport height, centers the bar vertically when it fits.
     // Inner: capped to that same height, scrolls instead of clipping once
@@ -155,12 +162,7 @@ function IconBar({
           title="View individual vessels displayed on the map."
           icon={tracksIcon}
           active={showVesselPanel}
-          onClick={() => {
-            setShowVesselPanel((p) => !p);
-            setShowRegionPanel(false);
-            setShowMooringPanel(false);
-            setShowLayerPanel(false);
-          }}
+          onClick={() => togglePanel(setShowVesselPanel)}
         />
       </div>
 
@@ -170,12 +172,7 @@ function IconBar({
           title="View and manage mooring locations on the map."
           icon={mooringIcon}
           active={showMooringPanel}
-          onClick={() => {
-            setShowMooringPanel((p) => !p);
-            setShowVesselPanel(false);
-            setShowRegionPanel(false);
-            setShowLayerPanel(false);
-          }}
+          onClick={() => togglePanel(setShowMooringPanel)}
         />
       </div>
 
@@ -185,12 +182,7 @@ function IconBar({
           title="Analyze pre-defined and custom-select regions."
           icon={regionsIcon}
           active={showRegionPanel}
-          onClick={() => {
-            setShowRegionPanel((p) => !p);
-            setShowVesselPanel(false);
-            setShowMooringPanel(false);
-            setShowLayerPanel(false);
-          }}
+          onClick={() => togglePanel(setShowRegionPanel)}
         />
       </div>
 
@@ -200,12 +192,7 @@ function IconBar({
           title="Switch base map and toggle data overlays."
           icon={layersIcon}
           active={showLayerPanel}
-          onClick={() => {
-            setShowLayerPanel((p) => !p);
-            setShowVesselPanel(false);
-            setShowRegionPanel(false);
-            setShowMooringPanel(false);
-          }}
+          onClick={() => togglePanel(setShowLayerPanel)}
         />
       </div>
 
@@ -241,7 +228,11 @@ function IconBar({
       <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
       {/* legend */}
       <div className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 mb-0.5">Speed (kn)</div>
-      {([["#0a8754", "< 3"], ["#ffc857", "3–10"], ["#ee6c4d", "> 10"]] as const).map(([color, label]) => (
+      {([
+        [SPEED_STYLE.fill.slow, `< ${SPEED_STYLE.thresholds.mid}`],
+        [SPEED_STYLE.fill.mid, `${SPEED_STYLE.thresholds.mid}–${SPEED_STYLE.thresholds.fast}`],
+        [SPEED_STYLE.fill.fast, `> ${SPEED_STYLE.thresholds.fast}`],
+      ] as const).map(([color, label]) => (
         <div key={label} className="flex items-center justify-center gap-1.5 text-[9px] text-slate-400 dark:text-slate-500 w-full">
           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
           {label}

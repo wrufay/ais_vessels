@@ -1,82 +1,47 @@
 """
-noise_to_geotiff.py
-====================
+This script converts daily ocean noise modelling NetCDFs into local,
+single-band GeoTIFFs that the FastAPI backend serves as map overlay images.
 
-This script converts daily ocean noise modelling NetCDFs located at /mnt/shared_remote/
-into local, single-band GeoTIFFs that the FastAPI backend can serve as map overlay images.
+Input:
+Daily NetCDFs at /mnt/shared_remote/<YYYYMM>/<YYYYMMDD>.nc (sshfs-mounted).
+Each file covers one calendar day with these dimensions and variables:
 
-Source data layout
-------------------
-  /mnt/shared_remote/
-    202002/
-      20200201.nc  
-      20200202.nc
-      ...
-    202003/
-      ...
+    Dimensions:
+      x  = 701   (longitude axis, -69.5° → -59.0°, spacing 0.015°)
+      y  = 417   (latitude  axis,  41.0° →  46.0°, spacing ~0.012°)
+      f  = 5     (frequency bands: 50, 100, 200, 500, 1000 Hz)
+      d  = 19    (depth levels: 10, 20, 30, ..., 150, 175, 200, 300, 500 m)
+      t  = 144   (time steps: 10-minute intervals throughout the day)
 
-Each .nc file covers one calendar day and has these dimensions and variables:
+    Variables:
+      longitude(x)               – 1-D array of cell-centre longitudes
+      latitude(y)                – 1-D array of cell-centre latitudes
+      frequency(f)                – 1-D array of frequency values in Hz
+      depth(d)                    – 1-D array of depth values in metres
+      time(t)                     – 1-D array (days since epoch, not used here)
+      vessel_noise(x,y,f,d,t)     – modelled vessel noise in dB re 1 µPa
+      combined_noise(x,y,f,d,t)   – vessel + wind noise combined
+      wind_noise(x,y,f,t)         – wind-driven ambient noise (no depth dim)
 
-  Dimensions:
-    x  = 701   (longitude axis, -69.5° → -59.0°, spacing 0.015°)
-    y  = 417   (latitude  axis,  41.0° →  46.0°, spacing ~0.012°)
-    f  = 5     (frequency bands: 50, 100, 200, 500, 1000 Hz)
-    d  = 19    (depth levels: 10, 20, 30, ..., 150, 175, 200, 300, 500 m)
-    t  = 144   (time steps: 10-minute intervals throughout the day)
+Output:
+<dst>/<variable>_f<freq>_d<depth>/YYYY-MM-DD.tif (or YYYY-MM.tif with
+--monthly) — one (variable, frequency, depth) combination per run, averaged
+across the day's/month's time steps into a single float32 GeoTIFF in
+EPSG:4326, NaN for land/no-data cells. Resumable — skips any day/month whose
+output file already exists, so it's safe to run in batches or after
+interruption.
 
-  Variables:
-    longitude(x)            – 1-D array of cell-centre longitudes
-    latitude(y)             – 1-D array of cell-centre latitudes
-    frequency(f)            – 1-D array of frequency values in Hz
-    depth(d)                – 1-D array of depth values in metres
-    time(t)                 – 1-D array (days since epoch, not used here)
-    vessel_noise(x,y,f,d,t) – modelled vessel noise in dB re 1 µPa
-    combined_noise(x,y,f,d,t) – vessel + wind noise combined
-    wind_noise(x,y,f,t)    – wind-driven ambient noise (no depth dim)
+Performance note: each source file requires reading ~337 MB of
+double-precision data over the sshfs mount (~17 s/file on this machine) —
+converting one combo across ~450 days takes roughly 2 hours. Run it in a
+screen/tmux session or as a background job.
 
-
-What this script produces
---------------------------
-For each day, one (variable, frequency, depth) combination is extracted,
-averaged across the 144 time steps into a single daily-mean 2-D grid, and
-written as a float32 GeoTIFF in EPSG:4326 with NaN for land/no-data cells.
-
-Output: <dst>/<variable>_f<freq>_d<depth>/YYYY-MM-DD.tif
-
-
-The script is resumable — it skips any day whose output file already exists,
-so you can run it in batches or after interruption without reprocessing.
-
-Usage examples
---------------
-  # Convert everything with defaults (vessel_noise, 50 Hz, 10 m)
-  python noise_to_geotiff.py
-
-  # Convert a specific date range only
-  python noise_to_geotiff.py --start 2020-02-01 --end 2020-02-29
-
-  # Convert combined noise at 100 Hz / 50 m depth
-  python noise_to_geotiff.py --variable combined_noise --freq 100 --depth 50
-
-  # Produce monthly means instead of daily (outputs YYYY-MM.tif)
-  python noise_to_geotiff.py --monthly
-
-  # Force re-conversion of days that already have output
-  python noise_to_geotiff.py --overwrite
-
-  # Use a different source or output directory
-  python noise_to_geotiff.py --src /other/mount --dst /data/noise_tifs
-
-Performance note
-----------------
-Each source file requires reading ~337 MB of double-precision data over the
-sshfs network mount (~17 s/file on this machine). Converting all ~450 days
-takes roughly 2 hours. Run it in a screen/tmux session or as a background
-job. Progress is printed per month with elapsed time.
-
-Dependencies
-------------
-  pip install netCDF4 rasterio numpy
+Commands to run:
+    python pipeline/noise_to_geotiff.py
+    python pipeline/noise_to_geotiff.py --start 2020-02-01 --end 2020-02-29
+    python pipeline/noise_to_geotiff.py --variable combined_noise --freq 100 --depth 50
+    python pipeline/noise_to_geotiff.py --monthly
+    python pipeline/noise_to_geotiff.py --overwrite
 """
 
 import argparse

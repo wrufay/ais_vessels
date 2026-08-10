@@ -1,5 +1,9 @@
 import type { FeatureLike } from "ol/Feature";
 import { Style, Stroke, Fill, Icon } from "ol/style";
+import { TYPE_COLORS } from "../data/vesselTypeColors";
+import sharedColors from "../data/colors.json";
+
+const REGION_COLORS: Record<string, string> = sharedColors.region;
 
 export function classifyType(code: string | number | null): string {
   const c = typeof code === "number" ? code : parseInt(String(code ?? ""), 10);
@@ -29,6 +33,16 @@ export function formatTime(epochSeconds: number): string {
 
 export const EMPTY_STYLE = new Style({});
 
+// Single source of truth for the fast/mid/slow speed-based color scheme --
+// previously duplicated independently across ROUTE_WEBGL_STYLE,
+// REGION_WEBGL_STYLE, and makeFeatureStyle(), which risked drifting out of
+// sync if one was updated without the others. Thresholds are knots. Values
+// live in colors.json alongside the vessel/region palettes.
+export const SPEED_STYLE = sharedColors.speed;
+
+// "All traffic" flat grey (mode 0 -- no type/speed coloring applied)
+export const TRACK_DEFAULT_COLOR = sharedColors.track.default;
+
 // type_num encoding used in the WebGL region track layer style (0 = unknown)
 export const TYPE_NUM: Record<string, number> = {
   cargo: 1, tanker: 2, fishing: 3, passenger: 4, "search & rescue": 5, other: 6,
@@ -47,13 +61,15 @@ export const ROUTE_WEBGL_STYLE = {
     "case",
     ["==", ["get", "pointType"], 1], "#98c1d9",
     ["==", ["get", "pointType"], 2], "#ee6c4d",
-    ["case", [">", ["get", "sog"], 10], "#ee6c4d", [">", ["get", "sog"], 3], "#ffc857", "#0a8754"],
+    ["case", [">", ["get", "sog"], SPEED_STYLE.thresholds.fast], SPEED_STYLE.fill.fast,
+             [">", ["get", "sog"], SPEED_STYLE.thresholds.mid], SPEED_STYLE.fill.mid, SPEED_STYLE.fill.slow],
   ],
   "circle-stroke-color": [
     "case",
     ["==", ["get", "pointType"], 1], "#ffffff",
     ["==", ["get", "pointType"], 2], "#ffffff",
-    ["case", [">", ["get", "sog"], 10], "#c44d2e", [">", ["get", "sog"], 3], "#c49830", "#076640"],
+    ["case", [">", ["get", "sog"], SPEED_STYLE.thresholds.fast], SPEED_STYLE.stroke.fast,
+             [">", ["get", "sog"], SPEED_STYLE.thresholds.mid], SPEED_STYLE.stroke.mid, SPEED_STYLE.stroke.slow],
   ],
   "circle-stroke-width": [
     "case",
@@ -64,11 +80,8 @@ export const ROUTE_WEBGL_STYLE = {
   "circle-opacity": ["var", "dotOpacity"],
 };
 
-// WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed
-export const VESSEL_PALETTE = [
-  "#4e79a7", "#f28e2b", "#e15759", "#76b7b2",
-  "#59a14f", "#edc948", "#b07aa1", "#ff9da7",
-];
+// WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed, 3=per-vessel
+export const VESSEL_PALETTE: string[] = sharedColors.track.multiVessel;
 
 export const REGION_WEBGL_VARIABLES = { mode: 0, dotSize: 4, dotOpacity: 0.6 };
 export const REGION_WEBGL_STYLE = {
@@ -76,19 +89,20 @@ export const REGION_WEBGL_STYLE = {
   "circle-fill-color": [
     "case",
     ["==", ["var", "mode"], 2],
-    ["case", [">", ["get", "sog"], 10], "#ee6c4d", [">", ["get", "sog"], 3], "#ffc857", "#0a8754"],
+    ["case", [">", ["get", "sog"], SPEED_STYLE.thresholds.fast], SPEED_STYLE.fill.fast,
+             [">", ["get", "sog"], SPEED_STYLE.thresholds.mid], SPEED_STYLE.fill.mid, SPEED_STYLE.fill.slow],
     ["==", ["var", "mode"], 1],
     ["match", ["get", "type_num"],
-      1, "#0072BD", 2, "#D95319", 3, "#EDB120", 4, "#7E2F8E", 5, "#77AC30", 6, "#4DBEEE",
-      "#A2142F",
+      1, TYPE_COLORS.cargo, 2, TYPE_COLORS.tanker, 3, TYPE_COLORS.fishing,
+      4, TYPE_COLORS.passenger, 5, TYPE_COLORS["search & rescue"], 6, TYPE_COLORS.other,
+      TYPE_COLORS.unknown,
     ],
     ["==", ["var", "mode"], 3],
     ["match", ["%", ["get", "vesselIndex"], 8],
-      0, "#4e79a7", 1, "#f28e2b", 2, "#e15759", 3, "#76b7b2",
-      4, "#59a14f", 5, "#edc948", 6, "#b07aa1", 7, "#ff9da7",
-      "#5a5a5a",
+      ...VESSEL_PALETTE.flatMap((color, i) => [i, color]),
+      TRACK_DEFAULT_COLOR,
     ],
-    "#5a5a5a",
+    TRACK_DEFAULT_COLOR,
   ],
   "circle-opacity": ["var", "dotOpacity"],
 };
@@ -123,20 +137,21 @@ export function makeVesselCanvas(hex: string, radius: number, border?: string): 
   return c;
 }
 
-export function lighten(hex: string, amt: number): string {
+function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, (n >> 16) + Math.round(255 * amt));
-  const g = Math.min(255, ((n >> 8) & 0xff) + Math.round(255 * amt));
-  const b = Math.min(255, (n & 0xff) + Math.round(255 * amt));
-  return `rgb(${r},${g},${b})`;
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+export function lighten(hex: string, amt: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const shift = Math.round(255 * amt);
+  return `rgb(${Math.min(255, r + shift)},${Math.min(255, g + shift)},${Math.min(255, b + shift)})`;
 }
 
 export function darken(hex: string, amt: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.max(0, (n >> 16) - Math.round(255 * amt));
-  const g = Math.max(0, ((n >> 8) & 0xff) - Math.round(255 * amt));
-  const b = Math.max(0, (n & 0xff) - Math.round(255 * amt));
-  return `rgb(${r},${g},${b})`;
+  const [r, g, b] = hexToRgb(hex);
+  const shift = Math.round(255 * amt);
+  return `rgb(${Math.max(0, r - shift)},${Math.max(0, g - shift)},${Math.max(0, b - shift)})`;
 }
 
 const _mooringCanvasCache: Record<string, HTMLCanvasElement> = {};
@@ -161,25 +176,23 @@ export function makeMooringCanvas(highlighted: boolean, r = 10): HTMLCanvasEleme
 }
 
 const iconAnchor = { anchor: [0.5, 0.5] as [number, number], anchorXUnits: "fraction" as const, anchorYUnits: "fraction" as const };
-export const VESSEL_STYLES = {
-  fast:  new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", 5), ...iconAnchor }) }),
-  mid:   new Style({ image: new Icon({ img: makeVesselCanvas("#ffc857", 5), ...iconAnchor }) }),
-  slow:  new Style({ image: new Icon({ img: makeVesselCanvas("#0a8754", 5), ...iconAnchor }) }),
-  start: new Style({ image: new Icon({ img: makeVesselCanvas("#98c1d9", 7, "#fff"), ...iconAnchor }) }),
-  end:   new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", 7, "#fff"), ...iconAnchor }) }),
-  line:  new Style({ stroke: new Stroke({ color: "#98c1d9", width: 2 }) }),
-};
+
+// The route line connecting a selected vessel's points. makeFeatureStyle()
+// below builds its own fast/mid/slow/start/end dot styles per call (since it
+// needs a caller-supplied radius/opacity) -- this is the one style that
+// doesn't vary, so it isn't rebuilt every time.
+export const ROUTE_LINE_STYLE = new Style({ stroke: new Stroke({ color: "#98c1d9", width: 2 }) });
 
 export function makeFeatureStyle(showStart: boolean, showEnd: boolean, radius = 5, opacity = 1) {
   const endRadius = Math.round(radius * 1.4);
-  const fast  = new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", radius), ...iconAnchor, opacity }) });
-  const mid   = new Style({ image: new Icon({ img: makeVesselCanvas("#ffc857", radius), ...iconAnchor, opacity }) });
-  const slow  = new Style({ image: new Icon({ img: makeVesselCanvas("#0a8754", radius), ...iconAnchor, opacity }) });
+  const fast  = new Style({ image: new Icon({ img: makeVesselCanvas(SPEED_STYLE.fill.fast, radius), ...iconAnchor, opacity }) });
+  const mid   = new Style({ image: new Icon({ img: makeVesselCanvas(SPEED_STYLE.fill.mid, radius), ...iconAnchor, opacity }) });
+  const slow  = new Style({ image: new Icon({ img: makeVesselCanvas(SPEED_STYLE.fill.slow, radius), ...iconAnchor, opacity }) });
   const start = new Style({ image: new Icon({ img: makeVesselCanvas("#98c1d9", endRadius, "#fff"), ...iconAnchor, opacity }) });
   const end   = new Style({ image: new Icon({ img: makeVesselCanvas("#ee6c4d", endRadius, "#fff"), ...iconAnchor, opacity }) });
   return function (feature: FeatureLike): Style {
     const geomType = feature.getGeometry()?.getType();
-    if (geomType === "LineString") return VESSEL_STYLES.line;
+    if (geomType === "LineString") return ROUTE_LINE_STYLE;
     const isStart = feature.get("isStart") as boolean;
     const isEnd = feature.get("isEnd") as boolean;
     if (isStart && !showStart) return EMPTY_STYLE;
@@ -187,15 +200,27 @@ export function makeFeatureStyle(showStart: boolean, showEnd: boolean, radius = 
     if (isStart) return start;
     if (isEnd) return end;
     const sog = (feature.get("sog") as number) || 0;
-    return sog > 10 ? fast : sog > 3 ? mid : slow;
+    return sog > SPEED_STYLE.thresholds.fast ? fast : sog > SPEED_STYLE.thresholds.mid ? mid : slow;
   };
 }
 
+// Opacity variants are derived, not stored -- fill/hoverFill/selectedFill are
+// always the same hue as stroke, just more opaque. Keeping that as code (not
+// four separate rgba strings per region type in JSON) means changing a
+// region's color can't leave the variants mismatched with the base hue.
+function hexToRgba(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 export function regionColor(type: string) {
-  if (type === "WEA") return { stroke: "#ee6c4d", fill: "rgba(238,108,77,0.07)", hoverFill: "rgba(238,108,77,0.15)", selectedFill: "rgba(238,108,77,0.28)" };
-  if (type === "Uploaded") return { stroke: "#9b59b6", fill: "rgba(155,89,182,0.07)", hoverFill: "rgba(155,89,182,0.15)", selectedFill: "rgba(155,89,182,0.28)" };
-  if (type === "Drawn") return { stroke: "#98c1d9", fill: "rgba(152,193,217,0.07)", hoverFill: "rgba(152,193,217,0.15)", selectedFill: "rgba(152,193,217,0.28)" };
-  return { stroke: "#3d5a80", fill: "rgba(61,90,128,0.07)", hoverFill: "rgba(61,90,128,0.15)", selectedFill: "rgba(61,90,128,0.28)" };
+  const stroke = REGION_COLORS[type] ?? REGION_COLORS.CHA;
+  return {
+    stroke,
+    fill: hexToRgba(stroke, 0.07),
+    hoverFill: hexToRgba(stroke, 0.15),
+    selectedFill: hexToRgba(stroke, 0.28),
+  };
 }
 
 // Module-level mutable state — OpenLayers feature styling callbacks can't read

@@ -24,14 +24,9 @@ import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
 import "ol/ol.css";
 import "./map.css";
-import {
-  type PresetRegion,
-  type Mooring,
-  CHA_REGIONS,
-  WEA_REGIONS,
-  AMAR_MOORINGS,
-  TYPE_COLORS,
-} from "./data/regions";
+import { type PresetRegion, CHA_REGIONS, WEA_REGIONS } from "./data/regions";
+import { type Mooring, AMAR_MOORINGS } from "./data/moorings";
+import { TYPE_COLORS } from "./data/vesselTypeColors";
 import {
   classifyType,
   formatTime,
@@ -47,6 +42,8 @@ import {
   setSelectedChaName,
   getSelectedChaName,
   setClickedChaNames,
+  SPEED_STYLE,
+  TRACK_DEFAULT_COLOR,
 } from "./utils/mapStyles";
 import { Virtuoso } from "react-virtuoso";
 import PanelHeader from "./components/PanelHeader";
@@ -56,7 +53,15 @@ import SidePanel, { PANEL_DEFAULT_WIDTH } from "./components/SidePanel";
 import IconBar from "./components/IconBar";
 import CursorCoordinates from "./components/CursorCoordinates";
 import ClosePanelBtn from "./components/ClosePanelBtn";
+import CollapsibleHeader from "./components/CollapsibleHeader";
+import SizeOpacityPanel from "./components/SizeOpacityPanel";
+import MapPopup from "./components/MapPopup";
+import PopupRow from "./components/PopupRow";
+import PlotFigure from "./components/PlotFigure";
 import { useTheme } from "./useTheme";
+import { useDragResize } from "./useDragResize";
+import { useStateRef } from "./useStateRef";
+import { useNoiseLayer, NOISE_EXTENT } from "./useNoiseLayer";
 import Tour from "./tour/Tour";
 import { createTourSteps } from "./tour/steps";
 
@@ -135,12 +140,9 @@ function ShipMap() {
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const bathyLayerRef = useRef<TileLayer | null>(null);
   const basemapLayerRef = useRef<TileLayer | null>(null);
-  const noiseLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
-  const regionDisplayModeRef = useRef<"grey" | "type" | "speed" | "vessel">("grey");
   const measureSourceRef = useRef(new VectorSource());
-  const measuringRef = useRef(false);
   const measureStartRef = useRef<number[] | null>(null);
   const measureLineFeatureRef = useRef<Feature | null>(null);
 
@@ -173,22 +175,16 @@ function ShipMap() {
   const [regionStats, setRegionStats] = useState<RegionStats | null>(null);
   const [regionLoading, setRegionLoading] = useState(false);
   const [regionTime, setRegionTime] = useState<number | null>(null);
-  const [regionName, setRegionName] = useState<string | null>(null);
-  const regionNameRef = useRef<string | null>(null);
-  useEffect(() => {
-    regionNameRef.current = regionName;
-  }, [regionName]);
+  const [regionName, setRegionName, regionNameRef] = useStateRef<string | null>(null);
   const [drawnPolygon, setDrawnPolygon] = useState<object | null>(null);
   const [drawing, setDrawing] = useState(false);
-  const [measuring, setMeasuring] = useState(false);
-  useEffect(() => {
-    measuringRef.current = measuring;
-    if (!measuring) {
+  const [measuring, setMeasuring, measuringRef] = useStateRef(false, (m) => {
+    if (!m) {
       measureStartRef.current = null;
       measureLineFeatureRef.current = null;
       measureSourceRef.current.clear();
     }
-  }, [measuring]);
+  });
   const [userSelectedRegions, setUserSelectedRegions] = useState<
     { name: string; geojson: object; type: string }[]
   >([]);
@@ -216,23 +212,35 @@ function ShipMap() {
   const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(
     new Set()
   );
+  // Mirrors clickedRegionNames into mapStyles.ts's module-level state and
+  // triggers a redraw -- kept as one reactive effect (rather than calling
+  // setClickedChaNames()/chaSourceRef.current.changed() at each call site
+  // that updates clickedRegionNames) so those side effects can't end up
+  // running inside a setState updater, which React may invoke more than once.
+  useEffect(() => {
+    setClickedChaNames(clickedRegionNames);
+    chaSourceRef.current.changed();
+  }, [clickedRegionNames]);
   const [uploadedRegions, setUploadedRegions] = useState<PresetRegion[]>([]);
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
   const [showBathymetry, setShowBathymetry] = useState(false);
   const [bathyOpacity, setBathyOpacity] = useState(0.75);
   const [bathyLoading, setBathyLoading] = useState(false);
-  const [showNoise, setShowNoise] = useState(false);
-  const [noiseOpacity, setNoiseOpacity] = useState(0.5);
-  const [noiseLoading, setNoiseLoading] = useState(false);
-  const [noiseVariable, setNoiseVariable] = useState("combined_noise");
-  const [noiseDate, setNoiseDate] = useState("2020-02");
-  const [noiseFreq, setNoiseFreq] = useState(50);
-  const [noiseDepth, setNoiseDepth] = useState(10);
-  const [noiseRange, setNoiseRange] = useState<{ vmin: number; vmax: number; depth: number } | null>(null);
-  const [noiseVminOverride, setNoiseVminOverride] = useState<number | "" | null>(null);
-  const [noiseVmaxOverride, setNoiseVmaxOverride] = useState<number | "" | null>(null);
-  const [noiseAvailable, setNoiseAvailable] = useState<Record<string, { freq: number; depth: number }[]>>({});
-  const [noiseDates, setNoiseDates] = useState<string[]>([]);
+  const {
+    noiseLayerRef,
+    showNoise, setShowNoise,
+    noiseOpacity, setNoiseOpacity,
+    noiseLoading, setNoiseLoading,
+    noiseVariable, setNoiseVariable,
+    noiseDate, setNoiseDate,
+    noiseFreq, setNoiseFreq,
+    noiseDepth, setNoiseDepth,
+    noiseRange,
+    noiseVminOverride, setNoiseVminOverride,
+    noiseVmaxOverride, setNoiseVmaxOverride,
+    noiseAvailable,
+    noiseDates,
+  } = useNoiseLayer(API);
   const [basemap, setBasemap] = useState("esri-ocean");
   const { isDark, toggleTheme } = useTheme();
   useEffect(() => {
@@ -241,9 +249,12 @@ function ShipMap() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [ccgLastPositionAt, setCcgLastPositionAt] = useState<string | null>(null);
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
-  const [regionDisplayMode, setRegionDisplayMode] = useState<
+  const [regionDisplayMode, setRegionDisplayMode] = useStateRef<
     "grey" | "type" | "speed" | "vessel"
-  >("grey");
+  >("grey", (mode) => {
+    const modeNum = mode === "type" ? 1 : mode === "speed" ? 2 : mode === "vessel" ? 3 : 0;
+    regionTrackLayerRef.current?.updateStyleVariables({ mode: modeNum });
+  });
   const defaultFilters = { type: new Set<string>(), source: "all", dfo: "all" };
   const [filters, setFilters] = useState<{
     type: Set<string>;
@@ -256,85 +267,44 @@ function ShipMap() {
     dfo: string;
   }>(defaultFilters);
   const [showTypeFilter, setShowTypeFilter] = useState(false);
-  const [mooringSize, setMooringSize] = useState(10);
-  const [vesselSize, setVesselSize] = useState(5);
+  const [mooringSize, setMooringSize, mooringSizeRef] = useStateRef(10, () => mooringSourceRef.current.changed());
+  const [vesselSize, setVesselSize] = useStateRef(5, (v) => routeLayerRef.current?.updateStyleVariables({ dotSize: v }));
   const [regionDotSize, setRegionDotSize] = useState(4);
-  const [mooringOpacity, setMooringOpacity] = useState(1);
-  const [vesselOpacity, setVesselOpacity] = useState(1);
+  const [mooringOpacity, setMooringOpacity, mooringOpacityRef] = useStateRef(1, () => mooringSourceRef.current.changed());
+  const [vesselOpacity, setVesselOpacity] = useStateRef(1, (v) => routeLayerRef.current?.updateStyleVariables({ dotOpacity: v }));
   const [regionDotOpacity, setRegionDotOpacity] = useState(0.6);
   const [mooringOpen, setMooringOpen] = useState(false);
   const [vesselOpen, setVesselOpen] = useState(false);
   const [regionDotOpen, setRegionDotOpen] = useState(false);
   const [vesselListOpen, setVesselListOpen] = useState(true);
   const [vesselListHeight, setVesselListHeight] = useState(240);
-  const vesselListDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
-
-  function onVesselListResizeMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    vesselListDragRef.current = { startY: e.clientY, startHeight: vesselListHeight };
-
-    function onMouseMove(ev: MouseEvent) {
-      if (!vesselListDragRef.current) return;
-      const delta = ev.clientY - vesselListDragRef.current.startY;
-      const next = Math.min(500, Math.max(120, vesselListDragRef.current.startHeight + delta));
-      setVesselListHeight(next);
-    }
-    function onMouseUp() {
-      vesselListDragRef.current = null;
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    }
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }
+  const onVesselListResizeMouseDown = useDragResize({
+    axis: "y",
+    min: 120,
+    max: 500,
+    getStart: () => vesselListHeight,
+    onChange: setVesselListHeight,
+  });
 
   const [regionListHeight, setRegionListHeight] = useState<number | null>(null);
   const regionListElRef = useRef<HTMLDivElement>(null);
-  const regionListDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
-
-  function onRegionListResizeMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    const startHeight = regionListHeight ?? regionListElRef.current?.offsetHeight ?? 320;
-    regionListDragRef.current = { startY: e.clientY, startHeight };
-
-    function onMouseMove(ev: MouseEvent) {
-      if (!regionListDragRef.current) return;
-      const delta = ev.clientY - regionListDragRef.current.startY;
-      const next = Math.min(600, Math.max(120, regionListDragRef.current.startHeight + delta));
-      setRegionListHeight(next);
-    }
-    function onMouseUp() {
-      regionListDragRef.current = null;
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    }
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }
+  const onRegionListResizeMouseDown = useDragResize({
+    axis: "y",
+    min: 120,
+    max: 600,
+    getStart: () => regionListHeight ?? regionListElRef.current?.offsetHeight ?? 320,
+    onChange: setRegionListHeight,
+  });
 
   const [mooringListHeight, setMooringListHeight] = useState<number | null>(null);
   const mooringListElRef = useRef<HTMLDivElement>(null);
-  const mooringListDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
-
-  function onMooringListResizeMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    const startHeight = mooringListHeight ?? mooringListElRef.current?.offsetHeight ?? 384;
-    mooringListDragRef.current = { startY: e.clientY, startHeight };
-
-    function onMouseMove(ev: MouseEvent) {
-      if (!mooringListDragRef.current) return;
-      const delta = ev.clientY - mooringListDragRef.current.startY;
-      const next = Math.min(600, Math.max(120, mooringListDragRef.current.startHeight + delta));
-      setMooringListHeight(next);
-    }
-    function onMouseUp() {
-      mooringListDragRef.current = null;
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    }
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }
+  const onMooringListResizeMouseDown = useDragResize({
+    axis: "y",
+    min: 120,
+    max: 600,
+    getStart: () => mooringListHeight ?? mooringListElRef.current?.offsetHeight ?? 384,
+    onChange: setMooringListHeight,
+  });
   const [basemapOpen, setBasemapOpen] = useState(false);
   const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
 
@@ -407,29 +377,9 @@ function ShipMap() {
     else if (lastOpenedPanel === "layer") setShowLayerPanel(true);
     else if (lastOpenedPanel === "mooring") setShowMooringPanel(true);
   }
-  const mooringSizeRef = useRef(10);
-  const vesselSizeRef = useRef(5);
-  const mooringOpacityRef = useRef(1);
-  const vesselOpacityRef = useRef(1);
-  useEffect(() => {
-    mooringSizeRef.current = mooringSize;
-    mooringSourceRef.current.changed();
-  }, [mooringSize]);
-  useEffect(() => {
-    vesselSizeRef.current = vesselSize;
-    routeLayerRef.current?.updateStyleVariables({ dotSize: vesselSize });
-  }, [vesselSize]);
   useEffect(() => {
     regionTrackLayerRef.current?.updateStyleVariables({ dotSize: regionDotSize });
   }, [regionDotSize]);
-  useEffect(() => {
-    vesselOpacityRef.current = vesselOpacity;
-    routeLayerRef.current?.updateStyleVariables({ dotOpacity: vesselOpacity });
-  }, [vesselOpacity]);
-  useEffect(() => {
-    mooringOpacityRef.current = mooringOpacity;
-    mooringSourceRef.current.changed();
-  }, [mooringOpacity]);
   useEffect(() => {
     regionTrackLayerRef.current?.updateStyleVariables({ dotOpacity: regionDotOpacity });
   }, [regionDotOpacity]);
@@ -554,14 +504,10 @@ function ShipMap() {
     bathyLayer.getSource()!.on(["tileloadend", "tileloaderror"], () => { if (--bathyPending <= 0) { bathyPending = 0; setBathyLoading(false); } });
 
     // ocean noise modelling — static raster overlay, one day's mean dB grid
-    const noiseExtent = [
-      ...fromLonLat([-69.5, 41.0]),
-      ...fromLonLat([-59.0, 46.0]),
-    ] as [number, number, number, number];
     const noiseLayer = new ImageLayer({
       source: new ImageStatic({
         url: `${API}/api/noise/overlay?date=2020-02-01`,
-        imageExtent: noiseExtent,
+        imageExtent: NOISE_EXTENT,
         projection: "EPSG:3857",
       }),
       opacity: 0.5,
@@ -761,60 +707,6 @@ function ShipMap() {
   }, [bathyOpacity]);
 
   useEffect(() => {
-    noiseLayerRef.current?.setVisible(showNoise);
-  }, [showNoise]);
-
-  useEffect(() => {
-    fetch(`${API}/api/noise/available`)
-      .then((r) => r.json())
-      .then(setNoiseAvailable)
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const options = noiseAvailable[noiseVariable];
-    if (!options || options.length === 0) return;
-    const freqs = [...new Set(options.map((o) => o.freq))].sort((a, b) => a - b);
-    if (!freqs.includes(noiseFreq)) setNoiseFreq(freqs[0]);
-    const depths = [...new Set(options.filter((o) => o.freq === (freqs.includes(noiseFreq) ? noiseFreq : freqs[0])).map((o) => o.depth))].sort((a, b) => a - b);
-    if (!depths.includes(noiseDepth)) setNoiseDepth(depths[0]);
-  }, [noiseVariable, noiseAvailable]);
-
-  useEffect(() => {
-    fetch(`${API}/api/noise/dates?variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((dates: string[]) => {
-        setNoiseDates(dates);
-        if (dates.length > 0 && !dates.includes(noiseDate)) setNoiseDate(dates[dates.length - 1]);
-      })
-      .catch(() => {});
-  }, [noiseVariable, noiseFreq, noiseDepth]);
-
-  useEffect(() => {
-    if (!noiseLayerRef.current) return;
-    const noiseExtent = [
-      ...fromLonLat([-69.5, 41.0]),
-      ...fromLonLat([-59.0, 46.0]),
-    ] as [number, number, number, number];
-    let url = `${API}/api/noise/overlay?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
-    if (noiseVminOverride !== null && noiseVminOverride !== "") url += `&vmin=${noiseVminOverride}`;
-    if (noiseVmaxOverride !== null && noiseVmaxOverride !== "") url += `&vmax=${noiseVmaxOverride}`;
-    const newSource = new ImageStatic({ url, imageExtent: noiseExtent, projection: "EPSG:3857" });
-    newSource.on("imageloadstart", () => setNoiseLoading(true));
-    newSource.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
-    noiseLayerRef.current.setSource(newSource);
-
-    fetch(`${API}/api/noise/range?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => setNoiseRange(data))
-      .catch(() => setNoiseRange(null));
-  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride]);
-
-  useEffect(() => {
-    noiseLayerRef.current?.setOpacity(noiseOpacity);
-  }, [noiseOpacity]);
-
-  useEffect(() => {
     if (!basemapLayerRef.current) return;
     const bm = BASEMAPS.find((b) => b.id === basemap);
     if (!bm) return;
@@ -823,13 +715,6 @@ function ShipMap() {
       new XYZ({ url, attributions: bm.attributions, maxZoom: bm.maxZoom })
     );
   }, [basemap]);
-
-  useEffect(() => {
-    regionDisplayModeRef.current = regionDisplayMode;
-    const modeNum =
-      regionDisplayMode === "type" ? 1 : regionDisplayMode === "speed" ? 2 : regionDisplayMode === "vessel" ? 3 : 0;
-    regionTrackLayerRef.current?.updateStyleVariables({ mode: modeNum });
-  }, [regionDisplayMode]);
 
   useEffect(() => {
     fetch(`${API}/api/vessels?start=${start}T00:00:00&end=${end}T23:59:59`)
@@ -936,14 +821,10 @@ function ShipMap() {
   }
 
   function toggleClickedRegion(name: string) {
-    setClickedRegionNames((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      setClickedChaNames(next);
-      chaSourceRef.current.changed();
-      return next;
-    });
+    const next = new Set(clickedRegionNames);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setClickedRegionNames(next);
   }
 
   function handleShapefileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -971,7 +852,6 @@ function ShipMap() {
           setClickedRegionNames((prev) => {
             const next = new Set(prev);
             next.add(regionName);
-            setClickedChaNames(next);
             return next;
           });
         });
@@ -1031,7 +911,6 @@ function ShipMap() {
 
   function renderRegionPositions(positions: RegionPosition[]) {
     regionTrackSourceRef.current.clear();
-    console.log(`[region] rendering ${positions.length} positions`);
     const mmsiList = [...new Set(positions.map((p) => p.mmsi))].sort();
     const mmsiIndex: Record<number, number> = Object.fromEntries(mmsiList.map((m, i) => [m, i]));
     positions.forEach((p) => {
@@ -1046,11 +925,6 @@ function ShipMap() {
         })
       );
     });
-    console.log(
-      `[region] source has ${
-        regionTrackSourceRef.current.getFeatures().length
-      } features`
-    );
   }
 
   function startDrawing() {
@@ -1079,7 +953,6 @@ function ShipMap() {
         setClickedRegionNames((prevClicked) => {
           const next = new Set(prevClicked);
           next.add(name);
-          setClickedChaNames(next);
           return next;
         });
         return [...prev, { name, geojson, type: "drawn" }];
@@ -1325,15 +1198,18 @@ function ShipMap() {
 
         <div ref={registerTarget("vesselList")} className="flex flex-col shrink-0">
         <div className="px-3 shrink-0">
-          <button onClick={() => setVesselListOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-            <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${vesselListOpen ? "rotate-90" : ""}`}>▶</span>
-            <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Vessels</span>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
-              {filtered.length !== vessels.length
-                ? `${filtered.length} / ${vessels.length}`
-                : `${vessels.length}`}
-            </span>
-          </button>
+          <CollapsibleHeader
+            open={vesselListOpen}
+            onToggle={() => setVesselListOpen((p) => !p)}
+            label="Vessels"
+            trailing={
+              <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
+                {filtered.length !== vessels.length
+                  ? `${filtered.length} / ${vessels.length}`
+                  : `${vessels.length}`}
+              </span>
+            }
+          />
         </div>
         {vesselListOpen && (
           <>
@@ -1423,37 +1299,23 @@ function ShipMap() {
         <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
         <div ref={registerTarget("vesselSize")} className="px-3 py-3 flex flex-col gap-1">
           {/* Vessel tracks sizing */}
-          <div className="flex flex-col">
-            <button onClick={() => setVesselOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-              <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${vesselOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Change size</span>
+          <SizeOpacityPanel
+            open={vesselOpen}
+            onToggle={() => setVesselOpen((p) => !p)}
+            preview={
               <div className="flex items-center gap-1">
-                {(["#0a8754", "#ffc857", "#ee6c4d"] as const).map((color) => (
+                {([SPEED_STYLE.fill.slow, SPEED_STYLE.fill.mid, SPEED_STYLE.fill.fast] as const).map((color) => (
                   <div key={color} className="rounded-full" style={{ width: vesselSize * 2, height: vesselSize * 2, background: color, opacity: vesselOpacity }} />
                 ))}
               </div>
-            </button>
-            {vesselOpen && (
-              <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Size</span>
-                  <input type="range" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Number(e.target.value))} className="panel-slider w-24" />
-                  <div className="flex items-center shrink-0">
-                    <input type="number" min={2} max={14} value={vesselSize} onChange={(e) => setVesselSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500">px</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Opacity</span>
-                  <input type="range" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
-                  <div className="flex items-center shrink-0">
-                    <input type="number" min={0} max={100} value={Math.round(vesselOpacity * 100)} onChange={(e) => setVesselOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+            }
+            size={vesselSize}
+            onSizeChange={setVesselSize}
+            sizeMin={2}
+            sizeMax={14}
+            opacity={vesselOpacity}
+            onOpacityChange={setVesselOpacity}
+          />
         </div>
       </SidePanel>
 
@@ -1603,33 +1465,19 @@ function ShipMap() {
         />
         <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
         <div className="px-3 py-3 flex flex-col gap-1">
-          <div className="flex flex-col">
-            <button onClick={() => setRegionDotOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-              <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${regionDotOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Change size</span>
-              <div className="rounded-full bg-[#5a5a5a] shrink-0" style={{ width: regionDotSize * 2, height: regionDotSize * 2, opacity: regionDotOpacity }} />
-            </button>
-            {regionDotOpen && (
-              <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Size</span>
-                  <input type="range" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Number(e.target.value))} className="panel-slider w-24" />
-                  <div className="flex items-center shrink-0">
-                    <input type="number" min={2} max={14} value={regionDotSize} onChange={(e) => setRegionDotSize(Math.min(14, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500">px</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Opacity</span>
-                  <input type="range" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
-                  <div className="flex items-center shrink-0">
-                    <input type="number" min={0} max={100} value={Math.round(regionDotOpacity * 100)} onChange={(e) => setRegionDotOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <SizeOpacityPanel
+            open={regionDotOpen}
+            onToggle={() => setRegionDotOpen((p) => !p)}
+            preview={
+              <div className="rounded-full shrink-0" style={{ width: regionDotSize * 2, height: regionDotSize * 2, opacity: regionDotOpacity, background: TRACK_DEFAULT_COLOR }} />
+            }
+            size={regionDotSize}
+            onSizeChange={setRegionDotSize}
+            sizeMin={2}
+            sizeMax={14}
+            opacity={regionDotOpacity}
+            onOpacityChange={setRegionDotOpacity}
+          />
         </div>
       </SidePanel>
 
@@ -1706,33 +1554,19 @@ function ShipMap() {
           />
           <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
           <div className="px-3 py-3 flex flex-col gap-1 shrink-0">
-            <div className="flex flex-col">
-              <button onClick={() => setMooringOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-                <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${mooringOpen ? "rotate-90" : ""}`}>▶</span>
-                <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Change size</span>
+            <SizeOpacityPanel
+              open={mooringOpen}
+              onToggle={() => setMooringOpen((p) => !p)}
+              preview={
                 <img src={makeMooringCanvas(false, mooringSize).toDataURL()} style={{ opacity: mooringOpacity, width: mooringSize * 2, height: mooringSize * 2 }} />
-              </button>
-              {mooringOpen && (
-                <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Size</span>
-                    <input type="range" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Number(e.target.value))} className="panel-slider w-24" />
-                    <div className="flex items-center shrink-0">
-                      <input type="number" min={2} max={20} value={mooringSize} onChange={(e) => setMooringSize(Math.min(20, Math.max(2, Number(e.target.value))))} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400 dark:text-slate-500">px</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-14 shrink-0">Opacity</span>
-                    <input type="range" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Number(e.target.value) / 100)} className="panel-slider w-24" />
-                    <div className="flex items-center shrink-0">
-                      <input type="number" min={0} max={100} value={Math.round(mooringOpacity * 100)} onChange={(e) => setMooringOpacity(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums" />
-                      <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+              }
+              size={mooringSize}
+              onSizeChange={setMooringSize}
+              sizeMin={2}
+              sizeMax={20}
+              opacity={mooringOpacity}
+              onOpacityChange={setMooringOpacity}
+            />
           </div>
         </div>
       </SidePanel>
@@ -1905,13 +1739,16 @@ function ShipMap() {
           </div>
           <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
           <div ref={registerTarget("mapBasemap")} className="px-3 py-3 shrink-0">
-            <button onClick={() => setBasemapOpen(p => !p)} className="flex items-center gap-2 w-full py-1.5 text-left">
-              <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${basemapOpen ? "rotate-90" : ""}`}>▶</span>
-              <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">Base map</span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                {BASEMAPS.find((b) => b.id === basemap)?.label}
-              </span>
-            </button>
+            <CollapsibleHeader
+              open={basemapOpen}
+              onToggle={() => setBasemapOpen((p) => !p)}
+              label="Base map"
+              trailing={
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  {BASEMAPS.find((b) => b.id === basemap)?.label}
+                </span>
+              }
+            />
             {basemapOpen && (
               <div className="pl-4 pr-1 flex flex-col gap-1 pb-1">
                 {BASEMAPS.map((b) => (
@@ -2125,78 +1962,18 @@ function ShipMap() {
                 </p>
               ) : (
                 <>
-                  {regionStats.plots?.vessel_types && (
-                    <figure>
-                      <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 font-stack-headline">
-                          Breakdown of vessel types by day.
-                        </span>
-                        <button
-                          onClick={() =>
-                            downloadPlot(
-                              regionStats.plots.vessel_types!,
-                              "vessels_by_type.png"
-                            )
-                          }
-                          className="text-xs font-medium text-[#98c1d9] hover:bg-[#98c1d9]/10 rounded-full px-3 py-1 transition"
-                        >
-                          ↓ Download
-                        </button>
-                      </figcaption>
-                      <img
-                        src={`data:image/png;base64,${regionStats.plots.vessel_types}`}
-                        className="w-full rounded-sm ring-1 ring-slate-100"
-                      />
-                    </figure>
-                  )}
-                  {regionStats.plots?.speed_overall && (
-                    <figure>
-                      <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 font-stack-headline">
-                          Mean speed of all vessels, daily.
-                        </span>
-                        <button
-                          onClick={() =>
-                            downloadPlot(
-                              regionStats.plots.speed_overall!,
-                              "mean_speed.png"
-                            )
-                          }
-                          className="text-xs font-medium text-[#98c1d9] hover:bg-[#98c1d9]/10 rounded-full px-3 py-1 transition"
-                        >
-                          ↓ Download
-                        </button>
-                      </figcaption>
-                      <img
-                        src={`data:image/png;base64,${regionStats.plots.speed_overall}`}
-                        className="w-full rounded-sm ring-1 ring-slate-100"
-                      />
-                    </figure>
-                  )}
-                  {regionStats.plots?.vessel_density && (
-                    <figure>
-                      <figcaption className="flex items-center justify-between mb-2.5">
-                        <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 font-stack-headline">
-                          Regional traffic displayed in a heat map.
-                        </span>
-                        <button
-                          onClick={() =>
-                            downloadPlot(
-                              regionStats.plots.vessel_density!,
-                              "vessel_density.png"
-                            )
-                          }
-                          className="text-xs font-medium text-[#98c1d9] hover:bg-[#98c1d9]/10 rounded-full px-3 py-1 transition"
-                        >
-                          ↓ Download
-                        </button>
-                      </figcaption>
-                      <img
-                        src={`data:image/png;base64,${regionStats.plots.vessel_density}`}
-                        className="w-full rounded-sm ring-1 ring-slate-100"
-                      />
-                    </figure>
-                  )}
+                  {(
+                    [
+                      { key: "vessel_types", caption: "Breakdown of vessel types by day.", filename: "vessels_by_type.png" },
+                      { key: "speed_overall", caption: "Mean speed of all vessels, daily.", filename: "mean_speed.png" },
+                      { key: "vessel_density", caption: "Regional traffic displayed in a heat map.", filename: "vessel_density.png" },
+                    ] as const
+                  ).map(({ key, caption, filename }) => {
+                    const base64 = regionStats.plots?.[key];
+                    return base64 && (
+                      <PlotFigure key={key} caption={caption} base64={base64} filename={filename} onDownload={downloadPlot} />
+                    );
+                  })}
                   {regionStats.plots?.vessel_density_error && (
                     <p className="text-xs text-slate-400 dark:text-slate-500 italic px-1">
                       {regionStats.plots.vessel_density_error}
@@ -2211,76 +1988,24 @@ function ShipMap() {
 
       {/* Mooring popup */}
       {mooringPopup && (
-        <div
-          className="absolute z-30 bg-white dark:bg-slate-900 ring-1 ring-slate-900/5 rounded-sm shadow-sm px-4 py-3 text-xs pointer-events-none animate-scale-in"
-          style={{ left: mooringPopup.x + 12, top: mooringPopup.y - 8 }}
-        >
-          <div className="font-semibold text-[#3d5a80] mb-1.5">
-            {mooringPopup.mooring.name}
-          </div>
-          <div className="text-slate-600 dark:text-slate-300 space-y-1 tabular-nums">
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">Latitude</span>
-              {mooringPopup.mooring.lat.toFixed(4)}°N
-            </div>
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">
-                Longitude
-              </span>
-              {mooringPopup.mooring.lon.toFixed(4)}°
-            </div>
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">Depth</span>
-              {mooringPopup.mooring.depth}m
-            </div>
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">Deployed</span>
-              {mooringPopup.mooring.deployment}
-            </div>
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-20">
-                Recovered
-              </span>
-              {mooringPopup.mooring.recovery}
-            </div>
-          </div>
-        </div>
+        <MapPopup x={mooringPopup.x} y={mooringPopup.y} title={mooringPopup.mooring.name}>
+          <PopupRow label="Latitude" labelWidth="w-20">{mooringPopup.mooring.lat.toFixed(4)}°N</PopupRow>
+          <PopupRow label="Longitude" labelWidth="w-20">{mooringPopup.mooring.lon.toFixed(4)}°</PopupRow>
+          <PopupRow label="Depth" labelWidth="w-20">{mooringPopup.mooring.depth}m</PopupRow>
+          <PopupRow label="Deployed" labelWidth="w-20">{mooringPopup.mooring.deployment}</PopupRow>
+          <PopupRow label="Recovered" labelWidth="w-20">{mooringPopup.mooring.recovery}</PopupRow>
+        </MapPopup>
       )}
 
       {/* Point popup */}
       {popup && (
-        <div
-          className="absolute z-30 bg-white dark:bg-slate-900 ring-1 ring-slate-900/5 rounded-sm shadow-sm px-4 py-3 text-xs pointer-events-none animate-scale-in"
-          style={{ left: popup.x + 12, top: popup.y - 8 }}
-        >
-          <div className="font-semibold text-[#3d5a80] mb-1.5">
-            {popup.isStart ? "Start" : popup.isEnd ? "End" : popup.source}
-          </div>
-          <div className="text-slate-600 dark:text-slate-300 space-y-1 tabular-nums">
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">Time</span>
-              {formatTime(popup.time)}
-            </div>
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">Latitude</span>
-              {popup.lat?.toFixed(5)}°N
-            </div>
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">
-                Longitude
-              </span>
-              {popup.lon?.toFixed(5)}°
-            </div>
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">Speed</span>
-              {popup.sog != null ? `${popup.sog} kt` : "—"}
-            </div>
-            <div>
-              <span className="text-slate-400 dark:text-slate-500 inline-block w-16">Course</span>
-              {popup.cog != null ? `${popup.cog}°` : "—"}
-            </div>
-          </div>
-        </div>
+        <MapPopup x={popup.x} y={popup.y} title={popup.isStart ? "Start" : popup.isEnd ? "End" : popup.source}>
+          <PopupRow label="Time">{formatTime(popup.time)}</PopupRow>
+          <PopupRow label="Latitude">{popup.lat?.toFixed(5)}°N</PopupRow>
+          <PopupRow label="Longitude">{popup.lon?.toFixed(5)}°</PopupRow>
+          <PopupRow label="Speed">{popup.sog != null ? `${popup.sog} kt` : "—"}</PopupRow>
+          <PopupRow label="Course">{popup.cog != null ? `${popup.cog}°` : "—"}</PopupRow>
+        </MapPopup>
       )}
     </div>
   );

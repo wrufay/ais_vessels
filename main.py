@@ -1,8 +1,18 @@
 """
 Scotian Shelf AIS Vessel Tracker — FastAPI backend.
-Requires TimescaleDB/Postgres via DATABASE_URL.
+Requires TimescaleDB/Postgres via DATABASE_URL (no default — the process
+won't start without it).
 
-Run locally:  DATABASE_URL=postgresql://... uvicorn main:app --reload
+Run locally (outside Docker — e.g. against `docker compose up db` only):
+    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ais \
+      venv/bin/python -m uvicorn main:app --reload --port 8000
+
+Note: invoke uvicorn as `python -m uvicorn`, not the bare `uvicorn` command —
+this repo's venv has a stale console-script shebang from before it was
+renamed, so the bare command can fail or pick up the wrong interpreter.
+
+Optional: CORS_ORIGINS (comma-separated), defaults to the common local dev
+ports (localhost, :3000, :5173) if unset.
 """
 
 import os

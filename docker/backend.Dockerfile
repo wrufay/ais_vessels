@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY analysis/plots.py analysis/plots.py
 COPY analysis/noise.py analysis/noise.py
+COPY frontend/src/data/colors.json frontend/src/data/colors.json
 
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

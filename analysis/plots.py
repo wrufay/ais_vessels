@@ -13,6 +13,8 @@ Functions:
 
 import base64
 import io
+import json
+from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
@@ -20,16 +22,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd # type: ignore
 
-# Maps vessel type label -> consistent hex color across all charts
-TYPE_COLORS = {
-    "cargo":                    "#0072BD",
-    "tanker":                   "#D95319",
-    "fishing":                  "#EDB120",
-    "passenger":                "#7E2F8E",
-    "search and rescue vessel": "#77AC30",
-    "other":                    "#4DBEEE",
-    "unknown":                  "#A2142F",
-}
+# Maps vessel type label -> consistent hex color across all charts. Read from
+# frontend/src/data/colors.json's "vessel" section so the frontend
+# (vesselTypeColors.ts, mapStyles.ts) and these charts can't drift out of
+# sync. Only the "search and rescue vessel" key differs from the JSON's
+# "search & rescue" -- that's the label classify_ship_type() in main.py
+# produces, not a typo.
+_COLORS_JSON = Path(__file__).resolve().parents[1] / "frontend" / "src" / "data" / "colors.json"
+_raw_colors = json.loads(_COLORS_JSON.read_text())["vessel"]
+TYPE_COLORS = {**_raw_colors, "search and rescue vessel": _raw_colors["search & rescue"]}
+del TYPE_COLORS["search & rescue"]
 
 # Draw order for stacked bars —> determines legend and layering order
 ORDERED_TYPES = ["cargo", "tanker", "fishing", "passenger",

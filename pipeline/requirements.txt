@@ -2,5 +2,3 @@ psycopg2-binary
 duckdb
 netCDF4
 rasterio
-geopandas
-pyogrio

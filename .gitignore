@@ -18,4 +18,3 @@ pipeline/*.log
 pipeline/noise_data/
 archive
 /markdown/bounds.gdb
-noise-clipped-region
