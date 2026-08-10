@@ -10,14 +10,17 @@ written continuously by CCG's own decode pipeline:
     Dynamic_CCG_AIS_UTC_Log_<date>.nc  -- one row per position report
     Static_CCG_AIS_UTC_Log_<date>.nc   -- one row per static/voyage report
 
-Unlike the CSV pipeline's files, these grow throughout the day rather than
-being complete once written. So instead of a done/not-done boolean, this
-script reuses ingestion_log as a per-file *cursor*: rows_loaded is how many
-rows of that file have been read so far, and each run only reads
-[rows_loaded : current_length) — cheap even though the files themselves are
-huge (30M+ rows / ~5GB for one day), since NetCDF slicing doesn't require
-loading the whole array. Processed in chunks so a script restart mid-file
-resumes from the last committed chunk instead of redoing the whole file.
+Output:
+Writes to the same PostgreSQL tables as ingest_csv.py (ais_positions,
+vessels), tagged source='CCG_terrestrial'. Unlike the CSV pipeline's files,
+these grow throughout the day rather than being complete once written. So
+instead of a done/not-done boolean, this script reuses ingestion_log as a
+per-file *cursor*: rows_loaded is how many rows of that file have been read
+so far, and each run only reads [rows_loaded : current_length) — cheap even
+though the files themselves are huge (30M+ rows / ~5GB for one day), since
+NetCDF slicing doesn't require loading the whole array. Processed in chunks
+so a script restart mid-file resumes from the last committed chunk instead
+of redoing the whole file.
 
 Commands to run:
     python pipeline/ingest_ccg_streaming.py

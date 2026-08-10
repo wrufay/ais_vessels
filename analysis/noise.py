@@ -55,11 +55,11 @@ it has to be resolved against whatever's actually been converted:
      (from /api/noise/range) differs from what was typed, rather than
      pretending the exact requested depth was used.
 
-As of writing, only 10m has actually been converted (for all three
-variables, at 50Hz) — see markdown/notes/JUL_14.md for the open question on
-how many more depths are worth converting, and at what fidelity (exact vs.
-nearest-available-with-labelling), which is a product/science call, not a
-purely technical one.
+As of writing, combined_noise has all 19 depths x 5 frequencies converted
+(for 2020-02 at least); vessel_noise and wind_noise still only have a
+single 50Hz/10m combo each. How many more depths are worth converting for
+those two, and at what fidelity (exact vs. nearest-available-with-labelling),
+is a product/science call, not a purely technical one.
 """
 
 import io

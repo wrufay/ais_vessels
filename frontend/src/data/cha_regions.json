@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Roseway Basin" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-64.9167, 43.2667],
+            [-64.9833, 42.7833],
+            [-65.5167, 42.65],
+            [-66.0833, 42.8667],
+            [-64.9167, 43.2667]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Grand Manan Basin" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-66.45, 44.8167],
+            [-66.2833, 44.7833],
+            [-66.2833, 44.6667],
+            [-66.3667, 44.55],
+            [-66.5, 44.4833],
+            [-66.6167, 44.4833],
+            [-66.6167, 44.7],
+            [-66.45, 44.8167]
+          ]
+        ]
+      }
+    }
+  ]
+}

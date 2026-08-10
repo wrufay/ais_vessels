@@ -46,4 +46,10 @@ Accepts CCG terrestrial and exactEarth satellite CSV formats. Resumable — alre
 
 - Containerized with Docker allowing database, backend and frontend to run as isolated services to keep data and development local to DFO network.
 
+## Mock API
+
+For frontend dev without the real Postgres DB running — serves real vessel
+data from a local SQLite snapshot instead. See [mock_api/README.md](mock_api/README.md)
+for setup.
+
 

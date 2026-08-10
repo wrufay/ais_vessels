@@ -1,0 +1,29 @@
+{
+  "vessel": {
+    "cargo": "#0072BD",
+    "tanker": "#D95319",
+    "fishing": "#EDB120",
+    "passenger": "#7E2F8E",
+    "search & rescue": "#77AC30",
+    "other": "#4DBEEE",
+    "unknown": "#A2142F"
+  },
+  "region": {
+    "CHA": "#3d5a80",
+    "WEA": "#ee6c4d",
+    "Uploaded": "#9b59b6",
+    "Drawn": "#98c1d9"
+  },
+  "speed": {
+    "thresholds": { "mid": 3, "fast": 10 },
+    "fill": { "slow": "#0a8754", "mid": "#ffc857", "fast": "#ee6c4d" },
+    "stroke": { "slow": "#076640", "mid": "#c49830", "fast": "#c44d2e" }
+  },
+  "track": {
+    "default": "#5a5a5a",
+    "multiVessel": [
+      "#4e79a7", "#f28e2b", "#e15759", "#76b7b2",
+      "#59a14f", "#edc948", "#b07aa1", "#ff9da7"
+    ]
+  }
+}

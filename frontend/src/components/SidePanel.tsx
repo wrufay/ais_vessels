@@ -1,4 +1,5 @@
-import { useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useDragResize } from "../useDragResize";
 
 export const PANEL_MIN_WIDTH = 240;
 export const PANEL_MAX_WIDTH = 480;
@@ -17,35 +18,20 @@ function SidePanel({
   onWidthChange: (width: number) => void;
   innerRef?: (el: HTMLDivElement | null) => void;
 }) {
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-
-  function onHandleMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    dragRef.current = { startX: e.clientX, startWidth: width };
-
-    function onMouseMove(ev: MouseEvent) {
-      if (!dragRef.current) return;
-      const delta = dragRef.current.startX - ev.clientX;
-      const next = Math.min(
-        PANEL_MAX_WIDTH,
-        Math.max(PANEL_MIN_WIDTH, dragRef.current.startWidth + delta)
-      );
-      onWidthChange(next);
-    }
-    function onMouseUp() {
-      dragRef.current = null;
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    }
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }
+  const onHandleMouseDown = useDragResize({
+    axis: "x",
+    invert: true,
+    min: PANEL_MIN_WIDTH,
+    max: PANEL_MAX_WIDTH,
+    getStart: () => width,
+    onChange: onWidthChange,
+  });
 
   return (
     <div
       ref={innerRef}
       style={{ width }}
-      className={`absolute right-0 top-0 h-full bg-white z-20 flex flex-col shadow-sm transition-transform duration-300 ease-in-out ${
+      className={`absolute right-0 top-0 h-full bg-white dark:bg-slate-900 z-20 flex flex-col shadow-sm transition-transform duration-300 ease-in-out ${
         open ? "translate-x-0" : "translate-x-full"
       }`}
     >
