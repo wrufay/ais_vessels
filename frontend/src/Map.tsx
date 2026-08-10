@@ -271,7 +271,7 @@ function ShipMap() {
     function onMouseMove(ev: MouseEvent) {
       if (!vesselListDragRef.current) return;
       const delta = ev.clientY - vesselListDragRef.current.startY;
-      const next = Math.min(500, Math.max(120, vesselListDragRef.current.startHeight + delta));
+      const next = Math.max(40, vesselListDragRef.current.startHeight + delta);
       setVesselListHeight(next);
     }
     function onMouseUp() {
@@ -295,7 +295,7 @@ function ShipMap() {
     function onMouseMove(ev: MouseEvent) {
       if (!regionListDragRef.current) return;
       const delta = ev.clientY - regionListDragRef.current.startY;
-      const next = Math.min(600, Math.max(120, regionListDragRef.current.startHeight + delta));
+      const next = Math.max(40, regionListDragRef.current.startHeight + delta);
       setRegionListHeight(next);
     }
     function onMouseUp() {
@@ -319,7 +319,7 @@ function ShipMap() {
     function onMouseMove(ev: MouseEvent) {
       if (!mooringListDragRef.current) return;
       const delta = ev.clientY - mooringListDragRef.current.startY;
-      const next = Math.min(600, Math.max(120, mooringListDragRef.current.startHeight + delta));
+      const next = Math.max(40, mooringListDragRef.current.startHeight + delta);
       setMooringListHeight(next);
     }
     function onMouseUp() {
