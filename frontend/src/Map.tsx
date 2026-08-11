@@ -12,13 +12,11 @@ import { getTopLeft, getWidth } from "ol/extent";
 import { fromLonLat, toLonLat } from "ol/proj";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
-import LineString from "ol/geom/LineString";
 import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
 import WebGLVectorLayer from "ol/layer/WebGLVector";
 import VectorSource from "ol/source/Vector";
-import { Style, Stroke, Fill, Icon, Circle as CircleStyle, Text } from "ol/style";
-import { getLength } from "ol/sphere";
+import { Style, Stroke, Fill, Icon, Circle as CircleStyle } from "ol/style";
 import Draw from "ol/interaction/Draw";
 import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
@@ -62,6 +60,8 @@ import { useTheme } from "./useTheme";
 import { useDragResize } from "./useDragResize";
 import { useStateRef } from "./useStateRef";
 import { useNoiseLayer, NOISE_EXTENT } from "./useNoiseLayer";
+import { useBathymetry } from "./useBathymetry";
+import { useMeasureTool } from "./useMeasureTool";
 import Tour from "./tour/Tour";
 import { createTourSteps } from "./tour/steps";
 
@@ -138,13 +138,9 @@ function ShipMap() {
   const drawRef = useRef<Draw | null>(null);
   const routeLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
-  const bathyLayerRef = useRef<TileLayer | null>(null);
   const basemapLayerRef = useRef<TileLayer | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
-  const measureSourceRef = useRef(new VectorSource());
-  const measureStartRef = useRef<number[] | null>(null);
-  const measureLineFeatureRef = useRef<Feature | null>(null);
 
   interface Popup {
     x: number;
@@ -178,13 +174,18 @@ function ShipMap() {
   const [regionName, setRegionName, regionNameRef] = useStateRef<string | null>(null);
   const [drawnPolygon, setDrawnPolygon] = useState<object | null>(null);
   const [drawing, setDrawing] = useState(false);
-  const [measuring, setMeasuring, measuringRef] = useStateRef(false, (m) => {
-    if (!m) {
-      measureStartRef.current = null;
-      measureLineFeatureRef.current = null;
-      measureSourceRef.current.clear();
-    }
-  });
+  const {
+    measureSourceRef,
+    measuring, setMeasuring, measuringRef,
+    handleMeasureClick,
+    handleMeasurePointerMove,
+  } = useMeasureTool();
+  const {
+    bathyLayerRef,
+    showBathymetry, setShowBathymetry,
+    bathyOpacity, setBathyOpacity,
+    bathyLoading, setBathyLoading,
+  } = useBathymetry();
   const [userSelectedRegions, setUserSelectedRegions] = useState<
     { name: string; geojson: object; type: string }[]
   >([]);
@@ -223,9 +224,6 @@ function ShipMap() {
   }, [clickedRegionNames]);
   const [uploadedRegions, setUploadedRegions] = useState<PresetRegion[]>([]);
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
-  const [showBathymetry, setShowBathymetry] = useState(false);
-  const [bathyOpacity, setBathyOpacity] = useState(0.75);
-  const [bathyLoading, setBathyLoading] = useState(false);
   const {
     noiseLayerRef,
     showNoise, setShowNoise,
@@ -570,43 +568,7 @@ function ShipMap() {
 
     map.on("click", (e) => {
       if (measuringRef.current) {
-        if (!measureStartRef.current) {
-          measureSourceRef.current.clear();
-          measureStartRef.current = e.coordinate;
-          const dot = new Feature({ geometry: new Point(e.coordinate) });
-          measureSourceRef.current.addFeature(dot);
-          const line = new Feature({ geometry: new LineString([e.coordinate, e.coordinate]) });
-          measureSourceRef.current.addFeature(line);
-          measureLineFeatureRef.current = line;
-        } else {
-          const line = measureLineFeatureRef.current;
-          const start = measureStartRef.current;
-          if (line && start) {
-            const lineGeom = line.getGeometry() as LineString;
-            lineGeom.setCoordinates([start, e.coordinate]);
-            const metres = getLength(lineGeom, { projection: "EPSG:3857" });
-            const label = metres >= 1000
-              ? `${(metres / 1000).toFixed(2)} km`
-              : `${Math.round(metres)} m`;
-            const mid = [(start[0] + e.coordinate[0]) / 2, (start[1] + e.coordinate[1]) / 2];
-            const labelFeature = new Feature({ geometry: new Point(mid) });
-            labelFeature.setStyle(new Style({
-              text: new Text({
-                text: label,
-                font: "bold 11px Inter, sans-serif",
-                fill: new Fill({ color: "#fff" }),
-                backgroundFill: new Fill({ color: "rgba(41,50,65,0.85)" }),
-                backgroundStroke: new Stroke({ color: "rgba(41,50,65,0.9)", width: 1 }),
-                padding: [3, 5, 3, 5],
-                offsetY: -14,
-              }),
-            }));
-            measureSourceRef.current.addFeature(labelFeature);
-          }
-          measureSourceRef.current.addFeature(new Feature({ geometry: new Point(e.coordinate) }));
-          measureStartRef.current = null;
-          measureLineFeatureRef.current = null;
-        }
+        handleMeasureClick(e.coordinate);
         return;
       }
 
@@ -667,12 +629,7 @@ function ShipMap() {
       setCursorCoord({ lat, lon });
 
       if (measuringRef.current) {
-        if (measureStartRef.current && measureLineFeatureRef.current) {
-          (measureLineFeatureRef.current.getGeometry() as LineString).setCoordinates([
-            measureStartRef.current,
-            e.coordinate,
-          ]);
-        }
+        handleMeasurePointerMove(e.coordinate);
         map.getTargetElement().style.cursor = "crosshair";
         return;
       }
@@ -697,14 +654,6 @@ function ShipMap() {
     mapObj.current = map;
     return () => map.setTarget(undefined);
   }, []);
-
-  useEffect(() => {
-    bathyLayerRef.current?.setVisible(showBathymetry);
-  }, [showBathymetry]);
-
-  useEffect(() => {
-    bathyLayerRef.current?.setOpacity(bathyOpacity);
-  }, [bathyOpacity]);
 
   useEffect(() => {
     if (!basemapLayerRef.current) return;

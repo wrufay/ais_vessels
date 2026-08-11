@@ -1,6 +1,5 @@
 node_modules/
 venv/
-.venv/
 __pycache__/
 *.pyc
 .env
@@ -16,5 +15,3 @@ pgdata_backup*.tar.gz
 *.sqlite
 pipeline/*.log
 pipeline/noise_data/
-archive
-/markdown/bounds.gdb
