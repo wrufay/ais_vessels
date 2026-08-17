@@ -52,13 +52,16 @@ import MooringPanel from "./components/MooringPanel";
 import RegionsPanel from "./components/RegionsPanel";
 import LayersPanel from "./components/LayersPanel";
 import TracksPanel from "./components/TracksPanel";
+import ImpactsPanel from "./components/ImpactsPanel";
+import NoiseImpactModal from "./components/NoiseImpactModal";
+import { useNoiseImpact } from "./useNoiseImpact";
 import { useTheme } from "./useTheme";
 import { useDragResize } from "./useDragResize";
 import { useStateRef } from "./useStateRef";
 import { useNoiseLayer, NOISE_EXTENT } from "./useNoiseLayer";
 import { useBathymetry } from "./useBathymetry";
 import { useMeasureTool } from "./useMeasureTool";
-import { useBasemap } from "./useBasemap";
+import { useBasemap, BASEMAPS } from "./useBasemap";
 import { useTour } from "./useTour";
 import Tour from "./tour/Tour";
 
@@ -193,8 +196,14 @@ function ShipMap() {
   const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const {
+    showImpactsPanel, setShowImpactsPanel,
+    showParamsModal, setShowParamsModal,
+    running: noiseImpactRunning,
+    handleRun: handleRunNoiseImpact,
+  } = useNoiseImpact();
   const [lastOpenedPanel, setLastOpenedPanel] = useState<
-    "vessel" | "region" | "layer" | "mooring"
+    "vessel" | "region" | "layer" | "mooring" | "impacts"
   >("vessel");
   const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(
     new Set()
@@ -265,7 +274,7 @@ function ShipMap() {
   const [vesselOpen, setVesselOpen] = useState(false);
   const [regionDotOpen, setRegionDotOpen] = useState(false);
   const [vesselListOpen, setVesselListOpen] = useState(true);
-  const [vesselListHeight, setVesselListHeight] = useState(240);
+  const [vesselListHeight, setVesselListHeight] = useState(140);
   const onVesselListResizeMouseDown = useDragResize({
     axis: "y",
     min: 40,
@@ -329,20 +338,23 @@ function ShipMap() {
     else if (showRegionPanel) setLastOpenedPanel("region");
     else if (showLayerPanel) setLastOpenedPanel("layer");
     else if (showMooringPanel) setLastOpenedPanel("mooring");
-  }, [showVesselPanel, showRegionPanel, showLayerPanel, showMooringPanel]);
+    else if (showImpactsPanel) setLastOpenedPanel("impacts");
+  }, [showVesselPanel, showRegionPanel, showLayerPanel, showMooringPanel, showImpactsPanel]);
   const anyPanelOpen =
-    showVesselPanel || showRegionPanel || showLayerPanel || showMooringPanel;
+    showVesselPanel || showRegionPanel || showLayerPanel || showMooringPanel || showImpactsPanel;
   function closeActivePanel() {
     setShowVesselPanel(false);
     setShowRegionPanel(false);
     setShowLayerPanel(false);
     setShowMooringPanel(false);
+    setShowImpactsPanel(false);
   }
   function openLastPanel() {
     if (lastOpenedPanel === "vessel") setShowVesselPanel(true);
     else if (lastOpenedPanel === "region") setShowRegionPanel(true);
     else if (lastOpenedPanel === "layer") setShowLayerPanel(true);
     else if (lastOpenedPanel === "mooring") setShowMooringPanel(true);
+    else if (lastOpenedPanel === "impacts") setShowImpactsPanel(true);
   }
   useEffect(() => {
     regionTrackLayerRef.current?.updateStyleVariables({ dotSize: regionDotSize });
@@ -488,11 +500,12 @@ function ShipMap() {
       target: mapRef.current,
       layers: [
         (() => {
+          const initialBasemap = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0];
           const layer = new TileLayer({
             source: new XYZ({
-              url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-              attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',
-              maxZoom: 18,
+              url: initialBasemap.url,
+              attributions: initialBasemap.attributions,
+              maxZoom: initialBasemap.maxZoom,
             }),
           });
           basemapLayerRef.current = layer;
@@ -990,10 +1003,12 @@ function ShipMap() {
         showRegionPanel={showRegionPanel}
         showLayerPanel={showLayerPanel}
         showMooringPanel={showMooringPanel}
+        showImpactsPanel={showImpactsPanel}
         setShowVesselPanel={setShowVesselPanel}
         setShowRegionPanel={setShowRegionPanel}
         setShowMooringPanel={setShowMooringPanel}
         setShowLayerPanel={setShowLayerPanel}
+        setShowImpactsPanel={setShowImpactsPanel}
         measuring={measuring}
         setMeasuring={setMeasuring}
         drawnPolygon={drawnPolygon}
@@ -1149,6 +1164,10 @@ function ShipMap() {
         />
       </SidePanel>
 
+      <SidePanel open={showImpactsPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("impactsPanel")}>
+        <ImpactsPanel onOpenModal={() => setShowParamsModal(true)} />
+      </SidePanel>
+
       {/* Vessel type filter modal */}
       {showTypeFilter && (
         <VesselTypeFilterModal
@@ -1159,6 +1178,15 @@ function ShipMap() {
             setShowTypeFilter(false);
           }}
           onClose={() => setShowTypeFilter(false)}
+        />
+      )}
+
+      {/* Noise impact parameter modal */}
+      {showParamsModal && (
+        <NoiseImpactModal
+          running={noiseImpactRunning}
+          onRun={handleRunNoiseImpact}
+          onClose={() => setShowParamsModal(false)}
         />
       )}
 

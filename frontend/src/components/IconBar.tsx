@@ -84,15 +84,33 @@ const layersIcon = (
   </svg>
 );
 
+const impactsIcon = (
+  <svg
+    className="w-4 h-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="5" />
+    <circle cx="12" cy="12" r="9" opacity="0.6" />
+  </svg>
+);
+
 function IconBar({
   showVesselPanel,
   showRegionPanel,
   showLayerPanel,
   showMooringPanel,
+  showImpactsPanel,
   setShowVesselPanel,
   setShowRegionPanel,
   setShowMooringPanel,
   setShowLayerPanel,
+  setShowImpactsPanel,
   measuring,
   setMeasuring,
   drawnPolygon,
@@ -110,6 +128,7 @@ function IconBar({
   showRegionPanel: boolean;
   showLayerPanel: boolean;
   showMooringPanel: boolean;
+  showImpactsPanel: boolean;
   measuring: boolean;
   drawnPolygon: object | null;
   regionLoading: boolean;
@@ -119,6 +138,7 @@ function IconBar({
   setShowMooringPanel: Dispatch<SetStateAction<boolean>>;
   setMeasuring: Dispatch<SetStateAction<boolean>>;
   setShowLayerPanel: Dispatch<SetStateAction<boolean>>;
+  setShowImpactsPanel: Dispatch<SetStateAction<boolean>>;
   onAnalyse: () => void;
   onAllTraffic: () => void;
   onClearTraffic: () => void;
@@ -127,8 +147,8 @@ function IconBar({
   isDark: boolean;
   toggleTheme: () => void;
 }) {
-  // Only one panel is open at a time -- toggling one closes the other 3.
-  const panelSetters = [setShowVesselPanel, setShowRegionPanel, setShowMooringPanel, setShowLayerPanel];
+  // Only one panel is open at a time -- toggling one closes the other 4.
+  const panelSetters = [setShowVesselPanel, setShowRegionPanel, setShowMooringPanel, setShowLayerPanel, setShowImpactsPanel];
   function togglePanel(setShow: Dispatch<SetStateAction<boolean>>) {
     panelSetters.forEach((setter) => (setter === setShow ? setter((p) => !p) : setter(false)));
   }
@@ -193,6 +213,16 @@ function IconBar({
           icon={layersIcon}
           active={showLayerPanel}
           onClick={() => togglePanel(setShowLayerPanel)}
+        />
+      </div>
+
+      <div ref={registerTarget("iconImpacts")}>
+        <IconBarButton
+          label="Impacts"
+          title="Calculate and view underwater noise impacts on marine species."
+          icon={impactsIcon}
+          active={showImpactsPanel}
+          onClick={() => togglePanel(setShowImpactsPanel)}
         />
       </div>
 

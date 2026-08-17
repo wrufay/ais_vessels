@@ -119,7 +119,7 @@ function TracksPanel({
         </div>
       </div>
 
-      <div ref={registerTarget("vesselList")} className="flex flex-col shrink-0">
+      <div ref={registerTarget("vesselList")} className="flex flex-col min-h-0">
       <div className="px-3 shrink-0">
         <CollapsibleHeader
           open={vesselListOpen}
@@ -159,9 +159,12 @@ function TracksPanel({
               })()}
             </button>
           </div>
+          <div
+            style={{ height: vesselListHeight }}
+            className="px-2 min-h-0"
+          >
           <Virtuoso
-            style={{ height: vesselListHeight, overflowX: "hidden" }}
-            className="px-2 shrink-0"
+            style={{ height: "100%", overflowX: "hidden" }}
             data={filtered}
             components={{
               EmptyPlaceholder: () => (
@@ -212,6 +215,7 @@ function TracksPanel({
           );
         }}
           />
+          </div>
           <div
             onMouseDown={onVesselListResizeMouseDown}
             className="h-1.5 mx-2 -my-0.5 rounded-full cursor-row-resize hover:bg-[#98c1d9]/40 active:bg-[#98c1d9]/60"
