@@ -48,32 +48,30 @@ function ImpactsPanel({
 
       {result && (
         <div className="px-5 pb-6 flex flex-col gap-2">
+          <div className="pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            Source
+          </div>
           <div className="text-xs text-slate-400 dark:text-slate-500">
-            Source: {result.source.lat.toFixed(3)}, {result.source.lon.toFixed(3)}
+            {result.source.lat.toFixed(3)}, {result.source.lon.toFixed(3)}
           </div>
           {result.using_fixture_data && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] leading-relaxed">
               Synthetic placeholder data — not scientifically meaningful.
             </div>
           )}
-          {undefinedCombos.length > 0 && (
-            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] leading-relaxed">
-              No threshold is defined for {undefinedCombos.length} of your selected
-              combination{undefinedCombos.length > 1 ? "s" : ""} — not in Noise_Impact_Thresholds.xlsx:
-              <ul className="mt-1 list-disc list-inside">
-                {undefinedCombos.slice(0, 5).map((c) => (
-                  <li key={c}>{c}</li>
-                ))}
-              </ul>
-              {undefinedCombos.length > 5 && <div>…and {undefinedCombos.length - 5} more</div>}
-            </div>
-          )}
+          <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            Legend
+          </div>
           <NoiseImpactLegend
             result={result}
             visibleZoneKeys={visibleZoneKeys}
             siteName={siteName}
             siteMeta={siteMeta}
           />
+
+          <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            Quantitative results
+          </div>
           {result.zones.length === 0 ? (
             <div className="text-xs text-slate-400 dark:text-slate-500">
               No zones matched the selected hearing groups/impact types/metrics.
@@ -134,6 +132,19 @@ function ImpactsPanel({
                 as the source model's own reference plots.
               </div>
             </>
+          )}
+
+          {undefinedCombos.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] leading-relaxed mt-2">
+              No threshold is defined for {undefinedCombos.length} of your selected
+              combination{undefinedCombos.length > 1 ? "s" : ""} — not in Noise_Impact_Thresholds.xlsx:
+              <ul className="mt-1 list-disc list-inside">
+                {undefinedCombos.slice(0, 5).map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+              {undefinedCombos.length > 5 && <div>…and {undefinedCombos.length - 5} more</div>}
+            </div>
           )}
         </div>
       )}

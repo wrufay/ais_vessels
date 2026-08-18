@@ -20,6 +20,28 @@ const resetIcon = (
 const inputClass =
   "text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition";
 
+// "Something's still required" marker for the summary line at the bottom
+// -- individual fields/categories just carry a plain dot instead (see the
+// tab buttons below); this fuller icon is reserved for the one place that
+// also carries the explanatory text.
+function MissingIcon() {
+  return (
+    <svg
+      className="w-3.5 h-3.5 shrink-0"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="8" x2="12" y2="13" />
+      <line x1="12" y1="16" x2="12" y2="16.01" />
+    </svg>
+  );
+}
+
 // A plain checkbox list, no caret -- used for Impact types / Metrics,
 // which are short enough (4 and 2 items) that collapsing them just adds an
 // extra click for no space savings. Hearing groups is the one category
@@ -30,17 +52,21 @@ function CheckboxList({
   options,
   selected,
   onToggle,
+  hideSelectAll,
 }: {
   label: string;
   options: string[];
   selected: string[];
   onToggle: (value: string) => void;
+  // Metrics only has 2 options and defaults to both selected already --
+  // select-all/unselect-all buttons don't save a click there, just clutter.
+  hideSelectAll?: boolean;
 }) {
   return (
     <div>
       <div className="flex items-center gap-2 py-1.5">
         <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">{label}</span>
-        {selected.length < options.length && (
+        {!hideSelectAll && selected.length < options.length && (
           <button
             type="button"
             onClick={() => options.forEach((o) => !selected.includes(o) && onToggle(o))}
@@ -49,7 +75,7 @@ function CheckboxList({
             Select all
           </button>
         )}
-        {selected.length > 0 && (
+        {!hideSelectAll && selected.length > 0 && (
           <button
             type="button"
             onClick={() => options.forEach((o) => selected.includes(o) && onToggle(o))}
@@ -62,18 +88,24 @@ function CheckboxList({
           {selected.length}/{options.length}
         </span>
       </div>
-      <div className="flex flex-col gap-0.5 pl-1 pb-1">
-        {options.map((o) => (
-          <label key={o} className="flex items-center gap-2 py-0.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={selected.includes(o)}
-              onChange={() => onToggle(o)}
-              className="accent-[#3d5a80] w-3.5 h-3.5 rounded shrink-0"
-            />
-            <span className="text-xs text-slate-600 dark:text-slate-300">{o}</span>
-          </label>
-        ))}
+      <div className="flex flex-wrap gap-1.5 pl-1 pb-1">
+        {options.map((o) => {
+          const on = selected.includes(o);
+          return (
+            <button
+              key={o}
+              type="button"
+              onClick={() => onToggle(o)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium font-geologica transition ${
+                on
+                  ? "bg-[#3d5a80] text-white"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              {o}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -275,6 +307,8 @@ function NoiseImpactParamsPanel({
   setSelSingleStrike,
   nStrikesPerPile,
   setNStrikesPerPile,
+  nPiles,
+  assessmentPeriodHours,
   running,
   error,
   onRun,
@@ -301,6 +335,8 @@ function NoiseImpactParamsPanel({
   setSelSingleStrike: (v: number) => void;
   nStrikesPerPile: number;
   setNStrikesPerPile: (v: number) => void;
+  nPiles: number;
+  assessmentPeriodHours: number;
   running: boolean;
   error: string | null;
   onRun: () => void;
@@ -312,21 +348,42 @@ function NoiseImpactParamsPanel({
     Object.fromEntries(HEARING_GROUP_CATEGORIES.map((c) => [c.label, true]))
   );
   const [tab, setTab] = useState<Tab>("scenario");
+  // Metrics only has two options (SPL_peak, SEL_cum) and SPL_peak covers
+  // the normal case -- collapsed by default so it reads as an advanced/
+  // rarely-touched override rather than a peer of hearing groups/impact
+  // types.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Every category needs at least one selection, and the source-level
   // fields need real (positive) values -- a compute call with an empty
   // category always comes back with zero zones, and a 0 dB/0-strike
   // source is meaningless, so there's nothing to gain from letting Run
-  // fire before all of these are actually set.
+  // fire before all of these are actually set. Tracked as individual flags
+  // so each field/tab can show its own inline dot that updates live, in
+  // addition to (not instead of) the summary line at the bottom.
+  const siteInvalid = !site;
+  const hearingGroupsInvalid = hearingGroups.length === 0;
+  const impactTypesInvalid = impactTypes.length === 0;
+  const metricsInvalid = metrics.length === 0;
+  const splPeakInvalid = !(splPeak > 0);
+  const selSingleStrikeInvalid = !(selSingleStrike > 0);
+  const nStrikesPerPileInvalid = !(nStrikesPerPile > 0);
+  const nPilesInvalid = !(nPiles > 0);
+  const assessmentPeriodInvalid = !(assessmentPeriodHours > 0);
+
+  const pileInvalid = splPeakInvalid || selSingleStrikeInvalid || nStrikesPerPileInvalid || nPilesInvalid || assessmentPeriodInvalid;
+  const speciesInvalid = hearingGroupsInvalid || impactTypesInvalid || metricsInvalid;
+  const tabInvalid: Record<Tab, boolean> = { scenario: siteInvalid, pile: pileInvalid, species: speciesInvalid };
+  const canRun = !siteInvalid && !pileInvalid && !speciesInvalid;
+
   const missing: string[] = [];
-  if (!site) missing.push("a site");
-  if (hearingGroups.length === 0) missing.push("a hearing group");
-  if (impactTypes.length === 0) missing.push("an impact type");
-  if (metrics.length === 0) missing.push("a metric");
-  if (!(splPeak > 0)) missing.push("a peak SPL");
-  if (!(selSingleStrike > 0)) missing.push("an SEL/strike");
-  if (!(nStrikesPerPile > 0)) missing.push("strikes/pile");
-  const canRun = missing.length === 0;
+  if (siteInvalid) missing.push("a site");
+  if (hearingGroupsInvalid) missing.push("a hearing group");
+  if (impactTypesInvalid) missing.push("an impact type");
+  if (metricsInvalid) missing.push("a metric");
+  if (splPeakInvalid) missing.push("a peak SPL");
+  if (selSingleStrikeInvalid) missing.push("an SEL/strike");
+  if (nStrikesPerPileInvalid) missing.push("strikes/pile");
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -340,13 +397,14 @@ function NoiseImpactParamsPanel({
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px transition ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition ${
               tab === t.id
                 ? "border-[#3d5a80] text-[#3d5a80] dark:border-[#98c1d9] dark:text-[#98c1d9]"
                 : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
             }`}
           >
             {t.label}
+            {tabInvalid[t.id] && <span className="w-1.5 h-1.5 rounded-full bg-red-500 dark:bg-red-400 shrink-0" />}
           </button>
         ))}
       </div>
@@ -393,8 +451,11 @@ function NoiseImpactParamsPanel({
             <NumberField label="Peak SPL (dB)" value={splPeak} onChange={setSplPeak} />
             <NumberField label="SEL / strike (dB)" value={selSingleStrike} onChange={setSelSingleStrike} />
             <NumberField label="Strikes / pile" value={nStrikesPerPile} onChange={setNStrikesPerPile} />
-            <div className="text-xs text-slate-400 dark:text-slate-500">
-              1 pile · 24-hour assessment period
+            {/* Not user-adjustable yet -- shown so the request's full
+                parameter set isn't hidden, just not editable right now. */}
+            <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
+              <div>Number of piles — {nPiles} (Default)</div>
+              <div>Assessment period — {assessmentPeriodHours} hours (Default)</div>
             </div>
           </div>
         )}
@@ -417,15 +478,33 @@ function NoiseImpactParamsPanel({
               selected={impactTypes}
               onToggle={onToggleImpactType}
             />
-            <CheckboxList
-              label="Metrics"
-              options={options.metrics}
-              selected={metrics}
-              onToggle={onToggleMetric}
-            />
             <div className="grid grid-cols-2 gap-2.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <NumberField label="Depth min (m)" value={depthMin} onChange={setDepthMin} step={0.1} />
               <NumberField label="Depth max (m)" value={depthMax} onChange={setDepthMax} step={0.1} />
+            </div>
+
+            <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <CollapsibleHeader
+                open={advancedOpen}
+                onToggle={() => setAdvancedOpen((p) => !p)}
+                label="Advanced parameters"
+              />
+              {advancedOpen && (
+                <>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pb-1">
+                    By default both metrics run and only the larger impact
+                    zone is shown per hearing group — pick just one, or
+                    view both, to override.
+                  </p>
+                  <CheckboxList
+                    label="Metrics"
+                    options={options.metrics}
+                    selected={metrics}
+                    onToggle={onToggleMetric}
+                    hideSelectAll
+                  />
+                </>
+              )}
             </div>
           </div>
         )}
@@ -439,7 +518,8 @@ function NoiseImpactParamsPanel({
 
       <div className="flex flex-col gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
         {!canRun && !running && (
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="flex items-center gap-1.5 text-[11px] text-red-600 dark:text-red-400">
+            <MissingIcon />
             Missing {missing.join(", ")}
           </span>
         )}

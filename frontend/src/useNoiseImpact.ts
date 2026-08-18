@@ -55,6 +55,13 @@ export function useNoiseImpact(apiBase: string) {
   const [showImpactsPanel, setShowImpactsPanel] = useState(false);
   const [showParamsPanel, setShowParamsPanel] = useState(false);
 
+  // Params auto-hides when Impacts closes, so it never lingers open on its
+  // own once its parent panel is gone -- but doesn't auto-open when
+  // Impacts opens; that's still the "Show parameters" button's job.
+  useEffect(() => {
+    if (!showImpactsPanel) setShowParamsPanel(false);
+  }, [showImpactsPanel]);
+
   const [sites, setSites] = useState<Record<string, NoiseImpactSite>>({});
   const [options, setOptions] = useState<NoiseImpactOptions>({
     hearing_groups: [],
@@ -74,14 +81,18 @@ export function useNoiseImpact(apiBase: string) {
   const DEFAULT_SPL_PEAK = 220;
   const DEFAULT_SEL_SINGLE_STRIKE = 200;
   const DEFAULT_N_STRIKES_PER_PILE = 5000;
+  // Backend defaults (main.py's NoiseImpactRequest) -- now sent explicitly
+  // instead of relying on the backend filling them in, so they're
+  // adjustable like every other pile-driving param.
+  const DEFAULT_N_PILES = 1;
+  const DEFAULT_ASSESSMENT_PERIOD_HOURS = 24;
   const [depthMin, setDepthMin] = useState(DEFAULT_DEPTH_MIN);
   const [depthMax, setDepthMax] = useState(DEFAULT_DEPTH_MAX);
   const [splPeak, setSplPeak] = useState(DEFAULT_SPL_PEAK);
   const [selSingleStrike, setSelSingleStrike] = useState(DEFAULT_SEL_SINGLE_STRIKE);
   const [nStrikesPerPile, setNStrikesPerPile] = useState(DEFAULT_N_STRIKES_PER_PILE);
-  // n_piles and assessment_period_hours are fixed at 1 pile / 24 hours for
-  // now (not user-adjustable) -- left off the request body entirely so the
-  // backend's own defaults (main.py's NoiseImpactRequest) apply.
+  const [nPiles, setNPiles] = useState(DEFAULT_N_PILES);
+  const [assessmentPeriodHours, setAssessmentPeriodHours] = useState(DEFAULT_ASSESSMENT_PERIOD_HOURS);
 
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,9 +119,13 @@ export function useNoiseImpact(apiBase: string) {
       .then((data: NoiseImpactOptions | null) => {
         if (!data) return;
         // Only populate the option lists (for the checkboxes to render) --
-        // leave hearingGroups/impactTypes/metrics at their empty-array
-        // initial state so nothing is pre-checked; the user picks.
+        // leave hearingGroups/impactTypes at their empty-array initial
+        // state so nothing is pre-checked; the user picks. Metrics is the
+        // one exception: both start selected (see handleRun, which only
+        // shows the larger-zone metric per hearing group by default) so
+        // the common case needs no setup at all.
         setOptions(data);
+        setMetrics((prev) => (prev.length > 0 ? prev : data.metrics));
       })
       .catch(() => {});
   }, [apiBase]);
@@ -148,6 +163,8 @@ export function useNoiseImpact(apiBase: string) {
     setSplPeak(DEFAULT_SPL_PEAK);
     setSelSingleStrike(DEFAULT_SEL_SINGLE_STRIKE);
     setNStrikesPerPile(DEFAULT_N_STRIKES_PER_PILE);
+    setNPiles(DEFAULT_N_PILES);
+    setAssessmentPeriodHours(DEFAULT_ASSESSMENT_PERIOD_HOURS);
   }
 
   async function handleRun() {
@@ -158,7 +175,9 @@ export function useNoiseImpact(apiBase: string) {
       metrics.length > 0 &&
       splPeak > 0 &&
       selSingleStrike > 0 &&
-      nStrikesPerPile > 0;
+      nStrikesPerPile > 0 &&
+      nPiles > 0 &&
+      assessmentPeriodHours > 0;
     if (!ready || running) return;
     setRunning(true);
     setError(null);
@@ -175,6 +194,8 @@ export function useNoiseImpact(apiBase: string) {
           spl_peak: splPeak,
           sel_single_strike: selSingleStrike,
           n_strikes_per_pile: nStrikesPerPile,
+          n_piles: nPiles,
+          assessment_period_hours: assessmentPeriodHours,
         }),
       });
       if (!res.ok) {
@@ -183,7 +204,28 @@ export function useNoiseImpact(apiBase: string) {
       }
       const data: NoiseImpactResult = await res.json();
       setResult(data);
-      setVisibleZoneKeys(new Set(data.zones.map(zoneKey)));
+
+      // Default visibility: when a hearing-group/impact-type pair has a
+      // zone under more than one metric (the common case, since Metrics
+      // defaults to both selected -- see the options-fetch effect above),
+      // only the larger of the two starts visible, matching the "just
+      // show me the worst case" behavior described in the Metrics
+      // advanced-parameters note. Every zone still exists in the results
+      // list either way -- this only picks what's pre-toggled on; the
+      // smaller one is one click away.
+      const byGroup = new Map<string, typeof data.zones>();
+      data.zones.forEach((z) => {
+        const groupKey = `${z.hearing_group}|${z.impact}`;
+        const group = byGroup.get(groupKey);
+        if (group) group.push(z);
+        else byGroup.set(groupKey, [z]);
+      });
+      const defaultVisible = new Set<string>();
+      byGroup.forEach((zonesForGroup) => {
+        const largest = zonesForGroup.reduce((a, b) => (b.area_km2 > a.area_km2 ? b : a));
+        defaultVisible.add(zoneKey(largest));
+      });
+      setVisibleZoneKeys(defaultVisible);
 
       // A selected hearing-group/impact-type/metric combo with no
       // matching row in Noise_Impact_Thresholds.xlsx never appears in
@@ -208,10 +250,9 @@ export function useNoiseImpact(apiBase: string) {
       }
       setUndefinedCombos(missing);
 
-      // Close the params panel and surface results in the Impacts panel
-      // — keep it open on error instead, so the user can adjust params
-      // without re-opening it.
-      setShowParamsPanel(false);
+      // Params panel stays open (not auto-closed) -- surface results in
+      // the Impacts panel underneath while leaving inputs visible/editable
+      // for another run, rather than forcing a re-open to tweak anything.
       setShowImpactsPanel(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to compute noise impact.");
@@ -233,6 +274,8 @@ export function useNoiseImpact(apiBase: string) {
     splPeak, setSplPeak,
     selSingleStrike, setSelSingleStrike,
     nStrikesPerPile, setNStrikesPerPile,
+    nPiles, setNPiles,
+    assessmentPeriodHours, setAssessmentPeriodHours,
     running, error, result,
     resetParams,
     visibleZoneKeys, toggleZoneVisibility,

@@ -183,89 +183,99 @@ function IconBar({
         {measuring ? "Cancel" : "Measure"}
       </button>
 
+      {/* Tracks..Clear as one block, centered in whatever space is left
+          between the top (Tour/Measure) and bottom (speed legend/theme)
+          groups -- my-auto (not justify-center on the outer flex) so that
+          if content ever overflows a short viewport, the auto margins
+          collapse to 0 instead of clipping the top of the block out of
+          scroll range the way justify-center would. */}
+      <div className="w-full flex flex-col items-center gap-2 my-auto">
+        <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
+
+        <div ref={registerTarget("iconTracks")}>
+          <IconBarButton
+            label="Tracks"
+            title="View individual vessels displayed on the map."
+            icon={tracksIcon}
+            active={showVesselPanel}
+            onClick={() => togglePanel(setShowVesselPanel)}
+          />
+        </div>
+
+        <div ref={registerTarget("iconMoorings")}>
+          <IconBarButton
+            label="Moorings"
+            title="View and manage mooring locations on the map."
+            icon={mooringIcon}
+            active={showMooringPanel}
+            onClick={() => togglePanel(setShowMooringPanel)}
+          />
+        </div>
+
+        <div ref={registerTarget("iconRegions")}>
+          <IconBarButton
+            label="Regions"
+            title="Analyze pre-defined and custom-select regions."
+            icon={regionsIcon}
+            active={showRegionPanel}
+            onClick={() => togglePanel(setShowRegionPanel)}
+          />
+        </div>
+
+        <div ref={registerTarget("iconMap")}>
+          <IconBarButton
+            label="Map"
+            title="Switch base map and toggle data overlays."
+            icon={layersIcon}
+            active={showLayerPanel}
+            onClick={() => togglePanel(setShowLayerPanel)}
+          />
+        </div>
+
+        <div ref={registerTarget("iconImpacts")}>
+          <IconBarButton
+            label="Impacts"
+            title="Calculate and view underwater noise impacts on marine species."
+            icon={impactsIcon}
+            active={showImpactsPanel}
+            onClick={() => togglePanel(setShowImpactsPanel)}
+          />
+        </div>
+
+        <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
+
+        <div ref={registerTarget("iconAnalyseGroup")} className="w-full flex flex-col gap-2">
+          <button
+            title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
+            disabled={!drawnPolygon || regionLoading}
+            onClick={onAnalyse}
+            className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {regionLoading ? "..." : "Analyse"}
+          </button>
+          <button
+            title="See all vessel traffic in selected region"
+            disabled={!drawnPolygon || regionLoading}
+            onClick={onAllTraffic}
+            className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            All traffic
+          </button>
+          <button
+            title="Clear region traffic dots"
+            disabled={!viewVesselsMode}
+            onClick={onClearTraffic}
+            className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      {/* Speed legend + theme toggle -- glued to the bottom (this is the
+          last flex child, right after the my-auto block above, so it
+          naturally lands flush against the bar's bottom edge). */}
       <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
-
-      <div ref={registerTarget("iconTracks")}>
-        <IconBarButton
-          label="Tracks"
-          title="View individual vessels displayed on the map."
-          icon={tracksIcon}
-          active={showVesselPanel}
-          onClick={() => togglePanel(setShowVesselPanel)}
-        />
-      </div>
-
-      <div ref={registerTarget("iconMoorings")}>
-        <IconBarButton
-          label="Moorings"
-          title="View and manage mooring locations on the map."
-          icon={mooringIcon}
-          active={showMooringPanel}
-          onClick={() => togglePanel(setShowMooringPanel)}
-        />
-      </div>
-
-      <div ref={registerTarget("iconRegions")}>
-        <IconBarButton
-          label="Regions"
-          title="Analyze pre-defined and custom-select regions."
-          icon={regionsIcon}
-          active={showRegionPanel}
-          onClick={() => togglePanel(setShowRegionPanel)}
-        />
-      </div>
-
-      <div ref={registerTarget("iconMap")}>
-        <IconBarButton
-          label="Map"
-          title="Switch base map and toggle data overlays."
-          icon={layersIcon}
-          active={showLayerPanel}
-          onClick={() => togglePanel(setShowLayerPanel)}
-        />
-      </div>
-
-      <div ref={registerTarget("iconImpacts")}>
-        <IconBarButton
-          label="Impacts"
-          title="Calculate and view underwater noise impacts on marine species."
-          icon={impactsIcon}
-          active={showImpactsPanel}
-          onClick={() => togglePanel(setShowImpactsPanel)}
-        />
-      </div>
-
-      <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
-
-      <div ref={registerTarget("iconAnalyseGroup")} className="w-full flex flex-col gap-2">
-        <button
-          title="Generate plots of daily mean speed, types and vessel traffic density heat-map."
-          disabled={!drawnPolygon || regionLoading}
-          onClick={onAnalyse}
-          className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          {regionLoading ? "..." : "Analyse"}
-        </button>
-        <button
-          title="See all vessel traffic in selected region"
-          disabled={!drawnPolygon || regionLoading}
-          onClick={onAllTraffic}
-          className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          All traffic
-        </button>
-        <button
-          title="Clear region traffic dots"
-          disabled={!viewVesselsMode}
-          onClick={onClearTraffic}
-          className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          Clear
-        </button>
-      </div>
-
-      <hr className="w-full border-slate-200 dark:border-slate-700 my-0.5" />
-      {/* legend */}
       <div className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 mb-0.5">Speed (kn)</div>
       {([
         [SPEED_STYLE.fill.slow, `< ${SPEED_STYLE.thresholds.mid}`],

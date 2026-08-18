@@ -212,6 +212,8 @@ function ShipMap() {
     splPeak: noiseImpactSplPeak, setSplPeak: setNoiseImpactSplPeak,
     selSingleStrike: noiseImpactSelSingleStrike, setSelSingleStrike: setNoiseImpactSelSingleStrike,
     nStrikesPerPile: noiseImpactNStrikesPerPile, setNStrikesPerPile: setNoiseImpactNStrikesPerPile,
+    nPiles: noiseImpactNPiles,
+    assessmentPeriodHours: noiseImpactAssessmentPeriodHours,
     running: noiseImpactRunning, error: noiseImpactError, result: noiseImpactResult,
     visibleZoneKeys: noiseImpactVisibleZoneKeys, toggleZoneVisibility: toggleNoiseImpactZoneVisibility,
     undefinedCombos: noiseImpactUndefinedCombos,
@@ -1394,6 +1396,8 @@ function ShipMap() {
           setSelSingleStrike={setNoiseImpactSelSingleStrike}
           nStrikesPerPile={noiseImpactNStrikesPerPile}
           setNStrikesPerPile={setNoiseImpactNStrikesPerPile}
+          nPiles={noiseImpactNPiles}
+          assessmentPeriodHours={noiseImpactAssessmentPeriodHours}
           running={noiseImpactRunning}
           error={noiseImpactError}
           onRun={handleRunNoiseImpact}
