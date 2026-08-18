@@ -23,6 +23,15 @@ works fully — including region select/analysis — without the real Postgres D
    ../venv/bin/python -m uvicorn main:app --reload --port 8001
    ```
 
+   **Must run from inside `mock_api/`.** `uvicorn main:app` from the repo root (even
+   with `venv` activated) loads the *other* `main.py` — the real backend, which expects
+   a live Postgres via `DATABASE_URL` and will fail without it. Same filename, different
+   app, easy to grab the wrong one if you `cd` back to root first.
+
+   If this fails with `ModuleNotFoundError` for something like `geopandas` or
+   `openpyxl`, your `venv` predates the noise-impact vendor package being added to
+   `requirements.txt` — reinstall from the repo root: `venv/bin/pip install -r requirements.txt`.
+
 3. Point the frontend at it:
 
    ```bash
