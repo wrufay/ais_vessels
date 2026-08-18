@@ -8,11 +8,18 @@
 // enums.py) so a zone drawn here reads the same way it would in that
 // package's own reference plots.
 
+// ~20% darker than the app's base palette (same hue, each RGB channel
+// x0.8) -- the bathymetry WMS layer is a busy, mid-toned basemap, and the
+// original colors (picked against a plain light/dark canvas) washed out
+// against it. Only affects this feature: IMPACT_COLORS isn't used
+// anywhere outside noise-impact (map layer, results list, legend all
+// import from here), so darkening it in place keeps all three in sync
+// automatically instead of needing a separate "dark mode" variant.
 export const IMPACT_COLORS: Record<string, string> = {
-  TTS: "#3d5a80",
-  "AUD INJ": "#ee9b00",
-  "REC INJ": "#ca6702",
-  Mortality: "#ae2012",
+  TTS: "#314866",
+  "AUD INJ": "#be7c00",
+  "REC INJ": "#a25202",
+  Mortality: "#8b1a0e",
 };
 
 export const IMPACT_DASH: Record<string, number[] | undefined> = {

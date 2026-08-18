@@ -36,6 +36,15 @@ conventions.
 - **`src/useTheme.ts`** — dark mode hook (OS preference + manual override,
   see DEVELOPMENT.md).
 - **`src/tour/`** — the guided app-tour feature.
+- **Noise impact** — `src/useNoiseImpact.ts` owns the feature's state
+  (site/params/run/result) and talks to `/api/noise-impact/*`. UI is split
+  across `components/NoiseImpactParamsPanel.tsx` (left side panel,
+  Scenario/Pile driving/Species tabs — see its module comment for why
+  tabs, not the 3-card layout it replaced), `components/ImpactsPanel.tsx`
+  (right side panel: source/legend/quantitative results), and
+  `components/NoiseImpactLegend.tsx`. Colours live in
+  `utils/noiseImpactStyles.ts`, deliberately darker than the rest of the
+  app's palette for contrast against the bathymetry WMS layer.
 
 ## Style conventions
 

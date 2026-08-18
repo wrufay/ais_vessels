@@ -15,9 +15,11 @@ this next — human or AI. For setup/run instructions, see [README.md](README.md
   from a local SQLite snapshot, so frontend work doesn't need the real DB.
   **Must be kept in sync with `main.py`'s endpoints** — when you add/change
   a route in `main.py`, mirror it here too. See `mock_api/README.md`.
-- **`analysis/`** — shared logic (`noise.py`, `plots.py`) imported by both
-  `main.py` and `mock_api/main.py`, so noise rendering and region-stats
-  plotting behave identically regardless of which backend is running.
+- **`analysis/`** — shared logic (`noise.py`, `plots.py`, `noise_impact.py`)
+  imported by both `main.py` and `mock_api/main.py`, so noise rendering,
+  region-stats plotting, and noise-impact zone calculation behave
+  identically regardless of which backend is running. See
+  `analysis/README.md`.
 - **`pipeline/`** — standalone ingestion/conversion scripts, run manually or
   via cron, not part of the request/response path. See `pipeline/README.md`.
 - **`docker-compose.yml`** — orchestrates `db` (TimescaleDB), `backend`
@@ -39,6 +41,14 @@ this next — human or AI. For setup/run instructions, see [README.md](README.md
 - **Noise GeoTIFFs in `pipeline/noise_data/` are deliberately git-tracked**,
   despite being generated output — see git history around "chore: update
   .gitignore to commit the converted monthly geotiff files."
+- **Noise-impact results are only scientifically real on machines with
+  `/home/shared/noise_impact_code` and
+  `/home/shared/pileDrivingSoundPropagation` mounted** (the real transmission-
+  loss package + ~950MB CSnap dataset). Everywhere else it silently falls
+  back to a vendored package copy + small synthetic fixture data — not a
+  bug, just make sure `using_fixture_data` in the API response (and the
+  amber UI note) isn't being mistaken for a real result. See
+  `mock_api/README.md`.
 - **The `ais` database is canonical.** `ais_v2` was a temporary database
   created for a one-time vessel static-info backfill (June 2026); its data
   has since been merged into `ais`. Don't point anything at `ais_v2`.

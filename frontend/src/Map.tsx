@@ -129,6 +129,7 @@ function ShipMap() {
   const highlightedMooringRef = useRef<string | null>(null);
   const drawRef = useRef<Draw | null>(null);
   const routeLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
+  const mooringLayerRef = useRef<VectorLayer | null>(null);
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
@@ -152,6 +153,23 @@ function ShipMap() {
   const [search, setSearch] = useState("");
   const [start, setStart] = useState("2025-08-01");
   const [end, setEnd] = useState("2025-08-31");
+  // Picking a start date that's on or after the current end date would
+  // leave an invalid/empty range -- bump end to the day after instead of
+  // just letting that happen. Left alone (not reset) if the existing end
+  // is still after the new start, so shrinking the range from the front
+  // doesn't blow away an intentionally longer one. UTC date math (not
+  // setDate/getDate) since these are plain YYYY-MM-DD strings and this
+  // app runs in a negative-UTC-offset timezone -- local-time day math on
+  // a UTC-midnight Date would silently roll the day back by one.
+  function handleStartChange(newStart: string) {
+    setStart(newStart);
+    setEnd((prevEnd) => {
+      if (prevEnd > newStart) return prevEnd;
+      const d = new Date(newStart);
+      d.setUTCDate(d.getUTCDate() + 1);
+      return d.toISOString().slice(0, 10);
+    });
+  }
   const [pointCount, setPointCount] = useState<number | null>(null);
   const [pointTotal, setPointTotal] = useState<number | null>(null);
   const [popup, setPopup] = useState<Popup | null>(null);
@@ -484,6 +502,20 @@ function ShipMap() {
     noiseImpactLayerRef.current?.setVisible(showImpactsPanel);
   }, [showImpactsPanel]);
 
+  // Hide vessel/mooring position layers while in impact mode -- they're
+  // not cleared (still there, still filtered/selected the same way
+  // underneath), just visually out of the way so they don't clutter a
+  // view that's already busy with the bathymetry layer and zone
+  // polygons. Nothing here has been through a full regression pass yet
+  // (e.g. selecting a new vessel route, or toggling "all traffic" for a
+  // region, while impact mode is still active) -- if either of those
+  // turns out to fight with this, that's the first place to look.
+  useEffect(() => {
+    routeLayerRef.current?.setVisible(!showImpactsPanel);
+    mooringLayerRef.current?.setVisible(!showImpactsPanel);
+    regionTrackLayerRef.current?.setVisible(!showImpactsPanel);
+  }, [showImpactsPanel]);
+
   const preImpactsBasemapRef = useRef<string | null>(null);
   useEffect(() => {
     if (showImpactsPanel) {
@@ -578,6 +610,7 @@ function ShipMap() {
         });
       },
     });
+    mooringLayerRef.current = mooringLayer;
 
     const routeLayer = new WebGLVectorLayer({
       source: sourceRef.current,
@@ -704,7 +737,10 @@ function ShipMap() {
               const color = IMPACT_COLORS[impact] ?? "#888";
               return new Style({
                 stroke: new Stroke({ color, width: 2, lineDash: IMPACT_DASH[impact] }),
-                fill: new Fill({ color: `${color}22` }),
+                // 0x38 (~22%), not the old 0x22 (~13%) -- the lighter
+                // fill nearly disappeared against the bathymetry WMS
+                // layer's own busy coloring underneath it.
+                fill: new Fill({ color: `${color}38` }),
                 zIndex: IMPACT_ZINDEX[impact] ?? 0,
               });
             },
@@ -1229,7 +1265,7 @@ function ShipMap() {
           ccgLastPositionAt={ccgLastPositionAt}
           start={start}
           end={end}
-          setStart={setStart}
+          setStart={handleStartChange}
           setEnd={setEnd}
           search={search}
           setSearch={setSearch}
@@ -1300,7 +1336,7 @@ function ShipMap() {
           registerTarget={registerTarget}
           start={start}
           end={end}
-          setStart={setStart}
+          setStart={handleStartChange}
           setEnd={setEnd}
           onMooringUpload={handleMooringUpload}
           onDownloadMooringTemplate={downloadMooringTemplate}
