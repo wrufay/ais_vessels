@@ -515,7 +515,12 @@ function ShipMap() {
       setShowBathymetry(true);
       setSelectedChaName(weaRegion.name);
       chaSourceRef.current.changed();
-      if (mapObj.current) {
+      // Only actually move the view if the run produced something to look
+      // at -- every threshold coming back not-exceeded (or undefined) is
+      // a normal result, not a reason to yank the map somewhere with
+      // nothing on it.
+      const hasZones = noiseImpactResult.zones.some((z) => z.geometry);
+      if (mapObj.current && hasZones) {
         const fmt = new GeoJSON();
         const geom = fmt.readGeometry(weaRegion.geojson, {
           dataProjection: "EPSG:4326",

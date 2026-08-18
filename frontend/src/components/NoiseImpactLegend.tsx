@@ -26,8 +26,12 @@ function LineSwatch({ color, dash }: { color: string; dash?: number[] }) {
 // floating over the map, so it doesn't eat map real estate) mirroring
 // what the reference plots show in their own legend box: the source
 // marker, the Designated WEAs outline, and one line-style entry per
-// currently visible zone. Only rendered while there's at least one
-// visible zone to explain.
+// currently visible zone. Source marker + WEA outline are always on the
+// map once a result exists, so they always render here too -- previously
+// this returned null outright whenever there were no visible *zones*
+// (e.g. every threshold came back not-exceeded), which made the "Legend"
+// section header above it render with nothing underneath, reading as
+// broken rather than "there's nothing zone-specific to show right now."
 function NoiseImpactLegend({
   result,
   visibleZoneKeys,
@@ -41,7 +45,6 @@ function NoiseImpactLegend({
 }) {
   if (!result) return null;
   const visibleZones = result.zones.filter((z) => z.geometry && visibleZoneKeys.has(zoneKey(z)));
-  if (visibleZones.length === 0) return null;
 
   return (
     <div className="bg-[#3d5a80]/8 dark:bg-[#3d5a80]/20 border border-[#3d5a80]/20 dark:border-[#3d5a80]/30 rounded-md px-3 py-2.5 text-xs leading-snug">
@@ -55,20 +58,26 @@ function NoiseImpactLegend({
         <LineSwatch color={weaColor} />
         <span className="text-slate-700 dark:text-slate-200">Designated WEAs</span>
       </div>
-      <div className="flex flex-col gap-1.5 pt-1.5 border-t border-[#3d5a80]/20 dark:border-[#3d5a80]/30">
-        {visibleZones.map((z) => (
-          <div key={zoneKey(z)} className="flex items-start gap-2">
-            <LineSwatch color={IMPACT_COLORS[z.impact] ?? "#888"} dash={IMPACT_DASH[z.impact]} />
-            <span>
-              <span className="block text-slate-700 dark:text-slate-200">{z.hearing_group} — {z.impact}</span>
-              <span className="block text-slate-500 dark:text-slate-400">
-                {z.threshold_db} dB · Area {z.area_km2.toFixed(1)} km² · Radius {z.radius_km.toFixed(2)}
-                {z.radius_std_km > 0.01 && ` ± ${z.radius_std_km.toFixed(2)}`} km
+      {visibleZones.length > 0 ? (
+        <div className="flex flex-col gap-1.5 pt-1.5 border-t border-[#3d5a80]/20 dark:border-[#3d5a80]/30">
+          {visibleZones.map((z) => (
+            <div key={zoneKey(z)} className="flex items-start gap-2">
+              <LineSwatch color={IMPACT_COLORS[z.impact] ?? "#888"} dash={IMPACT_DASH[z.impact]} />
+              <span>
+                <span className="block text-slate-700 dark:text-slate-200">{z.hearing_group} — {z.impact}</span>
+                <span className="block text-slate-500 dark:text-slate-400">
+                  {z.threshold_db} dB · Area {z.area_km2.toFixed(1)} km² · Radius {z.radius_km.toFixed(2)}
+                  {z.radius_std_km > 0.01 && ` ± ${z.radius_std_km.toFixed(2)}`} km
+                </span>
               </span>
-            </span>
-          </div>
-        ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="pt-1.5 border-t border-[#3d5a80]/20 dark:border-[#3d5a80]/30 text-slate-500 dark:text-slate-400">
+          No zones currently shown. See Quantitative results below.
+        </div>
+      )}
     </div>
   );
 }

@@ -412,6 +412,10 @@ function NoiseImpactParamsPanel({
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
         {tab === "scenario" && (
           <div className="flex flex-col gap-3">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              Scenario picks the site, Pile driving is the noise source, and
+              Species is which thresholds to check. Set all three, then Run.
+            </p>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-500 dark:text-slate-400">Site</span>
               <select
@@ -433,14 +437,14 @@ function NoiseImpactParamsPanel({
                 <br />
                 {siteMeta.src_depth}m depth · {siteMeta.src_freq}Hz · {siteMeta.noise_date}
                 <br />
-                Precomputed transmission-loss model — location isn't adjustable yet.
+                Precomputed transmission-loss model. Location isn't adjustable yet.
               </div>
             )}
             {siteMeta?.using_fixture_data && (
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] leading-relaxed">
-                Using synthetic placeholder data — the real ~950MB dataset
-                isn't available on this machine, so results here aren't
-                scientifically meaningful (fine for UI development).
+                Using synthetic placeholder data, since the real ~950MB
+                dataset isn't available on this machine. Results here
+                aren't scientifically meaningful (fine for UI development).
               </div>
             )}
           </div>
@@ -454,8 +458,8 @@ function NoiseImpactParamsPanel({
             {/* Not user-adjustable yet -- shown so the request's full
                 parameter set isn't hidden, just not editable right now. */}
             <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
-              <div>Number of piles — {nPiles} (Default)</div>
-              <div>Assessment period — {assessmentPeriodHours} hours (Default)</div>
+              <div>Number of piles: {nPiles} (Default)</div>
+              <div>Assessment period: {assessmentPeriodHours} hours (Default)</div>
             </div>
           </div>
         )}
@@ -492,9 +496,9 @@ function NoiseImpactParamsPanel({
               {advancedOpen && (
                 <>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pb-1">
-                    By default both metrics run and only the larger impact
-                    zone is shown per hearing group — pick just one, or
-                    view both, to override.
+                    By default both metrics run, and only the larger
+                    impact zone is shown per hearing group. Pick just one,
+                    or view both, to override.
                   </p>
                   <CheckboxList
                     label="Metrics"
