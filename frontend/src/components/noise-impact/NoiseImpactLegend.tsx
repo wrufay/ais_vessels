@@ -1,6 +1,6 @@
-import { zoneKey, type NoiseImpactResult, type NoiseImpactSite } from "../useNoiseImpact";
-import { IMPACT_COLORS, IMPACT_DASH } from "../utils/noiseImpactStyles";
-import { regionColor } from "../utils/mapStyles";
+import { zoneKey, type NoiseImpactResult, type NoiseImpactSite } from "../../useNoiseImpact";
+import { IMPACT_COLORS, IMPACT_DASH } from "../../utils/noiseImpactStyles";
+import { regionColor } from "../../utils/mapStyles";
 
 const weaColor = regionColor("WEA").stroke;
 

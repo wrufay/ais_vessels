@@ -1,8 +1,8 @@
 import { useState } from "react";
-import ClosePanelBtn from "./ClosePanelBtn";
-import PanelHeader from "./PanelHeader";
-import CollapsibleHeader from "./CollapsibleHeader";
-import type { NoiseImpactSite, NoiseImpactOptions } from "../useNoiseImpact";
+import ClosePanelBtn from "../ClosePanelBtn";
+import PanelHeader from "../PanelHeader";
+import CollapsibleHeader from "../CollapsibleHeader";
+import type { NoiseImpactSite, NoiseImpactOptions } from "../../useNoiseImpact";
 
 const runIcon = (
   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
@@ -11,7 +11,15 @@ const runIcon = (
 );
 
 const resetIcon = (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className="w-3.5 h-3.5"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="M3 12a9 9 0 1 1 2.64 6.36" />
     <polyline points="3 8 3 12 7 12" />
   </svg>
@@ -65,11 +73,15 @@ function CheckboxList({
   return (
     <div>
       <div className="flex items-center gap-2 py-1.5">
-        <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">{label}</span>
+        <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">
+          {label}
+        </span>
         {!hideSelectAll && selected.length < options.length && (
           <button
             type="button"
-            onClick={() => options.forEach((o) => !selected.includes(o) && onToggle(o))}
+            onClick={() =>
+              options.forEach((o) => !selected.includes(o) && onToggle(o))
+            }
             className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
           >
             Select all
@@ -78,7 +90,9 @@ function CheckboxList({
         {!hideSelectAll && selected.length > 0 && (
           <button
             type="button"
-            onClick={() => options.forEach((o) => selected.includes(o) && onToggle(o))}
+            onClick={() =>
+              options.forEach((o) => selected.includes(o) && onToggle(o))
+            }
             className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
           >
             Unselect all
@@ -96,7 +110,7 @@ function CheckboxList({
               key={o}
               type="button"
               onClick={() => onToggle(o)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium font-geologica transition ${
+              className={`px-1.5 py-0.5 rounded-full border border-slate-400 text-[11px] font-geologica transition active:scale-95 ${
                 on
                   ? "bg-[#3d5a80] text-white"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -117,14 +131,22 @@ function CheckboxList({
 // must match Noise_Impact_Thresholds.xlsx exactly, per that enum's own
 // comment), with "Other" as a catch-all so a future new hearing group in the
 // workbook still shows up somewhere instead of silently vanishing.
-const HEARING_GROUP_CATEGORIES: { label: string; match: (o: string) => boolean }[] = [
+const HEARING_GROUP_CATEGORIES: {
+  label: string;
+  match: (o: string) => boolean;
+}[] = [
   { label: "Cetaceans", match: (o) => o.includes("Cetaceans") },
   { label: "Fish", match: (o) => o.startsWith("Fish") },
   { label: "Other", match: () => true },
 ];
 
-function groupHearingGroups(options: string[]): { label: string; options: string[] }[] {
-  const groups = HEARING_GROUP_CATEGORIES.map((c) => ({ label: c.label, options: [] as string[] }));
+function groupHearingGroups(
+  options: string[]
+): { label: string; options: string[] }[] {
+  const groups = HEARING_GROUP_CATEGORIES.map((c) => ({
+    label: c.label,
+    options: [] as string[],
+  }));
   options.forEach((o) => {
     const group = groups.find((_, i) => HEARING_GROUP_CATEGORIES[i].match(o));
     (group ?? groups[groups.length - 1]).options.push(o);
@@ -155,7 +177,9 @@ function CollapsibleCheckboxCategoryList({
   return (
     <div>
       <div className="flex items-center gap-2 py-1.5">
-        <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">{label}</span>
+        <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">
+          {label}
+        </span>
         <span className="text-[11px] text-slate-400 dark:text-slate-500">
           {selected.length}/{options.length}
         </span>
@@ -163,7 +187,9 @@ function CollapsibleCheckboxCategoryList({
       <div className="flex flex-col gap-0.5 pl-1 pb-1">
         {groups.map((g) => {
           const groupOpen = categoryOpen[g.label] ?? false;
-          const selectedInGroup = g.options.filter((o) => selected.includes(o)).length;
+          const selectedInGroup = g.options.filter((o) =>
+            selected.includes(o)
+          ).length;
           return (
             <div key={g.label}>
               <CollapsibleHeader
@@ -182,13 +208,17 @@ function CollapsibleCheckboxCategoryList({
                         tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation();
-                          g.options.forEach((o) => !selected.includes(o) && onToggle(o));
+                          g.options.forEach(
+                            (o) => !selected.includes(o) && onToggle(o)
+                          );
                         }}
                         onKeyDown={(e) => {
                           if (e.key !== "Enter" && e.key !== " ") return;
                           e.stopPropagation();
                           e.preventDefault();
-                          g.options.forEach((o) => !selected.includes(o) && onToggle(o));
+                          g.options.forEach(
+                            (o) => !selected.includes(o) && onToggle(o)
+                          );
                         }}
                         className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline cursor-pointer"
                       >
@@ -201,13 +231,17 @@ function CollapsibleCheckboxCategoryList({
                         tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation();
-                          g.options.forEach((o) => selected.includes(o) && onToggle(o));
+                          g.options.forEach(
+                            (o) => selected.includes(o) && onToggle(o)
+                          );
                         }}
                         onKeyDown={(e) => {
                           if (e.key !== "Enter" && e.key !== " ") return;
                           e.stopPropagation();
                           e.preventDefault();
-                          g.options.forEach((o) => selected.includes(o) && onToggle(o));
+                          g.options.forEach(
+                            (o) => selected.includes(o) && onToggle(o)
+                          );
                         }}
                         className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline cursor-pointer"
                       >
@@ -223,14 +257,19 @@ function CollapsibleCheckboxCategoryList({
               {groupOpen && (
                 <div className="flex flex-col gap-0.5 pl-3 pb-1">
                   {g.options.map((o) => (
-                    <label key={o} className="flex items-center gap-2 py-0.5 cursor-pointer">
+                    <label
+                      key={o}
+                      className="flex items-center gap-2 py-0.5 cursor-pointer"
+                    >
                       <input
                         type="checkbox"
                         checked={selected.includes(o)}
                         onChange={() => onToggle(o)}
                         className="accent-[#3d5a80] w-3.5 h-3.5 rounded shrink-0"
                       />
-                      <span className="text-xs text-slate-600 dark:text-slate-300">{o}</span>
+                      <span className="text-xs text-slate-600 dark:text-slate-300">
+                        {o}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -256,7 +295,9 @@ function NumberField({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        {label}
+      </span>
       <input
         type="number"
         value={value}
@@ -271,7 +312,7 @@ function NumberField({
 type Tab = "scenario" | "pile" | "species";
 const TABS: { id: Tab; label: string }[] = [
   { id: "scenario", label: "Scenario" },
-  { id: "pile", label: "Pile driving" },
+  { id: "pile", label: "Pile" },
   { id: "species", label: "Species" },
 ];
 
@@ -344,7 +385,9 @@ function NoiseImpactParamsPanel({
   onClose: () => void;
 }) {
   const siteMeta = sites[site];
-  const [hearingGroupCategoryOpen, setHearingGroupCategoryOpen] = useState<Record<string, boolean>>(() =>
+  const [hearingGroupCategoryOpen, setHearingGroupCategoryOpen] = useState<
+    Record<string, boolean>
+  >(() =>
     Object.fromEntries(HEARING_GROUP_CATEGORIES.map((c) => [c.label, true]))
   );
   const [tab, setTab] = useState<Tab>("scenario");
@@ -371,9 +414,19 @@ function NoiseImpactParamsPanel({
   const nPilesInvalid = !(nPiles > 0);
   const assessmentPeriodInvalid = !(assessmentPeriodHours > 0);
 
-  const pileInvalid = splPeakInvalid || selSingleStrikeInvalid || nStrikesPerPileInvalid || nPilesInvalid || assessmentPeriodInvalid;
-  const speciesInvalid = hearingGroupsInvalid || impactTypesInvalid || metricsInvalid;
-  const tabInvalid: Record<Tab, boolean> = { scenario: siteInvalid, pile: pileInvalid, species: speciesInvalid };
+  const pileInvalid =
+    splPeakInvalid ||
+    selSingleStrikeInvalid ||
+    nStrikesPerPileInvalid ||
+    nPilesInvalid ||
+    assessmentPeriodInvalid;
+  const speciesInvalid =
+    hearingGroupsInvalid || impactTypesInvalid || metricsInvalid;
+  const tabInvalid: Record<Tab, boolean> = {
+    scenario: siteInvalid,
+    pile: pileInvalid,
+    species: speciesInvalid,
+  };
   const canRun = !siteInvalid && !pileInvalid && !speciesInvalid;
 
   const missing: string[] = [];
@@ -388,7 +441,11 @@ function NoiseImpactParamsPanel({
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <div className="flex items-start justify-between px-5 pt-8 pb-4 shrink-0">
-        <PanelHeader name="Parameters" description="Configure the noise-impact model run." className="" />
+        <PanelHeader
+          name="Parameters"
+          description="Configure values for the calculation."
+          className=""
+        />
         <ClosePanelBtn onClick={onClose} displayType="cross" />
       </div>
 
@@ -397,14 +454,16 @@ function NoiseImpactParamsPanel({
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition active:scale-95 rounded-t-md active:bg-slate-100 ${
               tab === t.id
                 ? "border-[#3d5a80] text-[#3d5a80] dark:border-[#98c1d9] dark:text-[#98c1d9]"
                 : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
             }`}
           >
             {t.label}
-            {tabInvalid[t.id] && <span className="w-1.5 h-1.5 rounded-full bg-red-500 dark:bg-red-400 shrink-0" />}
+            {tabInvalid[t.id] && (
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 dark:bg-red-400 shrink-0" />
+            )}
           </button>
         ))}
       </div>
@@ -413,17 +472,20 @@ function NoiseImpactParamsPanel({
         {tab === "scenario" && (
           <div className="flex flex-col gap-3">
             <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-              Scenario picks the site, Pile driving is the noise source, and
-              Species is which thresholds to check. Set all three, then Run.
+              Select the site.
             </p>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 dark:text-slate-400">Site</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Site
+              </span>
               <select
                 value={site}
                 onChange={(e) => setSite(e.target.value)}
                 className={`${inputClass} cursor-pointer`}
               >
-                {Object.keys(sites).length === 0 && <option value="">Loading…</option>}
+                {Object.keys(sites).length === 0 && (
+                  <option value="">Loading…</option>
+                )}
                 {Object.keys(sites).map((name) => (
                   <option key={name} value={name}>
                     {name}
@@ -433,18 +495,21 @@ function NoiseImpactParamsPanel({
             </label>
             {siteMeta && (
               <div className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
-                Source: {siteMeta.src_lat.toFixed(3)}, {siteMeta.src_lon.toFixed(3)}
+                Source: {siteMeta.src_lat.toFixed(3)},{" "}
+                {siteMeta.src_lon.toFixed(3)}
                 <br />
-                {siteMeta.src_depth}m depth · {siteMeta.src_freq}Hz · {siteMeta.noise_date}
+                {siteMeta.src_depth}m depth · {siteMeta.src_freq}Hz ·{" "}
+                {siteMeta.noise_date}
                 <br />
-                Precomputed transmission-loss model. Location isn't adjustable yet.
+                Precomputed transmission-loss model. Location isn't adjustable
+                yet.
               </div>
             )}
             {siteMeta?.using_fixture_data && (
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] leading-relaxed">
-                Using synthetic placeholder data, since the real ~950MB
-                dataset isn't available on this machine. Results here
-                aren't scientifically meaningful (fine for UI development).
+                Using synthetic placeholder data, since the real ~950MB dataset
+                isn't available on this machine. Results here aren't
+                scientifically meaningful (fine for UI development).
               </div>
             )}
           </div>
@@ -452,20 +517,41 @@ function NoiseImpactParamsPanel({
 
         {tab === "pile" && (
           <div className="flex flex-col gap-2.5">
-            <NumberField label="Peak SPL (dB)" value={splPeak} onChange={setSplPeak} />
-            <NumberField label="SEL / strike (dB)" value={selSingleStrike} onChange={setSelSingleStrike} />
-            <NumberField label="Strikes / pile" value={nStrikesPerPile} onChange={setNStrikesPerPile} />
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              Define the noise source.
+            </p>
+            <NumberField
+              label="Peak SPL (dB)"
+              value={splPeak}
+              onChange={setSplPeak}
+            />
+            <NumberField
+              label="SEL / strike (dB)"
+              value={selSingleStrike}
+              onChange={setSelSingleStrike}
+            />
+            <NumberField
+              label="Strikes / pile"
+              value={nStrikesPerPile}
+              onChange={setNStrikesPerPile}
+            />
             {/* Not user-adjustable yet -- shown so the request's full
                 parameter set isn't hidden, just not editable right now. */}
             <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
               <div>Number of piles: {nPiles} (Default)</div>
-              <div>Assessment period: {assessmentPeriodHours} hours (Default)</div>
+              <div>
+                Assessment period: {assessmentPeriodHours} hours (Default)
+              </div>
             </div>
           </div>
         )}
 
         {tab === "species" && (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              Choose species to view.
+            </p>
+            
             <CollapsibleCheckboxCategoryList
               label="Hearing groups"
               options={options.hearing_groups}
@@ -473,9 +559,13 @@ function NoiseImpactParamsPanel({
               onToggle={onToggleHearingGroup}
               categoryOpen={hearingGroupCategoryOpen}
               onToggleCategory={(category) =>
-                setHearingGroupCategoryOpen((prev) => ({ ...prev, [category]: !(prev[category] ?? false) }))
+                setHearingGroupCategoryOpen((prev) => ({
+                  ...prev,
+                  [category]: !(prev[category] ?? false),
+                }))
               }
             />
+            <hr></hr>
             <CheckboxList
               label="Impact types"
               options={options.impact_types}
@@ -483,8 +573,18 @@ function NoiseImpactParamsPanel({
               onToggle={onToggleImpactType}
             />
             <div className="grid grid-cols-2 gap-2.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <NumberField label="Depth min (m)" value={depthMin} onChange={setDepthMin} step={0.1} />
-              <NumberField label="Depth max (m)" value={depthMax} onChange={setDepthMax} step={0.1} />
+              <NumberField
+                label="Depth min (m)"
+                value={depthMin}
+                onChange={setDepthMin}
+                step={0.1}
+              />
+              <NumberField
+                label="Depth max (m)"
+                value={depthMax}
+                onChange={setDepthMax}
+                step={0.1}
+              />
             </div>
 
             <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -496,9 +596,8 @@ function NoiseImpactParamsPanel({
               {advancedOpen && (
                 <>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pb-1">
-                    By default both metrics run, and only the larger
-                    impact zone is shown per hearing group. Pick just one,
-                    or view both, to override.
+                    By default, both metrics run and only the larger impact zone
+                    is shown per hearing group. Override this rule by selecting one or both.
                   </p>
                   <CheckboxList
                     label="Metrics"
@@ -531,10 +630,10 @@ function NoiseImpactParamsPanel({
           <button
             onClick={onRun}
             disabled={running || !canRun}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-1.5 rounded-full bg-[#3d5a80] text-white text-sm font-medium hover:bg-[#293241] transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-1.5 rounded-md bg-[#3d5a80] text-white text-sm hover:bg-[#293241] transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {running ? (
-              <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-md animate-spin" />
             ) : (
               runIcon
             )}
@@ -544,7 +643,7 @@ function NoiseImpactParamsPanel({
             onClick={onReset}
             disabled={running}
             title="Reset parameters"
-            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full border border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {resetIcon}
           </button>

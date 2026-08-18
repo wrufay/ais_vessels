@@ -1,12 +1,24 @@
 import { useState } from "react";
-import PanelHeader from "./PanelHeader";
-import CollapsibleHeader from "./CollapsibleHeader";
+import PanelHeader from "../PanelHeader";
+import CollapsibleHeader from "../CollapsibleHeader";
 import NoiseImpactLegend from "./NoiseImpactLegend";
-import { zoneKey, type NoiseImpactResult, type NoiseImpactSite } from "../useNoiseImpact";
-import { IMPACT_COLORS } from "../utils/noiseImpactStyles";
+import {
+  zoneKey,
+  type NoiseImpactResult,
+  type NoiseImpactSite,
+} from "../../useNoiseImpact";
+import { IMPACT_COLORS } from "../../utils/noiseImpactStyles";
 
 const checkIcon = (
-  <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className="w-2.5 h-2.5 shrink-0"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="3"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <polyline points="20 6 9 17 4 12" />
   </svg>
 );
@@ -51,19 +63,16 @@ function ImpactsPanel({
         />
         <button
           onClick={onToggleParams}
-          className="px-3 py-1.5 rounded-full bg-[#3d5a80] text-white text-xs font-medium hover:bg-[#2e4460] transition"
+          className="px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs hover:bg-[#2e4460] active:bg-slate-500 shadow-sm active:scale-95 transition"
         >
-          {paramsOpen ? "Hide parameters" : "Show parameters"}
+          {paramsOpen ? "Hide parameters" : "Open parameters"}
         </button>
       </div>
 
       {!result && (
         <div className="px-5 pb-6 flex flex-col gap-2">
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            A run estimates the underwater sound field from pile driving
-            and finds where the level crosses a species' injury or
-            disturbance threshold. That boundary is called a "zone."
-            Open Parameters, fill in the three tabs, then Run.
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Open Parameters, fill in the three tabs, then hit Run.
           </p>
 
           {/* Same section shape the real results use (Source/Legend/
@@ -73,17 +82,23 @@ function ImpactsPanel({
             <div className="pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Source
             </div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">Source location appears here after a run</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">
+              Source location appears here after a run
+            </div>
 
             <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Legend
             </div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">Source marker, WEA outline, and zone lines appear here</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">
+              Source marker, WEA outline, and zone lines appear here
+            </div>
 
             <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Quantitative results
             </div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">Zone area/radius stats appear here, one row per exceeded threshold</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">
+              Zone area/radius stats appear here, one row per exceeded threshold
+            </div>
           </div>
         </div>
       )}
@@ -147,12 +162,17 @@ function ImpactsPanel({
                               <button
                                 onClick={() => onToggleZone(key)}
                                 className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition cursor-pointer ${
-                                  on ? "bg-slate-50 dark:bg-slate-800" : "opacity-50"
+                                  on
+                                    ? "bg-slate-50 dark:bg-slate-800"
+                                    : "opacity-50"
                                 }`}
                               >
                                 <span
                                   className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 self-start"
-                                  style={{ backgroundColor: IMPACT_COLORS[z.impact] ?? "#888" }}
+                                  style={{
+                                    backgroundColor:
+                                      IMPACT_COLORS[z.impact] ?? "#888",
+                                  }}
                                 />
                                 <span className="flex-1 min-w-0">
                                   <span className="block text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
@@ -162,8 +182,12 @@ function ImpactsPanel({
                                     {z.metric} · {z.threshold_db} dB threshold
                                   </span>
                                   <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                                    {z.area_km2.toFixed(1)} km² · Ø {(2 * z.radius_km).toFixed(1)} km
-                                    {z.radius_std_km > 0.01 && ` (± ${(2 * z.radius_std_km).toFixed(1)})`}
+                                    {z.area_km2.toFixed(1)} km² · Ø{" "}
+                                    {(2 * z.radius_km).toFixed(1)} km
+                                    {z.radius_std_km > 0.01 &&
+                                      ` (± ${(2 * z.radius_std_km).toFixed(
+                                        1
+                                      )})`}
                                   </span>
                                 </span>
                               </button>
@@ -182,24 +206,38 @@ function ImpactsPanel({
                     </>
                   )}
 
-                  {notExceededZones.length === 0 ? null : exceededZones.length === 0 ? (
+                  {notExceededZones.length ===
+                  0 ? null : exceededZones.length === 0 ? (
                     <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400">
-                      <span className="text-emerald-600 dark:text-emerald-400">{checkIcon}</span>
-                      None of the selected thresholds were exceeded anywhere in range.
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        {checkIcon}
+                      </span>
+                      None of the selected thresholds were exceeded anywhere in
+                      range.
                     </div>
                   ) : (
                     <div className="mt-1">
                       <CollapsibleHeader
                         open={notExceededOpen}
                         onToggle={() => setNotExceededOpen((p) => !p)}
-                        label={`${notExceededZones.length} threshold${notExceededZones.length > 1 ? "s" : ""} not exceeded`}
-                        trailing={<span className="text-emerald-600 dark:text-emerald-400">{checkIcon}</span>}
+                        label={`${notExceededZones.length} threshold${
+                          notExceededZones.length > 1 ? "s" : ""
+                        } not exceeded`}
+                        trailing={
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            {checkIcon}
+                          </span>
+                        }
                       />
                       {notExceededOpen && (
                         <ul className="flex flex-col gap-1 pl-1 pb-1">
                           {notExceededZones.map((z) => (
-                            <li key={zoneKey(z)} className="text-[11px] text-slate-400 dark:text-slate-500">
-                              {z.hearing_group} — {z.impact} · {z.metric} · {z.threshold_db} dB threshold
+                            <li
+                              key={zoneKey(z)}
+                              className="text-[11px] text-slate-400 dark:text-slate-500"
+                            >
+                              {z.hearing_group} — {z.impact} · {z.metric} ·{" "}
+                              {z.threshold_db} dB threshold
                             </li>
                           ))}
                         </ul>
@@ -217,12 +255,17 @@ function ImpactsPanel({
                 onClick={() => setUndefinedOpen((p) => !p)}
                 className="flex items-start gap-2 w-full text-left leading-relaxed"
               >
-                <span className={`text-[9px] shrink-0 mt-0.5 transition-transform duration-150 ${undefinedOpen ? "rotate-90" : ""}`}>
+                <span
+                  className={`text-[9px] shrink-0 mt-0.5 transition-transform duration-150 ${
+                    undefinedOpen ? "rotate-90" : ""
+                  }`}
+                >
                   ▶
                 </span>
                 <span>
-                  No threshold is defined for {undefinedCombos.length} of your selected
-                  combination{undefinedCombos.length > 1 ? "s" : ""}. They're not in Noise_Impact_Thresholds.xlsx.
+                  Thresholds for {undefinedCombos.length} of your selected
+                  combination{undefinedCombos.length > 1 ? "s" : ""} were not
+                  found in the source file.
                 </span>
               </button>
               {undefinedOpen && (

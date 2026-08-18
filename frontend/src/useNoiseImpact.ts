@@ -157,7 +157,7 @@ export function useNoiseImpact(apiBase: string) {
     setSite(Object.keys(sites)[0] ?? "");
     setHearingGroups([]);
     setImpactTypes([]);
-    setMetrics([]);
+    setMetrics(options.metrics);
     setDepthMin(DEFAULT_DEPTH_MIN);
     setDepthMax(DEFAULT_DEPTH_MAX);
     setSplPeak(DEFAULT_SPL_PEAK);
