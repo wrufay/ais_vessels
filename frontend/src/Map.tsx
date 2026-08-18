@@ -477,6 +477,42 @@ function ShipMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showImpactsPanel, isDark]);
 
+  // Give the selected noise-impact site visual context on the map once Run
+  // actually produces a result (not just from opening the params modal --
+  // picking a site there shouldn't touch the map before the user commits to
+  // it): highlight its matching WEA polygon (site names in useNoiseImpact
+  // match WEA_REGIONS names exactly -- see analysis/noise_impact.py's SITES
+  // dict) and turn on bathymetry, since seabed depth is directly relevant
+  // to interpreting a pile-driving transmission-loss result. Same
+  // remember/restore pattern as preImpactsBasemapRef above, so it doesn't
+  // just leave bathymetry stuck on or clobber a highlight the user set some
+  // other way.
+  const preImpactsBathyRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const active = showImpactsPanel && !!noiseImpactResult;
+    const weaRegion = WEA_REGIONS.find((r) => r.name === noiseImpactSite);
+    if (active && weaRegion) {
+      if (preImpactsBathyRef.current === null) preImpactsBathyRef.current = showBathymetry;
+      setShowBathymetry(true);
+      setSelectedChaName(weaRegion.name);
+      chaSourceRef.current.changed();
+      if (mapObj.current) {
+        const fmt = new GeoJSON();
+        const geom = fmt.readGeometry(weaRegion.geojson, {
+          dataProjection: "EPSG:4326",
+          featureProjection: "EPSG:3857",
+        }) as OLPolygon;
+        mapObj.current.getView().fit(geom.getExtent(), { padding: [80, 80, 80, 80], maxZoom: 11, duration: 500 });
+      }
+    } else if (!active && preImpactsBathyRef.current !== null) {
+      setShowBathymetry(preImpactsBathyRef.current);
+      setSelectedChaName(null);
+      chaSourceRef.current.changed();
+      preImpactsBathyRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showImpactsPanel, noiseImpactResult, noiseImpactSite]);
+
   // rebuild mooring points when date range or uploaded moorings change
   useEffect(() => {
     mooringSourceRef.current.clear();
@@ -564,8 +600,13 @@ function ShipMap() {
         crossOrigin: "anonymous",
         attributions: "Bathymetry © NRCan / DFO",
       }),
-      opacity: 0.75,
-      visible: false,
+      // Visible (not visible: false) from the start so OL starts fetching
+      // WMS tiles for the current view as soon as the map loads, instead of
+      // only starting once the user first toggles bathymetry on -- opacity
+      // 0 keeps it invisible until then; useBathymetry drives the real
+      // on/off + opacity via setOpacity rather than setVisible now.
+      opacity: 0,
+      visible: true,
     });
     bathyLayerRef.current = bathyLayer;
     let bathyPending = 0;
