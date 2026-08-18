@@ -7,3 +7,7 @@ matplotlib
 cartopy
 scipy
 rasterio
+geopandas
+xarray
+pyproj
+openpyxl

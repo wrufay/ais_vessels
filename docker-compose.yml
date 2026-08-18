@@ -28,6 +28,12 @@ services:
     volumes:
       # locally converted noise GeoTIFFs (see pipeline/noise_to_geotiff.py)
       - ./pipeline/noise_data:/app/pipeline/noise_data:ro
+      # pile-driving noise-impact package + its precomputed transmission
+      # -loss model data, maintained outside this repo (see
+      # analysis/noise_impact.py's module docstring) -- mounted read-only
+      # at the same absolute host path since noise_impact.py hardcodes it.
+      - /home/shared/noise_impact_code:/home/shared/noise_impact_code:ro
+      - /home/shared/pileDrivingSoundPropagation:/home/shared/pileDrivingSoundPropagation:ro
     depends_on:
       db:
         condition: service_healthy

@@ -37,3 +37,13 @@ works fully — including region select/analysis — without the real Postgres D
 - `/api/region/vessels`, `/api/analysis/region` — real polygon-filtering + stats logic,
   reusing `analysis/plots.py` for the charts
 - Noise endpoints reuse `analysis/noise.py` against the committed noise GeoTIFs, same as before
+- Noise-impact endpoints (`/api/noise-impact/*`) work with zero setup, anywhere — the real
+  package + CSnap dataset normally live at `/home/shared` (too large to commit, ~950MB, and
+  specific to the machine this was developed on), so `analysis/noise_impact.py` automatically
+  falls back to a small vendored copy of the package (`mock_api/vendor`) and synthetic
+  fixture data (`mock_api/noise_impact_fixtures`, regenerate via
+  `venv/bin/python mock_api/seed_noise_impact_fixtures.py`) whenever `/home/shared` isn't
+  present. That fixture data is **not real acoustic model output** — fine for UI development,
+  not for anything resembling a real assessment. The UI shows an amber "synthetic placeholder
+  data" note whenever fixture data is in use (`using_fixture_data` in the API responses), so
+  it's never mistaken for the real thing.

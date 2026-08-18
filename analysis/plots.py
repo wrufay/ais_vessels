@@ -37,6 +37,30 @@ del TYPE_COLORS["search & rescue"]
 ORDERED_TYPES = ["cargo", "tanker", "fishing", "passenger",
                  "search and rescue vessel", "other", "unknown"]
 
+# AIS ship-type code ranges -> label. Shared by main.py and mock_api/main.py
+# (both import classify_ship_type from here) so the two backends can't drift
+# apart the way they used to when each kept its own copy of this table.
+TYPE_CATEGORIES = {
+    "cargo":                    range(70, 80),
+    "tanker":                   range(80, 90),
+    "fishing":                  range(30, 31),
+    "passenger":                range(60, 70),
+    "search and rescue vessel": [51],
+    "other":                    list(range(20, 30)) + list(range(31, 51)) +
+                                list(range(52, 60)) + list(range(90, 100)),
+}
+
+
+def classify_ship_type(code):
+    try:
+        c = int(code)
+    except (TypeError, ValueError):
+        return "unknown"
+    for label, codes in TYPE_CATEGORIES.items():
+        if c in codes:
+            return label
+    return "unknown"
+
 
 def _to_b64(fig, dpi=120) -> str:
     """Renders a matplotlib figure to a base64-encoded PNG string and closes it."""

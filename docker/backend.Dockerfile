@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY analysis/plots.py analysis/plots.py
 COPY analysis/noise.py analysis/noise.py
+COPY analysis/noise_impact.py analysis/noise_impact.py
 COPY frontend/src/data/colors.json frontend/src/data/colors.json
 
 EXPOSE 8000

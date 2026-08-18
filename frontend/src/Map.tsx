@@ -54,7 +54,8 @@ import LayersPanel from "./components/LayersPanel";
 import TracksPanel from "./components/TracksPanel";
 import ImpactsPanel from "./components/ImpactsPanel";
 import NoiseImpactModal from "./components/NoiseImpactModal";
-import { useNoiseImpact } from "./useNoiseImpact";
+import { useNoiseImpact, zoneKey } from "./useNoiseImpact";
+import { IMPACT_COLORS, IMPACT_DASH, IMPACT_ZINDEX } from "./utils/noiseImpactStyles";
 import { useTheme } from "./useTheme";
 import { useDragResize } from "./useDragResize";
 import { useStateRef } from "./useStateRef";
@@ -66,6 +67,7 @@ import { useTour } from "./useTour";
 import Tour from "./tour/Tour";
 
 const API = import.meta.env.VITE_API_URL ?? "";
+
 
 export interface Vessel {
   mmsi: number;
@@ -130,7 +132,8 @@ function ShipMap() {
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
-
+  const noiseImpactSourceRef = useRef(new VectorSource());
+  const noiseImpactLayerRef = useRef<VectorLayer | null>(null);
   interface Popup {
     x: number;
     y: number;
@@ -199,9 +202,21 @@ function ShipMap() {
   const {
     showImpactsPanel, setShowImpactsPanel,
     showParamsModal, setShowParamsModal,
-    running: noiseImpactRunning,
+    sites: noiseImpactSites, options: noiseImpactOptions,
+    site: noiseImpactSite, setSite: setNoiseImpactSite,
+    hearingGroups: noiseImpactHearingGroups, toggleHearingGroup: toggleNoiseImpactHearingGroup,
+    impactTypes: noiseImpactImpactTypes, toggleImpactType: toggleNoiseImpactImpactType,
+    metrics: noiseImpactMetrics, toggleMetric: toggleNoiseImpactMetric,
+    depthMin: noiseImpactDepthMin, setDepthMin: setNoiseImpactDepthMin,
+    depthMax: noiseImpactDepthMax, setDepthMax: setNoiseImpactDepthMax,
+    splPeak: noiseImpactSplPeak, setSplPeak: setNoiseImpactSplPeak,
+    selSingleStrike: noiseImpactSelSingleStrike, setSelSingleStrike: setNoiseImpactSelSingleStrike,
+    nStrikesPerPile: noiseImpactNStrikesPerPile, setNStrikesPerPile: setNoiseImpactNStrikesPerPile,
+    running: noiseImpactRunning, error: noiseImpactError, result: noiseImpactResult,
+    visibleZoneKeys: noiseImpactVisibleZoneKeys, toggleZoneVisibility: toggleNoiseImpactZoneVisibility,
+    undefinedCombos: noiseImpactUndefinedCombos,
     handleRun: handleRunNoiseImpact,
-  } = useNoiseImpact();
+  } = useNoiseImpact(API);
   const [lastOpenedPanel, setLastOpenedPanel] = useState<
     "vessel" | "region" | "layer" | "mooring" | "impacts"
   >("vessel");
@@ -387,6 +402,81 @@ function ShipMap() {
     });
   }, [uploadedRegions, userSelectedRegions]);
 
+  // Rebuild noise-impact zone polygons whenever a run completes or the
+  // panel's per-zone visibility toggles change, then pan/zoom to whatever
+  // ends up visible -- both precomputed sites (French Bank, Sydney Bight)
+  // sit outside the app's usual default view, so without this the zones
+  // render correctly but off-screen. Deliberately ONE effect (not split
+  // into "rebuild features" + "fit view" effects with different
+  // dependency arrays) -- setResult/setVisibleZoneKeys in handleRun are
+  // two separate state updates, and splitting this let the fit-view half
+  // read the source's extent before the rebuild half had actually
+  // populated it, so it fell back to "zoom to the source point" and never
+  // got a re-trigger once the real zones landed a render later.
+  useEffect(() => {
+    const fmt = new GeoJSON();
+    noiseImpactSourceRef.current.clear();
+    if (!noiseImpactResult) return;
+    noiseImpactResult.zones.forEach((z) => {
+      const key = zoneKey(z);
+      if (!z.geometry || !noiseImpactVisibleZoneKeys.has(key)) return;
+      const geom = fmt.readGeometry(z.geometry, {
+        dataProjection: "EPSG:4326",
+        featureProjection: "EPSG:3857",
+      }) as OLPolygon;
+      const f = new Feature({
+        geometry: geom,
+        hearingGroup: z.hearing_group,
+        impact: z.impact,
+        metric: z.metric,
+        thresholdDb: z.threshold_db,
+        areaKm2: z.area_km2,
+      });
+      noiseImpactSourceRef.current.addFeature(f);
+    });
+
+    if (!mapObj.current) return;
+    const view = mapObj.current.getView();
+    const extent = noiseImpactSourceRef.current.getExtent();
+    const hasVisibleZones =
+      noiseImpactSourceRef.current.getFeatures().length > 0 && !!extent && extent.every(Number.isFinite);
+    // Nothing to show (every visible threshold came back not-exceeded, or
+    // everything's toggled off) -- leave the view exactly where the user
+    // already has it instead of jumping to the source point for an empty
+    // result.
+    if (hasVisibleZones && extent) {
+      view.fit(extent, { padding: [80, 80, 80, 80], maxZoom: 11, duration: 500 });
+    }
+  }, [noiseImpactResult, noiseImpactVisibleZoneKeys]);
+
+  // "Impact mode": while the Impacts panel is open, show its zone layer's
+  // polygons (they stay populated in the source underneath, see above --
+  // this just toggles the layer, so nothing needs recomputing on reopen).
+  // Map pan/zoom is deliberately left alone (it was locked here before,
+  // which got in the way of just looking around while reviewing a
+  // result) -- but the basemap still switches to a plain minimal-canvas
+  // style, since zoomed-in street/satellite tiles compete for attention
+  // with the zone polygons and read as visual noise. Picks the light or
+  // dark variant to match the app's current theme (also re-picks if the
+  // user toggles theme while the panel is already open, via isDark in
+  // the dependency array). Restores whatever basemap was active before
+  // on close, rather than leaving the user stuck on it.
+  useEffect(() => {
+    noiseImpactLayerRef.current?.setVisible(showImpactsPanel);
+  }, [showImpactsPanel]);
+
+  const preImpactsBasemapRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (showImpactsPanel) {
+      if (preImpactsBasemapRef.current === null) preImpactsBasemapRef.current = basemap;
+      setBasemap(isDark ? "esri-dark-gray" : "esri-light-gray");
+    } else if (preImpactsBasemapRef.current !== null) {
+      setBasemap(preImpactsBasemapRef.current);
+      preImpactsBasemapRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showImpactsPanel, isDark]);
+
   // rebuild mooring points when date range or uploaded moorings change
   useEffect(() => {
     mooringSourceRef.current.clear();
@@ -541,6 +631,22 @@ function ShipMap() {
             });
           },
         }),
+        (() => {
+          const layer = new VectorLayer({
+            source: noiseImpactSourceRef.current,
+            style: (feature) => {
+              const impact = feature.get("impact") as string;
+              const color = IMPACT_COLORS[impact] ?? "#888";
+              return new Style({
+                stroke: new Stroke({ color, width: 2, lineDash: IMPACT_DASH[impact] }),
+                fill: new Fill({ color: `${color}22` }),
+                zIndex: IMPACT_ZINDEX[impact] ?? 0,
+              });
+            },
+          });
+          noiseImpactLayerRef.current = layer;
+          return layer;
+        })(),
       ],
       view: new View({
         center: fromLonLat([-63.5, 44.5]),
@@ -1165,7 +1271,15 @@ function ShipMap() {
       </SidePanel>
 
       <SidePanel open={showImpactsPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("impactsPanel")}>
-        <ImpactsPanel onOpenModal={() => setShowParamsModal(true)} />
+        <ImpactsPanel
+          onOpenModal={() => setShowParamsModal(true)}
+          result={noiseImpactResult}
+          visibleZoneKeys={noiseImpactVisibleZoneKeys}
+          onToggleZone={toggleNoiseImpactZoneVisibility}
+          siteName={noiseImpactSite}
+          siteMeta={noiseImpactSites[noiseImpactSite]}
+          undefinedCombos={noiseImpactUndefinedCombos}
+        />
       </SidePanel>
 
       {/* Vessel type filter modal */}
@@ -1184,7 +1298,28 @@ function ShipMap() {
       {/* Noise impact parameter modal */}
       {showParamsModal && (
         <NoiseImpactModal
+          sites={noiseImpactSites}
+          options={noiseImpactOptions}
+          site={noiseImpactSite}
+          setSite={setNoiseImpactSite}
+          hearingGroups={noiseImpactHearingGroups}
+          onToggleHearingGroup={toggleNoiseImpactHearingGroup}
+          impactTypes={noiseImpactImpactTypes}
+          onToggleImpactType={toggleNoiseImpactImpactType}
+          metrics={noiseImpactMetrics}
+          onToggleMetric={toggleNoiseImpactMetric}
+          depthMin={noiseImpactDepthMin}
+          setDepthMin={setNoiseImpactDepthMin}
+          depthMax={noiseImpactDepthMax}
+          setDepthMax={setNoiseImpactDepthMax}
+          splPeak={noiseImpactSplPeak}
+          setSplPeak={setNoiseImpactSplPeak}
+          selSingleStrike={noiseImpactSelSingleStrike}
+          setSelSingleStrike={setNoiseImpactSelSingleStrike}
+          nStrikesPerPile={noiseImpactNStrikesPerPile}
+          setNStrikesPerPile={setNoiseImpactNStrikesPerPile}
           running={noiseImpactRunning}
+          error={noiseImpactError}
           onRun={handleRunNoiseImpact}
           onClose={() => setShowParamsModal(false)}
         />

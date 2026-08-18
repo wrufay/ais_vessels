@@ -17,7 +17,6 @@ ports (localhost, :3000, :5173) if unset.
 
 import os
 import sys
-from contextlib import asynccontextmanager
 
 import pandas as pd # type: ignore
 import psycopg2 # type: ignore
@@ -28,12 +27,11 @@ from pydantic import BaseModel
 from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
-from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES  # noqa: E402 # type: ignore
+from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
 from noise import render_noise_overlay, noise_range, NOISE_EXTENT, NOISE_DATA_DIR  # noqa: E402 # type: ignore
+from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, compute_impact as compute_noise_impact  # noqa: E402 # type: ignore
 
 DATABASE_URL: str = os.environ["DATABASE_URL"]
-
-ALLOWED_MMSIS: set[int] = set()
 
 
 def query(sql: str, params=None) -> list[dict]:
@@ -43,21 +41,7 @@ def query(sql: str, params=None) -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    global ALLOWED_MMSIS
-    try:
-        rows = query(
-            "SELECT DISTINCT mmsi FROM vessels WHERE mmsi BETWEEN 200000000 AND 799999999"
-        )
-        ALLOWED_MMSIS = {r["mmsi"] for r in rows}
-        print(f"Loaded {len(ALLOWED_MMSIS)} vessels.")
-    except Exception as e:
-        print(f"Warning: could not load vessels ({e}).")
-    yield
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 CORS_ORIGINS = os.environ.get(
     "CORS_ORIGINS",
@@ -145,27 +129,6 @@ def get_vessel_route(
         step = total / MAX_ROUTE_POINTS
         points = [points[int(i * step)] for i in range(MAX_ROUTE_POINTS)]
     return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS}
-
-
-TYPE_CATEGORIES = {
-    "cargo":                    range(70, 80),
-    "tanker":                   range(80, 90),
-    "fishing":                  range(30, 31),
-    "passenger":                range(60, 70),
-    "search and rescue vessel": [51],
-    "other":                    list(range(20, 30)) + list(range(31, 51)) +
-                                list(range(52, 60)) + list(range(90, 100)),
-}
-
-def classify_ship_type(code):
-    try:
-        c = int(code)
-    except (TypeError, ValueError):
-        return "unknown"
-    for label, codes in TYPE_CATEGORIES.items():
-        if c in codes:
-            return label
-    return "unknown"
 
 
 class RegionRequest(BaseModel):
@@ -354,3 +317,53 @@ def get_noise_overlay(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return Response(content=png, media_type="image/png")
+
+
+@app.get("/api/noise-impact/sites")
+def get_noise_impact_sites():
+    """Precomputed pile-driving noise-impact sites — each is a transmission
+    -loss model already run offline for a fixed source location/depth/
+    frequency/date. There is no arbitrary-location mode yet (see
+    analysis/noise_impact.py)."""
+    return list_noise_impact_sites()
+
+
+@app.get("/api/noise-impact/options")
+def get_noise_impact_options():
+    """Available hearing groups / impact types / metrics, sourced from the
+    regulatory thresholds workbook via the noise-impact package's enums."""
+    return list_noise_impact_options()
+
+
+class NoiseImpactRequest(BaseModel):
+    site: str
+    hearing_groups: list[str]
+    impact_types: list[str]
+    metrics: list[str]
+    # Negative metres below the surface (0 at the surface), matching the
+    # underlying model's own depth coordinate convention.
+    depth_range: tuple[float, float] = (-40.0, -0.01)
+    spl_peak: float
+    sel_single_strike: float
+    n_strikes_per_pile: int
+    n_piles: int = 1
+    assessment_period_hours: float = 24
+
+
+@app.post("/api/noise-impact/compute")
+def post_noise_impact_compute(req: NoiseImpactRequest):
+    try:
+        return compute_noise_impact(
+            site=req.site,
+            hearing_groups=req.hearing_groups,
+            impact_types=req.impact_types,
+            metrics=req.metrics,
+            depth_range=req.depth_range,
+            spl_peak=req.spl_peak,
+            sel_single_strike=req.sel_single_strike,
+            n_strikes_per_pile=req.n_strikes_per_pile,
+            n_piles=req.n_piles,
+            assessment_period_hours=req.assessment_period_hours,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
