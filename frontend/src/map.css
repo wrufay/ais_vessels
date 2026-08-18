@@ -1,3 +1,15 @@
 .noise-gradient-bar {
   background: linear-gradient(to right, #4575b4, #91bfdb, #e0f3f8, #ffffbf, #fee090, #fc8d59, #d73027);
 }
+
+/* OL's default zoom control sits at its own left: .5em, which is inside
+   IconBar's permanent full-height sidebar. --map-controls-offset (set on
+   Map.tsx's root element) is IconBar's measured width, plus the params
+   panel's width while it's open -- pushes the control clear of both,
+   sliding along with the params panel's own open/close transition. Loaded
+   after ol.css (see Map.tsx's imports), so no !important needed to win at
+   equal specificity. */
+.ol-zoom {
+  left: calc(var(--map-controls-offset, 0px) + 0.5em);
+  transition: left 0.3s ease-in-out;
+}

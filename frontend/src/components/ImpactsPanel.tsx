@@ -13,7 +13,8 @@ import { IMPACT_COLORS } from "../utils/noiseImpactStyles";
 // adds/removes its polygon from the map (see the noiseImpactSourceRef
 // effect in Map.tsx).
 function ImpactsPanel({
-  onOpenModal,
+  paramsOpen,
+  onToggleParams,
   result,
   visibleZoneKeys,
   onToggleZone,
@@ -21,7 +22,8 @@ function ImpactsPanel({
   siteMeta,
   undefinedCombos,
 }: {
-  onOpenModal: () => void;
+  paramsOpen: boolean;
+  onToggleParams: () => void;
   result: NoiseImpactResult | null;
   visibleZoneKeys: Set<string>;
   onToggleZone: (key: string) => void;
@@ -37,10 +39,10 @@ function ImpactsPanel({
           description="Calculate and view noise impacts results."
         />
         <button
-          onClick={onOpenModal}
+          onClick={onToggleParams}
           className="px-3 py-1.5 rounded-full bg-[#3d5a80] text-white text-xs font-medium hover:bg-[#2e4460] transition"
         >
-          {result ? "Edit parameters" : "Input parameters"}
+          {paramsOpen ? "Hide parameters" : "Show parameters"}
         </button>
       </div>
 

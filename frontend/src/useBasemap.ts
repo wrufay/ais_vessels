@@ -21,7 +21,7 @@ export const BASEMAPS = [
 export function useBasemap() {
   const basemapLayerRef = useRef<TileLayer | null>(null);
   const [basemap, setBasemap] = useState("esri-ocean");
-  const [basemapOpen, setBasemapOpen] = useState(false);
+  const [basemapOpen, setBasemapOpen] = useState(true);
 
   useEffect(() => {
     if (!basemapLayerRef.current) return;

@@ -53,7 +53,7 @@ export function zoneKey(z: { hearing_group: string; impact: string; metric: stri
 // measuring/drawing.
 export function useNoiseImpact(apiBase: string) {
   const [showImpactsPanel, setShowImpactsPanel] = useState(false);
-  const [showParamsModal, setShowParamsModal] = useState(false);
+  const [showParamsPanel, setShowParamsPanel] = useState(false);
 
   const [sites, setSites] = useState<Record<string, NoiseImpactSite>>({});
   const [options, setOptions] = useState<NoiseImpactOptions>({
@@ -69,11 +69,16 @@ export function useNoiseImpact(apiBase: string) {
   // Negative metres below the surface (0 at the surface) -- matches the
   // underlying model's own depth coordinate convention, see main.py's
   // NoiseImpactRequest.depth_range.
-  const [depthMin, setDepthMin] = useState(-40);
-  const [depthMax, setDepthMax] = useState(-0.01);
-  const [splPeak, setSplPeak] = useState(220);
-  const [selSingleStrike, setSelSingleStrike] = useState(200);
-  const [nStrikesPerPile, setNStrikesPerPile] = useState(5000);
+  const DEFAULT_DEPTH_MIN = -40;
+  const DEFAULT_DEPTH_MAX = -0.01;
+  const DEFAULT_SPL_PEAK = 220;
+  const DEFAULT_SEL_SINGLE_STRIKE = 200;
+  const DEFAULT_N_STRIKES_PER_PILE = 5000;
+  const [depthMin, setDepthMin] = useState(DEFAULT_DEPTH_MIN);
+  const [depthMax, setDepthMax] = useState(DEFAULT_DEPTH_MAX);
+  const [splPeak, setSplPeak] = useState(DEFAULT_SPL_PEAK);
+  const [selSingleStrike, setSelSingleStrike] = useState(DEFAULT_SEL_SINGLE_STRIKE);
+  const [nStrikesPerPile, setNStrikesPerPile] = useState(DEFAULT_N_STRIKES_PER_PILE);
   // n_piles and assessment_period_hours are fixed at 1 pile / 24 hours for
   // now (not user-adjustable) -- left off the request body entirely so the
   // backend's own defaults (main.py's NoiseImpactRequest) apply.
@@ -126,6 +131,23 @@ export function useNoiseImpact(apiBase: string) {
       else next.add(key);
       return next;
     });
+  }
+
+  // Puts every input field back to its just-loaded state -- site back to
+  // the sites list's first entry (same fallback the initial /sites fetch
+  // above uses), everything else back to its blank/default value. Leaves
+  // any already-computed result/legend alone; this is a form reset, not a
+  // "start over" that would also blow away what Run already produced.
+  function resetParams() {
+    setSite(Object.keys(sites)[0] ?? "");
+    setHearingGroups([]);
+    setImpactTypes([]);
+    setMetrics([]);
+    setDepthMin(DEFAULT_DEPTH_MIN);
+    setDepthMax(DEFAULT_DEPTH_MAX);
+    setSplPeak(DEFAULT_SPL_PEAK);
+    setSelSingleStrike(DEFAULT_SEL_SINGLE_STRIKE);
+    setNStrikesPerPile(DEFAULT_N_STRIKES_PER_PILE);
   }
 
   async function handleRun() {
@@ -186,10 +208,10 @@ export function useNoiseImpact(apiBase: string) {
       }
       setUndefinedCombos(missing);
 
-      // Close the input modal and surface results in the panel underneath
-      // — keep the modal open on error instead, so the user can adjust
-      // params without re-opening it.
-      setShowParamsModal(false);
+      // Close the params panel and surface results in the Impacts panel
+      // — keep it open on error instead, so the user can adjust params
+      // without re-opening it.
+      setShowParamsPanel(false);
       setShowImpactsPanel(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to compute noise impact.");
@@ -200,7 +222,7 @@ export function useNoiseImpact(apiBase: string) {
 
   return {
     showImpactsPanel, setShowImpactsPanel,
-    showParamsModal, setShowParamsModal,
+    showParamsPanel, setShowParamsPanel,
     sites, options,
     site, setSite,
     hearingGroups, toggleHearingGroup,
@@ -212,6 +234,7 @@ export function useNoiseImpact(apiBase: string) {
     selSingleStrike, setSelSingleStrike,
     nStrikesPerPile, setNStrikesPerPile,
     running, error, result,
+    resetParams,
     visibleZoneKeys, toggleZoneVisibility,
     undefinedCombos,
     handleRun,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
@@ -53,7 +53,7 @@ import RegionsPanel from "./components/RegionsPanel";
 import LayersPanel from "./components/LayersPanel";
 import TracksPanel from "./components/TracksPanel";
 import ImpactsPanel from "./components/ImpactsPanel";
-import NoiseImpactModal from "./components/NoiseImpactModal";
+import NoiseImpactParamsPanel from "./components/NoiseImpactParamsPanel";
 import { useNoiseImpact, zoneKey } from "./useNoiseImpact";
 import { IMPACT_COLORS, IMPACT_DASH, IMPACT_ZINDEX } from "./utils/noiseImpactStyles";
 import { useTheme } from "./useTheme";
@@ -201,7 +201,7 @@ function ShipMap() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const {
     showImpactsPanel, setShowImpactsPanel,
-    showParamsModal, setShowParamsModal,
+    showParamsPanel, setShowParamsPanel,
     sites: noiseImpactSites, options: noiseImpactOptions,
     site: noiseImpactSite, setSite: setNoiseImpactSite,
     hearingGroups: noiseImpactHearingGroups, toggleHearingGroup: toggleNoiseImpactHearingGroup,
@@ -216,6 +216,7 @@ function ShipMap() {
     visibleZoneKeys: noiseImpactVisibleZoneKeys, toggleZoneVisibility: toggleNoiseImpactZoneVisibility,
     undefinedCombos: noiseImpactUndefinedCombos,
     handleRun: handleRunNoiseImpact,
+    resetParams: resetNoiseImpactParams,
   } = useNoiseImpact(API);
   const [lastOpenedPanel, setLastOpenedPanel] = useState<
     "vessel" | "region" | "layer" | "mooring" | "impacts"
@@ -318,6 +319,22 @@ function ShipMap() {
     onChange: setMooringListHeight,
   });
   const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
+  // Own width, separate from panelWidth's shared right-side group, since
+  // the params panel is on the left and can be open at the same time as
+  // one of those (e.g. Impacts).
+  const [paramsPanelWidth, setParamsPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
+  // Measured (not hardcoded) so the params panel starts past IconBar's own
+  // width instead of covering it -- IconBar sizes itself to its content
+  // (buttons/legend text), so there's no fixed width to offset by.
+  const iconBarRef = useRef<HTMLDivElement | null>(null);
+  const [iconBarWidth, setIconBarWidth] = useState(0);
+  useEffect(() => {
+    const el = iconBarRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setIconBarWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const { tourActive, setTourActive, registerTarget, getTourTarget, tourSteps } = useTour({
     mooringListElRef,
@@ -1110,13 +1127,20 @@ function ShipMap() {
   }, [vessels, search, filters]);
 
   return (
-    <div className="relative w-full h-screen overflow-hidden">
+    <div
+      className="relative w-full h-screen overflow-hidden"
+      // Read by map.css to push OL's built-in zoom control out from under
+      // IconBar (a permanent full-height sidebar) and the params panel
+      // when it's open -- same offset CursorCoordinates uses below.
+      style={{ "--map-controls-offset": `${iconBarWidth + (showParamsPanel ? paramsPanelWidth : 0)}px` } as CSSProperties}
+    >
       {/* Map — full screen */}
       <div ref={mapRef} className="absolute inset-0" />
 
       <CursorCoordinates
         lat={cursorCoord?.lat ?? null}
         lon={cursorCoord?.lon ?? null}
+        leftOffset={iconBarWidth + (showParamsPanel ? paramsPanelWidth : 0)}
       />
 
       {/* Upload modal */}
@@ -1171,6 +1195,9 @@ function ShipMap() {
         registerTarget={registerTarget}
         isDark={isDark}
         toggleTheme={toggleTheme}
+        innerRef={(el) => {
+          iconBarRef.current = el;
+        }}
       />
 
       <Tour
@@ -1313,7 +1340,8 @@ function ShipMap() {
 
       <SidePanel open={showImpactsPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("impactsPanel")}>
         <ImpactsPanel
-          onOpenModal={() => setShowParamsModal(true)}
+          paramsOpen={showParamsPanel}
+          onToggleParams={() => setShowParamsPanel((p) => !p)}
           result={noiseImpactResult}
           visibleZoneKeys={noiseImpactVisibleZoneKeys}
           onToggleZone={toggleNoiseImpactZoneVisibility}
@@ -1336,9 +1364,16 @@ function ShipMap() {
         />
       )}
 
-      {/* Noise impact parameter modal */}
-      {showParamsModal && (
-        <NoiseImpactModal
+      {/* Noise impact parameters — left side panel, can stay open alongside Impacts */}
+      <SidePanel
+        side="left"
+        offset={iconBarWidth}
+        open={showParamsPanel}
+        width={paramsPanelWidth}
+        onWidthChange={setParamsPanelWidth}
+        innerRef={registerTarget("paramsPanel")}
+      >
+        <NoiseImpactParamsPanel
           sites={noiseImpactSites}
           options={noiseImpactOptions}
           site={noiseImpactSite}
@@ -1362,9 +1397,10 @@ function ShipMap() {
           running={noiseImpactRunning}
           error={noiseImpactError}
           onRun={handleRunNoiseImpact}
-          onClose={() => setShowParamsModal(false)}
+          onReset={resetNoiseImpactParams}
+          onClose={() => setShowParamsPanel(false)}
         />
-      )}
+      </SidePanel>
 
       {/* Results modal */}
       {(showResults || closingResults) && regionStats && (

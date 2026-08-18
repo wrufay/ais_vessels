@@ -123,6 +123,7 @@ function IconBar({
   registerTarget,
   isDark,
   toggleTheme,
+  innerRef,
 }: {
   showVesselPanel: boolean;
   showRegionPanel: boolean;
@@ -146,6 +147,7 @@ function IconBar({
   registerTarget: (key: string) => (el: HTMLElement | null) => void;
   isDark: boolean;
   toggleTheme: () => void;
+  innerRef?: (el: HTMLDivElement | null) => void;
 }) {
   // Only one panel is open at a time -- toggling one closes the other 4.
   const panelSetters = [setShowVesselPanel, setShowRegionPanel, setShowMooringPanel, setShowLayerPanel, setShowImpactsPanel];
@@ -154,11 +156,18 @@ function IconBar({
   }
 
   return (
-    // Outer: full viewport height, centers the bar vertically when it fits.
-    // Inner: capped to that same height, scrolls instead of clipping once
-    // the bar's content (buttons + legend) is taller than the screen.
-    <div className="absolute inset-y-0 left-0 z-20 flex items-center">
-    <div className="max-h-full overflow-y-auto flex flex-col gap-2 rounded-r-lg shadow-sm bg-[#fcfffd]/90 dark:bg-slate-900/90 py-4 px-3 text-center items-center">
+    // Outer/inner both full viewport height now (not centered to content
+    // height) -- a fixed-position sidebar, not a floating pill, so other
+    // overlays (cursor coordinates, OL's zoom control) can measure and
+    // offset past its width reliably instead of guessing where its
+    // vertically-centered box happens to start/end. Inner still scrolls
+    // instead of clipping if content ever exceeds the viewport height.
+    // z-30, not z-20 like the side panels -- otherwise the left-anchored
+    // params panel (also left-0) would render on top of it and block the
+    // icon buttons while open, same reasoning as the persistent top-right
+    // chevron already being z-30 above the right-side panels.
+    <div ref={innerRef} className="absolute inset-y-0 left-0 z-30 flex">
+    <div className="h-full overflow-y-auto flex flex-col gap-2 shadow-sm bg-[#fcfffd]/90 dark:bg-slate-900/90 py-4 px-3 text-center items-center">
 
       <button
         onClick={onStartTour}
