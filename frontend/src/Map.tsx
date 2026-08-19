@@ -16,7 +16,7 @@ import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
 import WebGLVectorLayer from "ol/layer/WebGLVector";
 import VectorSource from "ol/source/Vector";
-import { Style, Stroke, Fill, Icon, Circle as CircleStyle } from "ol/style";
+import { Style, Stroke, Fill, Icon, Circle as CircleStyle, Text } from "ol/style";
 import Draw from "ol/interaction/Draw";
 import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
@@ -234,7 +234,6 @@ function ShipMap() {
     assessmentPeriodHours: noiseImpactAssessmentPeriodHours,
     running: noiseImpactRunning, error: noiseImpactError, result: noiseImpactResult,
     visibleZoneKeys: noiseImpactVisibleZoneKeys, toggleZoneVisibility: toggleNoiseImpactZoneVisibility,
-    undefinedCombos: noiseImpactUndefinedCombos,
     handleRun: handleRunNoiseImpact,
     resetParams: resetNoiseImpactParams,
   } = useNoiseImpact(API);
@@ -279,6 +278,18 @@ function ShipMap() {
   useEffect(() => {
     setBasemap(isDark ? "esri-imagery" : "esri-ocean");
   }, [isDark]);
+  // The noise-impact source-marker style below lives inside the map-init
+  // effect, which only runs once (see its `[]` deps) -- reading `isDark`
+  // directly there would freeze it at whatever theme was active on
+  // mount. Mirrored into a ref instead, same pattern as
+  // mooringOpacityRef/highlightedMooringRef nearby, so the style callback
+  // reads the current value without needing the whole map rebuilt on
+  // every theme toggle.
+  const isDarkRef = useRef(isDark);
+  useEffect(() => {
+    isDarkRef.current = isDark;
+    noiseImpactLayerRef.current?.changed();
+  }, [isDark]);
   const [serverError, setServerError] = useState<string | null>(null);
   const [ccgLastPositionAt, setCcgLastPositionAt] = useState<string | null>(null);
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
@@ -309,6 +320,14 @@ function ShipMap() {
   const [mooringOpen, setMooringOpen] = useState(false);
   const [vesselOpen, setVesselOpen] = useState(false);
   const [regionDotOpen, setRegionDotOpen] = useState(false);
+  // Noise-impact source-star sizing -- same size/opacity + ref pattern as
+  // mooring/vessel above, since this also has to be read from inside the
+  // map-init effect's style callback (OL-invoked, not React-rendered).
+  // 20px is the star's original fixed size, kept as the default so
+  // nothing changes until the user actually touches the slider.
+  const [starSize, setStarSize, starSizeRef] = useStateRef(20, () => noiseImpactLayerRef.current?.changed());
+  const [starOpacity, setStarOpacity, starOpacityRef] = useStateRef(1, () => noiseImpactLayerRef.current?.changed());
+  const [starSizeOpen, setStarSizeOpen] = useState(false);
   const [vesselListOpen, setVesselListOpen] = useState(true);
   const [vesselListHeight, setVesselListHeight] = useState(140);
   const onVesselListResizeMouseDown = useDragResize({
@@ -484,6 +503,17 @@ function ShipMap() {
     if (hasVisibleZones && extent) {
       view.fit(extent, { padding: [80, 80, 80, 80], maxZoom: 11, duration: 500 });
     }
+
+    // Source marker -- always shown once a result exists (matches the
+    // legend, which shows it regardless of zone visibility too), added
+    // after the fit-view decision above so it never counts as "a zone to
+    // fit to" and doesn't trigger an auto-zoom on an otherwise-empty result.
+    noiseImpactSourceRef.current.addFeature(
+      new Feature({
+        geometry: new Point(fromLonLat([noiseImpactResult.source.lon, noiseImpactResult.source.lat])),
+        isSource: true,
+      })
+    );
   }, [noiseImpactResult, noiseImpactVisibleZoneKeys]);
 
   // "Impact mode": while the Impacts panel is open, show its zone layer's
@@ -733,6 +763,17 @@ function ShipMap() {
           const layer = new VectorLayer({
             source: noiseImpactSourceRef.current,
             style: (feature) => {
+              if (feature.get("isSource")) {
+                const starColor = isDarkRef.current ? "152,193,217" : "61,90,128";
+                return new Style({
+                  text: new Text({
+                    text: "★",
+                    font: `${starSizeRef.current}px sans-serif`,
+                    fill: new Fill({ color: `rgba(${starColor},${starOpacityRef.current})` }),
+                  }),
+                  zIndex: 10,
+                });
+              }
               const impact = feature.get("impact") as string;
               const color = IMPACT_COLORS[impact] ?? "#888";
               return new Style({
@@ -1390,7 +1431,12 @@ function ShipMap() {
           onToggleZone={toggleNoiseImpactZoneVisibility}
           siteName={noiseImpactSite}
           siteMeta={noiseImpactSites[noiseImpactSite]}
-          undefinedCombos={noiseImpactUndefinedCombos}
+          starSize={starSize}
+          setStarSize={setStarSize}
+          starOpacity={starOpacity}
+          setStarOpacity={setStarOpacity}
+          starSizeOpen={starSizeOpen}
+          setStarSizeOpen={setStarSizeOpen}
         />
       </SidePanel>
 

@@ -98,9 +98,6 @@ export function useNoiseImpact(apiBase: string) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<NoiseImpactResult | null>(null);
   const [visibleZoneKeys, setVisibleZoneKeys] = useState<Set<string>>(new Set());
-  // Selected hearing-group/impact-type/metric combos with no matching row
-  // in Noise_Impact_Thresholds.xlsx at all -- see the diff in handleRun.
-  const [undefinedCombos, setUndefinedCombos] = useState<string[]>([]);
 
   // Populate the Scenario/Species cards from the backend so this never
   // hardcodes a site list or threshold-category list that could drift from
@@ -227,29 +224,6 @@ export function useNoiseImpact(apiBase: string) {
       });
       setVisibleZoneKeys(defaultVisible);
 
-      // A selected hearing-group/impact-type/metric combo with no
-      // matching row in Noise_Impact_Thresholds.xlsx never appears in
-      // data.zones at all -- distinct from a zone that DID compute but
-      // found zero exceedance (that's a normal, expected result, shown
-      // inline in the panel instead). Diff the requested combos against
-      // what came back and flag anything genuinely undefined, since that
-      // usually means the selection doesn't match what the workbook
-      // actually covers, not just "nothing was loud enough." Surfaced as
-      // an inline panel note (see ImpactsPanel) rather than a blocking
-      // alert() -- worth flagging (silently dropping it would be
-      // misleading), but not worth interrupting the flow for.
-      const returned = new Set(data.zones.map(zoneKey));
-      const missing: string[] = [];
-      for (const hg of hearingGroups) {
-        for (const it of impactTypes) {
-          for (const m of metrics) {
-            const key = zoneKey({ hearing_group: hg, impact: it, metric: m });
-            if (!returned.has(key)) missing.push(`${hg} – ${it} – ${m}`);
-          }
-        }
-      }
-      setUndefinedCombos(missing);
-
       // Params panel stays open (not auto-closed) -- surface results in
       // the Impacts panel underneath while leaving inputs visible/editable
       // for another run, rather than forcing a re-open to tweak anything.
@@ -279,7 +253,6 @@ export function useNoiseImpact(apiBase: string) {
     running, error, result,
     resetParams,
     visibleZoneKeys, toggleZoneVisibility,
-    undefinedCombos,
     handleRun,
   };
 }

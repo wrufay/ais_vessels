@@ -37,3 +37,13 @@ export const IMPACT_ZINDEX: Record<string, number> = {
   "REC INJ": 3,
   Mortality: 4,
 };
+
+// A zone that's genuinely just a few metres across rounds to "0.0" at
+// normal decimal precision -- reads as "no zone" (nothing here) even
+// though one really does exist, just a tiny one. Shown as "<1" instead so
+// a real, if tiny, result never looks identical to zero. Used for area/
+// diameter/radius wherever they're displayed (ImpactsPanel, NoiseImpactLegend).
+export function formatKmOrTiny(value: number, decimals = 1): string {
+  const roundsToZero = value < 0.5 / 10 ** decimals;
+  return roundsToZero ? "<1" : value.toFixed(decimals);
+}

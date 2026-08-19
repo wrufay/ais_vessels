@@ -1,13 +1,14 @@
 import { useState } from "react";
 import PanelHeader from "../PanelHeader";
 import CollapsibleHeader from "../CollapsibleHeader";
+import SizeOpacityPanel from "../SizeOpacityPanel";
 import NoiseImpactLegend from "./NoiseImpactLegend";
 import {
   zoneKey,
   type NoiseImpactResult,
   type NoiseImpactSite,
 } from "../../useNoiseImpact";
-import { IMPACT_COLORS } from "../../utils/noiseImpactStyles";
+import { IMPACT_COLORS, formatKmOrTiny } from "../../utils/noiseImpactStyles";
 
 const checkIcon = (
   <svg
@@ -40,7 +41,12 @@ function ImpactsPanel({
   onToggleZone,
   siteName,
   siteMeta,
-  undefinedCombos,
+  starSize,
+  setStarSize,
+  starOpacity,
+  setStarOpacity,
+  starSizeOpen,
+  setStarSizeOpen,
 }: {
   paramsOpen: boolean;
   onToggleParams: () => void;
@@ -49,10 +55,17 @@ function ImpactsPanel({
   onToggleZone: (key: string) => void;
   siteName: string;
   siteMeta: NoiseImpactSite | undefined;
-  undefinedCombos: string[];
+  starSize: number;
+  setStarSize: (v: number) => void;
+  starOpacity: number;
+  setStarOpacity: (v: number) => void;
+  starSizeOpen: boolean;
+  setStarSizeOpen: (v: boolean) => void;
 }) {
-  const [notExceededOpen, setNotExceededOpen] = useState(false);
-  const [undefinedOpen, setUndefinedOpen] = useState(false);
+  // Not-exceeded zones default to expanded -- the collapsed-by-default
+  // version made a "the run just came back clean" result look like there
+  // was nothing here at all until you noticed the caret.
+  const [notExceededOpen, setNotExceededOpen] = useState(true);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
@@ -137,12 +150,7 @@ function ImpactsPanel({
             (() => {
               // Split into real zones (a threshold was exceeded somewhere,
               // there's a polygon on the map) vs. not (null geometry --
-              // checked, came back clean). These read as the same kind of
-              // row if left mixed together, and get harder to tell apart
-              // from the "undefined combo" amber warning below at a
-              // glance -- three different meanings (exceeded / genuinely
-              // fine / no data to check) competing for one muted-gray
-              // visual language. Splitting them: real zones keep the full
+              // checked, came back clean). Real zones keep the full
               // clickable row (color = severity, toggles the map layer);
               // not-exceeded collapses into one line with a plain
               // checkmark, expandable for the full list, since there's
@@ -182,8 +190,8 @@ function ImpactsPanel({
                                     {z.metric} · {z.threshold_db} dB threshold
                                   </span>
                                   <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                                    {z.area_km2.toFixed(1)} km² · Ø{" "}
-                                    {(2 * z.radius_km).toFixed(1)} km
+                                    {formatKmOrTiny(z.area_km2)} km² · Ø{" "}
+                                    {formatKmOrTiny(2 * z.radius_km)} km
                                     {z.radius_std_km > 0.01 &&
                                       ` (± ${(2 * z.radius_std_km).toFixed(
                                         1
@@ -248,37 +256,30 @@ function ImpactsPanel({
               );
             })()
           )}
-
-          {undefinedCombos.length > 0 && (
-            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] mt-2">
-              <button
-                onClick={() => setUndefinedOpen((p) => !p)}
-                className="flex items-start gap-2 w-full text-left leading-relaxed"
-              >
-                <span
-                  className={`text-[9px] shrink-0 mt-0.5 transition-transform duration-150 ${
-                    undefinedOpen ? "rotate-90" : ""
-                  }`}
-                >
-                  ▶
-                </span>
-                <span>
-                  Thresholds for {undefinedCombos.length} of your selected
-                  combination{undefinedCombos.length > 1 ? "s" : ""} were not
-                  found in the source file.
-                </span>
-              </button>
-              {undefinedOpen && (
-                <ul className="mt-1 pl-4 list-disc list-inside leading-relaxed">
-                  {undefinedCombos.map((c) => (
-                    <li key={c}>{c}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
         </div>
       )}
+
+      <div className="border-t border-slate-100 dark:border-slate-800 mx-5 mt-2" />
+      <div className="px-5 py-3">
+        <SizeOpacityPanel
+          open={starSizeOpen}
+          onToggle={() => setStarSizeOpen(!starSizeOpen)}
+          preview={
+            <span
+              className="text-[#3d5a80] dark:text-[#98c1d9] leading-none"
+              style={{ fontSize: starSize, opacity: starOpacity }}
+            >
+              ★
+            </span>
+          }
+          size={starSize}
+          onSizeChange={setStarSize}
+          sizeMin={6}
+          sizeMax={26}
+          opacity={starOpacity}
+          onOpacityChange={setStarOpacity}
+        />
+      </div>
     </div>
   );
 }

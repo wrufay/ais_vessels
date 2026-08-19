@@ -16,7 +16,7 @@ function CursorCoordinates({
   return (
     <div
       style={{ left: leftOffset }}
-      className="absolute bottom-0 z-10 bg-[#fcfffd]/60 dark:bg-slate-900/60 rounded-sm px-1.5 py-0.5 text-xs text-slate-600 dark:text-slate-300 font-inter transition-[left,transform] duration-300 ease-in-out [@media(max-height:600px)]:translate-x-20"
+      className="absolute bottom-0 z-10 bg-[#fcfffd]/60 dark:bg-slate-900/60 rounded-sm px-1.5 py-0.5 text-xs text-slate-600 dark:text-slate-300 font-inter transition-[left] duration-300 ease-in-out"
     >
       {lat.toFixed(4)}°, {lon.toFixed(4)}°
     </div>

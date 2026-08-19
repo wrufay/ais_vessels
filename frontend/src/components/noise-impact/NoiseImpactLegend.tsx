@@ -1,5 +1,5 @@
 import { zoneKey, type NoiseImpactResult, type NoiseImpactSite } from "../../useNoiseImpact";
-import { IMPACT_COLORS, IMPACT_DASH } from "../../utils/noiseImpactStyles";
+import { IMPACT_COLORS, IMPACT_DASH, formatKmOrTiny } from "../../utils/noiseImpactStyles";
 import { regionColor } from "../../utils/mapStyles";
 
 const weaColor = regionColor("WEA").stroke;
@@ -66,7 +66,7 @@ function NoiseImpactLegend({
               <span>
                 <span className="block text-slate-700 dark:text-slate-200">{z.hearing_group} — {z.impact}</span>
                 <span className="block text-slate-500 dark:text-slate-400">
-                  {z.threshold_db} dB · Area {z.area_km2.toFixed(1)} km² · Radius {z.radius_km.toFixed(2)}
+                  {z.threshold_db} dB · Area {formatKmOrTiny(z.area_km2)} km² · Radius {formatKmOrTiny(z.radius_km, 2)}
                   {z.radius_std_km > 0.01 && ` ± ${z.radius_std_km.toFixed(2)}`} km
                 </span>
               </span>
