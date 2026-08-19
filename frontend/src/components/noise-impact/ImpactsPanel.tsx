@@ -36,6 +36,8 @@ const checkIcon = (
 function ImpactsPanel({
   paramsOpen,
   onToggleParams,
+  showOnMap,
+  onToggleShowOnMap,
   result,
   visibleZoneKeys,
   onToggleZone,
@@ -50,6 +52,8 @@ function ImpactsPanel({
 }: {
   paramsOpen: boolean;
   onToggleParams: () => void;
+  showOnMap: boolean;
+  onToggleShowOnMap: () => void;
   result: NoiseImpactResult | null;
   visibleZoneKeys: Set<string>;
   onToggleZone: (key: string) => void;
@@ -68,42 +72,61 @@ function ImpactsPanel({
   const [notExceededOpen, setNotExceededOpen] = useState(true);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+    <div className="flex-1 min-h-0 flex flex-col">
       <div className="px-5 pt-8 pb-4 shrink-0">
         <PanelHeader
           name="Impacts"
           description="Calculate and view noise impacts results."
         />
-        <button
-          onClick={onToggleParams}
-          className="px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs hover:bg-[#2e4460] active:bg-slate-500 shadow-sm active:scale-95 transition"
-        >
-          {paramsOpen ? "Hide parameters" : "Open parameters"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onToggleParams}
+            className="px-2.5 py-1 rounded-md bg-[#3d5a80] text-white text-[11px] hover:bg-[#2e4460] active:bg-slate-500 shadow-sm active:scale-95 transition"
+          >
+            {paramsOpen ? "Hide parameters" : "Open parameters"}
+          </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showOnMap}
+            onClick={onToggleShowOnMap}
+            title={showOnMap ? "Showing noise-impact zones/star/WEA on the map" : "Hidden from the map"}
+            className="flex items-center gap-2"
+          >
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">Show on map</span>
+            <span
+              className={`relative shrink-0 w-8 h-[18px] rounded-full border-2 transition-colors ${
+                showOnMap ? "border-emerald-500" : "border-slate-400 dark:border-slate-500"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full shadow transition-transform ${
+                  showOnMap
+                    ? "bg-emerald-500 translate-x-[14px]"
+                    : "bg-slate-400 dark:bg-slate-500 translate-x-0"
+                }`}
+              />
+            </span>
+          </button>
+        </div>
       </div>
 
+      <div className="flex-1 min-h-0 overflow-y-auto">
       {!result && (
         <div className="px-5 pb-6 flex flex-col gap-2">
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Open Parameters, fill in the three tabs, then hit Run.
           </p>
 
-          {/* Same section shape the real results use (Source/Legend/
-              Quantitative results), muted, so there's a preview of what's
-              about to appear here instead of nothing at all. */}
+          {/* Same section shape the real results use (Legend/Quantitative
+              results), muted, so there's a preview of what's about to
+              appear here instead of nothing at all. */}
           <div className="flex flex-col gap-2 opacity-40 pointer-events-none">
             <div className="pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Source
-            </div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">
-              Source location appears here after a run
-            </div>
-
-            <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Legend
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500">
-              Source marker, WEA outline, and zone lines appear here
+              Source marker/coordinates, WEA outline, and zone lines appear here
             </div>
 
             <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
@@ -118,18 +141,12 @@ function ImpactsPanel({
 
       {result && (
         <div className="px-5 pb-6 flex flex-col gap-2">
-          <div className="pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            Source
-          </div>
-          <div className="text-xs text-slate-400 dark:text-slate-500">
-            {result.source.lat.toFixed(3)}, {result.source.lon.toFixed(3)}
-          </div>
           {result.using_fixture_data && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] leading-relaxed">
               Synthetic placeholder data, not scientifically meaningful.
             </div>
           )}
-          <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+          <div className="pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
             Legend
           </div>
           <NoiseImpactLegend
@@ -204,12 +221,7 @@ function ImpactsPanel({
                         })}
                       </ul>
                       <div className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pt-1">
-                        Ø is mean diameter (2× mean radius across all directions
-                        from the source). ± shows how much that varies by
-                        direction, since zones are irregular, not literal
-                        circles: the underlying transmission-loss model varies
-                        by direction. Same convention the source model's own
-                        reference plots use.
+                        Ø is mean diameter, ± is variation by direction.
                       </div>
                     </>
                   )}
@@ -258,9 +270,14 @@ function ImpactsPanel({
           )}
         </div>
       )}
+      </div>
 
-      <div className="border-t border-slate-100 dark:border-slate-800 mx-5 mt-2" />
-      <div className="px-5 py-3">
+      {/* Same spot as the "Change size" section in every other panel
+          (Tracks/Moorings/Regions): last flex child, shrink-0, so it's
+          pinned at the bottom -- only the results above scroll, this
+          never does. */}
+      <div className="border-t border-slate-100 dark:border-slate-800 mx-2 mt-2" />
+      <div className="px-3 py-3 flex flex-col gap-1 shrink-0">
         <SizeOpacityPanel
           open={starSizeOpen}
           onToggle={() => setStarSizeOpen(!starSizeOpen)}

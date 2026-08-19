@@ -55,12 +55,23 @@ export function useNoiseImpact(apiBase: string) {
   const [showImpactsPanel, setShowImpactsPanel] = useState(false);
   const [showParamsPanel, setShowParamsPanel] = useState(false);
 
-  // Params auto-hides when Impacts closes, so it never lingers open on its
-  // own once its parent panel is gone -- but doesn't auto-open when
-  // Impacts opens; that's still the "Show parameters" button's job.
+  // Params tracks Impacts open/closed exactly -- opening Impacts opens
+  // Params too (so there's always something to configure/run right away
+  // instead of an extra click), and it closes right back down whenever
+  // Impacts does, so it never lingers open on its own once its parent
+  // panel is gone.
   useEffect(() => {
-    if (!showImpactsPanel) setShowParamsPanel(false);
+    setShowParamsPanel(showImpactsPanel);
   }, [showImpactsPanel]);
+
+  // A direct show/hide switch for the noise-impact map visuals (zones,
+  // source star, WEA outline -- see the layer built in Map.tsx), fully
+  // independent of which side panel happens to be open. Simpler than an
+  // earlier "isolated mode" version of this that tied visibility to
+  // showImpactsPanel and tried to keep other map layers hidden while it
+  // was active -- that whole mechanic's gone now; other features (vessel/
+  // mooring/region layers, panel switching) just always work normally.
+  const [showNoiseImpact, setShowNoiseImpact] = useState(true);
 
   const [sites, setSites] = useState<Record<string, NoiseImpactSite>>({});
   const [options, setOptions] = useState<NoiseImpactOptions>({
@@ -238,6 +249,7 @@ export function useNoiseImpact(apiBase: string) {
   return {
     showImpactsPanel, setShowImpactsPanel,
     showParamsPanel, setShowParamsPanel,
+    showNoiseImpact, setShowNoiseImpact,
     sites, options,
     site, setSite,
     hearingGroups, toggleHearingGroup,

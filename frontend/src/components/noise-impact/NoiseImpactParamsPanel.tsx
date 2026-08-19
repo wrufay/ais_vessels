@@ -501,8 +501,7 @@ function NoiseImpactParamsPanel({
                 {siteMeta.src_depth}m depth · {siteMeta.src_freq}Hz ·{" "}
                 {siteMeta.noise_date}
                 <br />
-                Precomputed transmission-loss model. Location isn't adjustable
-                yet.
+                Precomputed transmission-loss model.
               </div>
             )}
             {siteMeta?.using_fixture_data && (

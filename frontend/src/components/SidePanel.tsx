@@ -37,13 +37,20 @@ function SidePanel({
     onChange: onWidthChange,
   });
 
+  // `translate-x-full` alone is only 100% of the panel's *own* width --
+  // it ignores `offset`, so a closed left panel's near edge lands exactly
+  // at its anchored edge (flush against IconBar) instead of clearing past
+  // it, leaving it sitting directly behind IconBar rather than off screen.
+  // Computed inline (not a Tailwind class) so it can factor in the
+  // dynamic offset via calc().
+  const closedTransform =
+    side === "right" ? `translateX(calc(100% + ${offset}px))` : `translateX(calc(-100% - ${offset}px))`;
+
   return (
     <div
       ref={innerRef}
-      style={{ width, [side]: offset }}
-      className={`absolute top-0 h-full bg-white dark:bg-slate-900 z-20 flex flex-col shadow-sm transition-transform duration-300 ease-in-out ${
-        open ? "translate-x-0" : side === "right" ? "translate-x-full" : "-translate-x-full"
-      }`}
+      style={{ width, [side]: offset, transform: open ? "translateX(0)" : closedTransform }}
+      className="absolute top-0 h-full bg-white dark:bg-slate-900 z-20 flex flex-col shadow-sm transition-transform duration-300 ease-in-out"
     >
       <div
         onMouseDown={onHandleMouseDown}

@@ -48,10 +48,15 @@ function NoiseImpactLegend({
 
   return (
     <div className="bg-[#3d5a80]/8 dark:bg-[#3d5a80]/20 border border-[#3d5a80]/20 dark:border-[#3d5a80]/30 rounded-md px-3 py-2.5 text-xs leading-snug">
-      <div className="flex items-center gap-2 mb-1.5">
+      <div className="flex items-start gap-2 mb-1.5">
         <span className="text-[#3d5a80] dark:text-[#98c1d9] shrink-0" aria-hidden="true">★</span>
-        <span className="text-slate-700 dark:text-slate-200">
-          {siteName} source{siteMeta ? ` (${siteMeta.src_freq} Hz, ${siteMeta.src_depth} m depth)` : ""}
+        <span>
+          <span className="block text-slate-700 dark:text-slate-200">
+            {siteName} source{siteMeta ? ` (${siteMeta.src_freq} Hz, ${siteMeta.src_depth} m depth)` : ""}
+          </span>
+          <span className="block text-slate-500 dark:text-slate-400">
+            {result.source.lat.toFixed(3)}, {result.source.lon.toFixed(3)}
+          </span>
         </span>
       </div>
       <div className="flex items-center gap-2 mb-2">

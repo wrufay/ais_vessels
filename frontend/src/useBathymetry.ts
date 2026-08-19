@@ -17,7 +17,7 @@ import type TileLayer from "ol/layer/Tile";
 export function useBathymetry() {
   const bathyLayerRef = useRef<TileLayer | null>(null);
   const [showBathymetry, setShowBathymetry] = useState(false);
-  const [bathyOpacity, setBathyOpacity] = useState(0.75);
+  const [bathyOpacity, setBathyOpacity] = useState(1);
   const [bathyLoading, setBathyLoading] = useState(false);
 
   useEffect(() => {

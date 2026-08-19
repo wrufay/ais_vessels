@@ -38,6 +38,7 @@ import {
   setSelectedChaName,
   getSelectedChaName,
   setClickedChaNames,
+  regionColor,
 } from "./utils/mapStyles";
 import SidePanel, { PANEL_DEFAULT_WIDTH } from "./components/SidePanel";
 import IconBar from "./components/IconBar";
@@ -220,6 +221,7 @@ function ShipMap() {
   const {
     showImpactsPanel, setShowImpactsPanel,
     showParamsPanel, setShowParamsPanel,
+    showNoiseImpact, setShowNoiseImpact,
     sites: noiseImpactSites, options: noiseImpactOptions,
     site: noiseImpactSite, setSite: setNoiseImpactSite,
     hearingGroups: noiseImpactHearingGroups, toggleHearingGroup: toggleNoiseImpactHearingGroup,
@@ -514,7 +516,25 @@ function ShipMap() {
         isSource: true,
       })
     );
-  }, [noiseImpactResult, noiseImpactVisibleZoneKeys]);
+
+    // The WEA outline for context -- deliberately its own feature in this
+    // source (not a chaSourceRef feature), so it's a completely separate
+    // thing from the real, clickable WEA in the Regions feature: no
+    // click handling, no shared selection state, so selecting/deselecting
+    // a region on the map can never make this disappear or interfere with
+    // it. Styled distinctly (see the layer's style callback) and drawn
+    // beneath the zone polygons.
+    const weaRegion = WEA_REGIONS.find((r) => r.name === noiseImpactSite);
+    if (weaRegion) {
+      const weaGeom = fmt.readGeometry(weaRegion.geojson, {
+        dataProjection: "EPSG:4326",
+        featureProjection: "EPSG:3857",
+      }) as OLPolygon;
+      noiseImpactSourceRef.current.addFeature(
+        new Feature({ geometry: weaGeom, isWeaOutline: true })
+      );
+    }
+  }, [noiseImpactResult, noiseImpactVisibleZoneKeys, noiseImpactSite]);
 
   // "Impact mode": while the Impacts panel is open, show its zone layer's
   // polygons (they stay populated in the source underneath, see above --
@@ -529,75 +549,33 @@ function ShipMap() {
   // the dependency array). Restores whatever basemap was active before
   // on close, rather than leaving the user stuck on it.
   useEffect(() => {
-    noiseImpactLayerRef.current?.setVisible(showImpactsPanel);
-  }, [showImpactsPanel]);
+    noiseImpactLayerRef.current?.setVisible(showNoiseImpact);
+  }, [showNoiseImpact]);
 
-  // Hide vessel/mooring position layers while in impact mode -- they're
-  // not cleared (still there, still filtered/selected the same way
-  // underneath), just visually out of the way so they don't clutter a
-  // view that's already busy with the bathymetry layer and zone
-  // polygons. Nothing here has been through a full regression pass yet
-  // (e.g. selecting a new vessel route, or toggling "all traffic" for a
-  // region, while impact mode is still active) -- if either of those
-  // turns out to fight with this, that's the first place to look.
+  // Turn on bathymetry and zoom to the WEA whenever a new noise-impact
+  // result comes in -- keyed on the result/site themselves, not the
+  // show/hide toggle above, so this fires once per Run regardless of
+  // whether the visuals happen to be shown or hidden at that moment.
+  // Bathymetry only ever gets turned ON here, never back off -- it's
+  // broadly useful map context on its own, not something tied to one
+  // result, so there's no reason to yank it away again later.
   useEffect(() => {
-    routeLayerRef.current?.setVisible(!showImpactsPanel);
-    mooringLayerRef.current?.setVisible(!showImpactsPanel);
-    regionTrackLayerRef.current?.setVisible(!showImpactsPanel);
-  }, [showImpactsPanel]);
-
-  const preImpactsBasemapRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (showImpactsPanel) {
-      if (preImpactsBasemapRef.current === null) preImpactsBasemapRef.current = basemap;
-      setBasemap(isDark ? "esri-dark-gray" : "esri-light-gray");
-    } else if (preImpactsBasemapRef.current !== null) {
-      setBasemap(preImpactsBasemapRef.current);
-      preImpactsBasemapRef.current = null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showImpactsPanel, isDark]);
-
-  // Give the selected noise-impact site visual context on the map once Run
-  // actually produces a result (not just from opening the params modal --
-  // picking a site there shouldn't touch the map before the user commits to
-  // it): highlight its matching WEA polygon (site names in useNoiseImpact
-  // match WEA_REGIONS names exactly -- see analysis/noise_impact.py's SITES
-  // dict) and turn on bathymetry, since seabed depth is directly relevant
-  // to interpreting a pile-driving transmission-loss result. Same
-  // remember/restore pattern as preImpactsBasemapRef above, so it doesn't
-  // just leave bathymetry stuck on or clobber a highlight the user set some
-  // other way.
-  const preImpactsBathyRef = useRef<boolean | null>(null);
-  useEffect(() => {
-    const active = showImpactsPanel && !!noiseImpactResult;
+    if (!noiseImpactResult) return;
+    setShowBathymetry(true);
     const weaRegion = WEA_REGIONS.find((r) => r.name === noiseImpactSite);
-    if (active && weaRegion) {
-      if (preImpactsBathyRef.current === null) preImpactsBathyRef.current = showBathymetry;
-      setShowBathymetry(true);
-      setSelectedChaName(weaRegion.name);
-      chaSourceRef.current.changed();
-      // Only actually move the view if the run produced something to look
-      // at -- every threshold coming back not-exceeded (or undefined) is
-      // a normal result, not a reason to yank the map somewhere with
-      // nothing on it.
-      const hasZones = noiseImpactResult.zones.some((z) => z.geometry);
-      if (mapObj.current && hasZones) {
-        const fmt = new GeoJSON();
-        const geom = fmt.readGeometry(weaRegion.geojson, {
-          dataProjection: "EPSG:4326",
-          featureProjection: "EPSG:3857",
-        }) as OLPolygon;
-        mapObj.current.getView().fit(geom.getExtent(), { padding: [80, 80, 80, 80], maxZoom: 11, duration: 500 });
-      }
-    } else if (!active && preImpactsBathyRef.current !== null) {
-      setShowBathymetry(preImpactsBathyRef.current);
-      setSelectedChaName(null);
-      chaSourceRef.current.changed();
-      preImpactsBathyRef.current = null;
+    // Zoom to the WEA regardless of whether any threshold was actually
+    // exceeded -- a clean result is still a result worth seeing in
+    // context of the region it was computed for.
+    if (mapObj.current && weaRegion) {
+      const fmt = new GeoJSON();
+      const geom = fmt.readGeometry(weaRegion.geojson, {
+        dataProjection: "EPSG:4326",
+        featureProjection: "EPSG:3857",
+      }) as OLPolygon;
+      mapObj.current.getView().fit(geom.getExtent(), { padding: [80, 80, 80, 80], maxZoom: 11, duration: 500 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showImpactsPanel, noiseImpactResult, noiseImpactSite]);
+  }, [noiseImpactResult, noiseImpactSite]);
 
   // rebuild mooring points when date range or uploaded moorings change
   useEffect(() => {
@@ -774,6 +752,20 @@ function ShipMap() {
                   zIndex: 10,
                 });
               }
+              if (feature.get("isWeaOutline")) {
+                const weaColor = regionColor("WEA").stroke;
+                return new Style({
+                  // Solid line, no dash -- matches the "Designated WEAs"
+                  // legend swatch (NoiseImpactLegend.tsx), which is also
+                  // a plain solid weaColor line with no dash pattern.
+                  stroke: new Stroke({ color: weaColor, width: 1.5 }),
+                  fill: new Fill({ color: `${weaColor}0d` }),
+                  // Below every zone's zIndex (0-4) -- it's background
+                  // context for the zones, not something competing with
+                  // them for attention.
+                  zIndex: -1,
+                });
+              }
               const impact = feature.get("impact") as string;
               const color = IMPACT_COLORS[impact] ?? "#888";
               return new Style({
@@ -802,7 +794,14 @@ function ShipMap() {
         return;
       }
 
-      // check CHA click first — select it as active region
+      // check CHA click first — select it as active region. Deliberately
+      // does NOT touch any panel's open/closed state, matching
+      // handleRegionCheckboxClick (the Regions list's own click handler)
+      // -- selecting a region from the list never opens/closes a panel
+      // either, it only sets the active selection (which is what enables
+      // the icon bar's Analyse/All-traffic buttons) and toggles the
+      // highlight. A map click should do the same and nothing more, so
+      // it can never cause some other open panel to get replaced/hidden.
       let chaClicked = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         const cha = feature.get("chaRegion") as PresetRegion | undefined;
@@ -817,7 +816,6 @@ function ShipMap() {
             setRegionName(cha.name);
             drawSourceRef.current.clear();
             setSelectedChaName(cha.name);
-            setShowRegionPanel(true);
           }
           chaSourceRef.current.changed();
           return true;
@@ -1426,6 +1424,8 @@ function ShipMap() {
         <ImpactsPanel
           paramsOpen={showParamsPanel}
           onToggleParams={() => setShowParamsPanel((p) => !p)}
+          showOnMap={showNoiseImpact}
+          onToggleShowOnMap={() => setShowNoiseImpact((p) => !p)}
           result={noiseImpactResult}
           visibleZoneKeys={noiseImpactVisibleZoneKeys}
           onToggleZone={toggleNoiseImpactZoneVisibility}
