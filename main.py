@@ -1,18 +1,24 @@
 """
-Scotian Shelf AIS Vessel Tracker — FastAPI backend.
-Requires TimescaleDB/Postgres via DATABASE_URL (no default — the process
-won't start without it).
+FastAPI backend - contains all API routes for the entire application.
 
-Run locally (outside Docker — e.g. against `docker compose up db` only):
+Requires: TimescaleDB/Postgres via DATABASE_URL (no default, process
+needs DATABASE_URL to start). Docker sets this for you in
+docker-compose.yml, running locally - you set it yourself (see below).
+
+How to run
+----------
+Inside Docker container:
+Run this command each time you make edits and wish to have the changes applied.
+
+    docker compose up -d --build backend
+
+Locally (outside Docker):
+Run main.py locally to have changes automatically applied without rebuilding Docker
+image and restarting the container on each iteration.
+
     DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ais \
-      venv/bin/python -m uvicorn main:app --reload --port 8000
-
-Note: invoke uvicorn as `python -m uvicorn`, not the bare `uvicorn` command —
-this repo's venv has a stale console-script shebang from before it was
-renamed, so the bare command can fail or pick up the wrong interpreter.
-
-Optional: CORS_ORIGINS (comma-separated), defaults to the common local dev
-ports (localhost, :3000, :5173) if unset.
+      venv/bin/uvicorn main:app --reload --port 8000
+Note: This requires `docker compose up db` running for Postgres.
 """
 
 import os
@@ -31,6 +37,7 @@ from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, OR
 from noise import render_noise_overlay, noise_range, NOISE_EXTENT, NOISE_DATA_DIR  # noqa: E402 # type: ignore
 from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, compute_impact as compute_noise_impact  # noqa: E402 # type: ignore
 
+# reads DATABASE_URL from environment (REQUIRED)
 DATABASE_URL: str = os.environ["DATABASE_URL"]
 
 
@@ -39,7 +46,6 @@ def query(sql: str, params=None) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params or [])
             return [dict(r) for r in cur.fetchall()]
-
 
 app = FastAPI()
 
@@ -52,11 +58,18 @@ app.add_middleware(
 )
 
 
+# --- HEALTH ---
+
+# health check endpoint to confirm API is reachable
 @app.get("/")
 def root():
     return {"message": "app is running"}
 
 
+# --- VESSELS ---
+
+# returns VALID vessels (contains position data, MMSI in range)
+# used for the vessel tracks feature to filter the displayed list based on date.
 @app.get("/api/vessels")
 def get_vessels(start: str | None = Query(None), end: str | None = Query(None)):
     params: list = []
@@ -97,8 +110,13 @@ def get_ccg_status():
     return {"last_position_at": last.isoformat() if last else None}
 
 
-MAX_ROUTE_POINTS = 500
+# define MAXIMUM number of points shown per route.
+# longer routes get downsampled to prevent slowing down the application, adjust if desired.
+MAX_ROUTE_POINTS = 500 
 
+
+# returns position history for ONE vessel, by MMSI (downsampled if long)
+# used by Map.tsx when displaying a vessel's track on the map when selecting it in the list.
 @app.get("/api/vessel/{mmsi}/route")
 def get_vessel_route(
     mmsi: int,
@@ -130,6 +148,8 @@ def get_vessel_route(
         points = [points[int(i * step)] for i in range(MAX_ROUTE_POINTS)]
     return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS}
 
+
+# --- REGIONS ---
 
 class RegionRequest(BaseModel):
     polygon: dict  # GeoJSON polygon
@@ -167,6 +187,8 @@ def get_region_vessels(req: RegionRequest):
     }
 
 
+# runs a FULL analysis on a drawn region (daily vessel counts by type, speed distribution, density plot)
+# used by Map.tsx for the region-analysis feature when showing results inside the pop-up modal
 @app.post("/api/analysis/region")
 def analyse_region(req: RegionRequest):
     try:
@@ -242,10 +264,8 @@ def analyse_region(req: RegionRequest):
     }
 
 
-@app.get("/api/noise/extent")
-def get_noise_extent():
-    return NOISE_EXTENT
 
+# --- NOISE MODEL OVERLAY ---
 
 @app.get("/api/noise/available")
 def get_noise_available():
@@ -280,6 +300,8 @@ def get_noise_dates(
     return dates
 
 
+# returns minimum and maximum noise values (dB) for a given combination (date, variable, frequency, depth)
+# used by useNoiseLayer.ts to set the color scale before drawing the noise overlay
 @app.get("/api/noise/range")
 def get_noise_range(
     date: str = Query(..., description="YYYY-MM-DD (daily) or YYYY-MM (monthly)"),
@@ -301,6 +323,8 @@ def get_noise_range(
     return {"vmin": round(vmin, 1), "vmax": round(vmax, 1), "depth": resolved_depth}
 
 
+# renders the noise data as a PNG image, for the map overlay
+# used by useNoiseLayer.ts (main noise layer)
 @app.get("/api/noise/overlay")
 def get_noise_overlay(
     date: str = Query(..., description="YYYY-MM-DD (daily) or YYYY-MM (monthly)"),
@@ -319,11 +343,13 @@ def get_noise_overlay(
     return Response(content=png, media_type="image/png")
 
 
+# --- INTERACTIVE NOISE IMPACT ---
+
 @app.get("/api/noise-impact/sites")
 def get_noise_impact_sites():
-    """Precomputed pile-driving noise-impact sites — each is a transmission
+    """Precomputed pile-driving noise-impact sites. Each is a transmission
     -loss model already run offline for a fixed source location/depth/
-    frequency/date. There is no arbitrary-location mode yet (see
+    frequency/date. Currently, no arbitrary-location mode (see
     analysis/noise_impact.py)."""
     return list_noise_impact_sites()
 
@@ -350,6 +376,8 @@ class NoiseImpactRequest(BaseModel):
     assessment_period_hours: float = 24
 
 
+# returns impact zones after running the pile-driving noise-impact model for one site.
+# used by useNoiseImpact.ts when you run the impact calculation with user-inputted parameter values.
 @app.post("/api/noise-impact/compute")
 def post_noise_impact_compute(req: NoiseImpactRequest):
     try:
