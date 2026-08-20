@@ -34,7 +34,7 @@ from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
-from noise import render_noise_overlay, noise_range, NOISE_EXTENT, NOISE_DATA_DIR  # noqa: E402 # type: ignore
+from noise import render_noise_overlay, noise_range, NOISE_DATA_DIR  # noqa: E402 # type: ignore
 from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, compute_impact as compute_noise_impact  # noqa: E402 # type: ignore
 
 # reads DATABASE_URL from environment (REQUIRED)
