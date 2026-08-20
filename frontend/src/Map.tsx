@@ -678,10 +678,15 @@ function ShipMap() {
     bathyLayer.getSource()!.on("tileloadstart", () => { bathyPending++; setBathyLoading(true); });
     bathyLayer.getSource()!.on(["tileloadend", "tileloaderror"], () => { if (--bathyPending <= 0) { bathyPending = 0; setBathyLoading(false); } });
 
-    // ocean noise modelling — static raster overlay, one day's mean dB grid
+    // ocean noise modelling — static raster overlay, one day's mean dB grid.
+    // ImageStatic needs *some* url at construction time; this layer starts
+    // invisible and useNoiseLayer's effect replaces the source with the real
+    // date/variable/freq/depth via setSource() right after mount, so a 1x1
+    // transparent placeholder avoids firing a real (and discarded) request
+    // to /api/noise/overlay before that happens.
     const noiseLayer = new ImageLayer({
       source: new ImageStatic({
-        url: `${API}/api/noise/overlay?date=2020-02-01`,
+        url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
         imageExtent: NOISE_EXTENT,
         projection: "EPSG:3857",
       }),
