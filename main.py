@@ -34,7 +34,7 @@ from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
-from noise import render_noise_overlay, noise_range, NOISE_DATA_DIR  # noqa: E402 # type: ignore
+from noise import render_noise_overlay, noise_range, NOISE_DATA_DIR, combo_dirname, parse_combo_dirname  # noqa: E402 # type: ignore
 from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, compute_impact as compute_noise_impact  # noqa: E402 # type: ignore
 
 # reads DATABASE_URL from environment (REQUIRED)
@@ -270,16 +270,17 @@ def analyse_region(req: RegionRequest):
 @app.get("/api/noise/available")
 def get_noise_available():
     """Return available (variable, freq, depth) combinations by scanning noise_data/."""
-    import re
     result: dict[str, list[dict]] = {}
     try:
         entries = os.listdir(NOISE_DATA_DIR)
     except FileNotFoundError:
         return result
     for name in entries:
-        m = re.match(r"^(.+)_f(\d+)_d(\d+)$", name)
-        if m and os.path.isdir(os.path.join(NOISE_DATA_DIR, name)):
-            var, freq, depth = m.group(1), int(m.group(2)), int(m.group(3))
+        if not os.path.isdir(os.path.join(NOISE_DATA_DIR, name)):
+            continue
+        parsed = parse_combo_dirname(name)
+        if parsed:
+            var, freq, depth = parsed
             result.setdefault(var, []).append({"freq": freq, "depth": depth})
     return result
 
@@ -291,7 +292,7 @@ def get_noise_dates(
     depth: float = Query(10),
 ):
     """Return sorted list of available date strings for a given variable/freq/depth."""
-    dir_path = os.path.join(NOISE_DATA_DIR, f"{variable}_f{int(freq)}_d{int(depth)}")
+    dir_path = os.path.join(NOISE_DATA_DIR, combo_dirname(variable, freq, depth))
     try:
         files = os.listdir(dir_path)
     except FileNotFoundError:

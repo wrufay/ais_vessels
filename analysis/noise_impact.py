@@ -35,8 +35,10 @@ to the frontend so fake data is never silently presented as real.
 
 import os
 import sys
+import threading
 from datetime import date, timedelta
 
+import numpy as np  # type: ignore
 from shapely.geometry import Polygon, mapping  # type: ignore
 
 _REAL_CODE_DIR = "/home/shared/noise_impact_code"
@@ -52,6 +54,92 @@ from ns_pile_driving_noise_mapping import (  # noqa: E402 # type: ignore
     HearingGroup, Impact, Metric,
 )
 from ns_pile_driving_noise_mapping.core import calculate_noise_impact  # noqa: E402 # type: ignore
+import ns_pile_driving_noise_mapping.core as _npnm_core  # noqa: E402 # type: ignore
+
+
+# Cache the multi-second CSnap TL-pickle load (see compute_impact's
+# docstring). Keyed on the fields that determine what's actually read from
+# disk -- site's data_folder/depth/freq/date, all fixed per SITES entry --
+# not on exposure/noise-level params, since those are what users actually
+# vary between runs for the same site (SPL, strikes, hearing groups, etc.)
+# and don't change what load_tl_model_output would read.
+#
+# Implemented as a monkeypatch of core's module-level reference to
+# load_tl_model_output (bound there via `from .io.tl_model import
+# load_tl_model_output`) rather than reimplementing calculate_noise_impact's
+# internals with its private helpers -- keeps this decoupled from a package
+# still under active development elsewhere, per that docstring's stated
+# reason for not caching sooner. Fragile in one way: if the package ever
+# changes how core.py imports/calls that function, this patch silently
+# stops applying (falls back to uncached, not a crash) -- worth re-checking
+# after any ns_pile_driving_noise_mapping upgrade.
+_load_tl_model_output_uncached = _npnm_core.load_tl_model_output
+_tl_model_cache: dict[tuple, dict] = {}
+_tl_model_cache_lock = threading.Lock()
+
+
+def _cached_load_tl_model_output(tl_model_params):
+    key = (
+        os.path.normpath(str(tl_model_params.data_folder)),
+        tl_model_params.src_depth,
+        tl_model_params.src_freq,
+        tl_model_params.noise_date,
+    )
+    with _tl_model_cache_lock:
+        cached = _tl_model_cache.get(key)
+    if cached is not None:
+        return cached
+    result = _load_tl_model_output_uncached(tl_model_params)
+    with _tl_model_cache_lock:
+        _tl_model_cache[key] = result
+    return result
+
+
+_npnm_core.load_tl_model_output = _cached_load_tl_model_output
+
+
+# Cache PolarFieldInterpolator construction too. Profiling showed this --
+# not the TL-pickle load above -- is the actual dominant cost per request
+# (~4s of ~5s for a real-data site): it builds a Delaunay triangulation
+# over a 500x500 lon/lat grid, but only depends on the source's azimuth/
+# distance coordinates and src_lon/src_lat, none of which vary with
+# exposure_params or noise_level_params. calculate_noise_impact() builds it
+# unconditionally (it's attrs["GridMapper"], meant for create_map's
+# plotting path) even though compute_impact() below never plots and never
+# reads that attribute -- so this was pure waste on every request before
+# caching, independent of the TL-load question.
+#
+# Keyed on (src_lon, src_lat, azimuth values) rather than reusing the
+# TL-load cache key above because this wrapper only receives the Dataset
+# actually passed at the PolarFieldInterpolator(...) call site in core.py,
+# not the tl_model_params object -- but for a given site, azimuth/distance
+# coordinates are untouched by every step between the TL load and this
+# call (depth-averaging and RL-weighting only touch the "depth" dimension
+# and add data_vars), so they're a reliable stand-in for "same site".
+_PolarFieldInterpolator_uncached = _npnm_core.PolarFieldInterpolator
+_interpolator_cache: dict[tuple, object] = {}
+_interpolator_cache_lock = threading.Lock()
+
+
+def _cached_polar_field_interpolator(ds, src_lon, src_lat, *args, **kwargs):
+    key = (
+        float(src_lon),
+        float(src_lat),
+        tuple(np.asarray(ds.azimuth.values).tolist()),
+        args,
+        tuple(sorted(kwargs.items())),
+    )
+    with _interpolator_cache_lock:
+        cached = _interpolator_cache.get(key)
+    if cached is not None:
+        return cached
+    result = _PolarFieldInterpolator_uncached(ds, src_lon, src_lat, *args, **kwargs)
+    with _interpolator_cache_lock:
+        _interpolator_cache[key] = result
+    return result
+
+
+_npnm_core.PolarFieldInterpolator = _cached_polar_field_interpolator
 
 
 _FIXTURES_ROOT = os.path.join(os.path.dirname(__file__), "..", "mock_api", "noise_impact_fixtures")
@@ -145,13 +233,11 @@ def compute_impact(
     below the surface (0 at the surface), matching the CSnap depth
     coordinate — e.g. (-40.0, -0.01) for "near-surface down to 40m".
 
-    No caching of the (multi-second) TL-pickle load yet, even though only
-    exposure/noise-level params usually change between requests for the
-    same site — that would mean reimplementing calculate_noise_impact()'s
-    internals using the package's private (underscore-prefixed) helpers
-    instead of its one documented public entry point, a coupling risk
-    against a package still under active development elsewhere. Add it if
-    request latency becomes a real problem in practice.
+    The (multi-second) TL-pickle load is cached per site — see the
+    monkeypatch of load_tl_model_output above. Everything downstream
+    (depth-averaging, received-level weighting, zone boundaries) still runs
+    fresh every call, since that's what actually depends on
+    exposure_params/noise_level_params.
     """
     if site not in SITES:
         raise ValueError(f"Unknown site: {site}")

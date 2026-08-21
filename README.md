@@ -17,13 +17,11 @@ sudo usermod -aG docker $USER
 ```
 Log out and back in. Until then, prefix docker commands with `sg docker -c "..."`.
 
-**2. Set up `.env`** (repo root, gitignored — copy the two vars below into a
+**2. Set up `.env`** (repo root, gitignored — copy the var below into a
 new `.env` file)
 ```
 PGDATA_PATH=./pgdata          # where Postgres stores its data; point at
                                # external/mounted storage if needed
-VITE_STADIA_KEY=your-key-here # Stadia Maps API key, for the basemap tiles
-                               # (get one free at stadiamaps.com)
 ```
 
 **3. Start the stack**

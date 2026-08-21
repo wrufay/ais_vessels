@@ -345,6 +345,9 @@ def main() -> None:
         print("No matching source files found.")
         sys.exit(1)
 
+    # This naming convention is mirrored independently in analysis/noise.py's
+    # combo_dirname() — not imported from here since this script and the
+    # backend don't otherwise share code, but keep the two in sync by hand.
     out_subdir = os.path.join(args.dst, f"{args.variable}_f{int(args.freq)}_d{int(args.depth)}")
 
     if args.monthly:
