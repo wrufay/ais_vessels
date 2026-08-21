@@ -7,7 +7,7 @@ a base64-encoded PNG string (ready to embed in a JSON response or <img> tag).
 Functions:
     plot_vessel_types(daily_counts) — stacked bar chart of daily vessel counts by type
     plot_speed_overall(df)          — line chart of mean daily speed across all vessels
-    plot_vessel_density(df)         — hexbin density map of vessel positions
+    plot_vessel_density(df, lon_min, lon_max, lat_min, lat_max) — density map of vessel positions
 """
 
 
@@ -23,11 +23,7 @@ import numpy as np
 import pandas as pd # type: ignore
 
 # Maps vessel type label -> consistent hex color across all charts. Read from
-# frontend/src/data/colors.json's "vessel" section so the frontend
-# (vesselTypeColors.ts, mapStyles.ts) and these charts can't drift out of
-# sync. Only the "search and rescue vessel" key differs from the JSON's
-# "search & rescue" -- that's the label classify_ship_type() in main.py
-# produces, not a typo.
+# frontend/src/data/colors.json's "vessel" section
 _COLORS_JSON = Path(__file__).resolve().parents[1] / "frontend" / "src" / "data" / "colors.json"
 _raw_colors = json.loads(_COLORS_JSON.read_text())["vessel"]
 TYPE_COLORS = {**_raw_colors, "search and rescue vessel": _raw_colors["search & rescue"]}
@@ -38,8 +34,6 @@ ORDERED_TYPES = ["cargo", "tanker", "fishing", "passenger",
                  "search and rescue vessel", "other", "unknown"]
 
 # AIS ship-type code ranges -> label. Shared by main.py and mock_api/main.py
-# (both import classify_ship_type from here) so the two backends can't drift
-# apart the way they used to when each kept its own copy of this table.
 TYPE_CATEGORIES = {
     "cargo":                    range(70, 80),
     "tanker":                   range(80, 90),
@@ -52,6 +46,7 @@ TYPE_CATEGORIES = {
 
 
 def classify_ship_type(code):
+    """AIS ship-type code -> label, via TYPE_CATEGORIES; "unknown" if unrecognized/missing."""
     try:
         c = int(code)
     except (TypeError, ValueError):

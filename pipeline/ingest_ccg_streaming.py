@@ -12,27 +12,18 @@ written continuously by CCG's own decode pipeline:
 
 Output:
 Writes to the same PostgreSQL tables as ingest_csv.py (ais_positions,
-vessels), tagged source='CCG_terrestrial'. Unlike the CSV pipeline's files,
-these grow throughout the day rather than being complete once written. So
-instead of a done/not-done boolean, this script reuses ingestion_log as a
-per-file *cursor*: rows_loaded is how many rows of that file have been read
-so far, and each run only reads [rows_loaded : current_length) — cheap even
-though the files themselves are huge (30M+ rows / ~5GB for one day), since
-NetCDF slicing doesn't require loading the whole array. Processed in chunks
-so a script restart mid-file resumes from the last committed chunk instead
-of redoing the whole file.
+vessels), tagged source='CCG_terrestrial'. 
 
-Commands to run:
+Command to run:
     python pipeline/ingest_ccg_streaming.py
-    python pipeline/ingest_ccg_streaming.py --once   (same as above; there is no daemon loop)
 
-Intended to be invoked periodically (e.g. cron), same as the noise pipeline's
-resumable scripts -- it does one pass over whatever is new and exits.
+No flags -- takes no arguments. Intended to be invoked periodically (e.g.
+cron), same as the noise pipeline's resumable scripts -- it does one pass
+over whatever is new and exits; there is no daemon loop.
 """
 
 import glob
 import io
-import math
 import os
 from datetime import datetime, timezone
 
@@ -58,6 +49,9 @@ SOURCE_TAG = "CCG_terrestrial"
 CHUNK = 2_000_000  # rows per read/insert chunk
 
 
+# get_cursor/set_cursor track how far into each file we've already read --
+# this is what makes a run resumable/safe to invoke repeatedly on a
+# growing file, instead of re-reading everything from row 0 each time.
 def get_cursor(conn, filename: str) -> int:
     with conn.cursor() as cur:
         cur.execute("SELECT rows_loaded FROM ingestion_log WHERE filename = %s", (filename,))
@@ -88,6 +82,10 @@ def _valid_mask(arr: np.ma.MaskedArray | np.ndarray) -> np.ndarray:
 
 
 def ingest_dynamic_file(conn, path: str) -> int:
+    """Ingest one Dynamic_CCG_AIS_UTC_Log_*.nc file's new rows into
+    ais_positions. Returns the number of positions actually inserted (not
+    the number that passed filters -- ON CONFLICT DO NOTHING silently
+    drops duplicates already loaded)."""
     filename = os.path.basename(path)
     ds = nc.Dataset(path)
     total = ds.dimensions["Dindex"].size
@@ -97,6 +95,8 @@ def ingest_dynamic_file(conn, path: str) -> int:
         return 0
 
     inserted = 0
+    # Read/insert in chunks (CHUNK rows) rather than the whole file at
+    # once -- these files grow continuously and can be large.
     for chunk_start in range(start, total, CHUNK):
         chunk_end = min(chunk_start + CHUNK, total)
 
@@ -109,6 +109,8 @@ def ingest_dynamic_file(conn, path: str) -> int:
         course = ds.variables["course"][chunk_start:chunk_end]
         heading = ds.variables["heading"][chunk_start:chunk_end]
 
+        # Keep only actual position reports, with usable mmsi/time/coords,
+        # inside the Scotian Shelf bbox.
         keep = (
             np.isin(msg_type, POSITION_MSG_IDS)
             & _valid_mask(mmsi)
@@ -122,6 +124,8 @@ def ingest_dynamic_file(conn, path: str) -> int:
         actually_inserted = 0
 
         if len(idx) > 0:
+            # Build one CSV blob in memory, then COPY it in -- much faster
+            # than one INSERT per row for chunks this size.
             buf = io.StringIO()
             for i in idx:
                 ts = datetime.fromtimestamp(int(date_num[i]), tz=timezone.utc).isoformat()
@@ -132,6 +136,9 @@ def ingest_dynamic_file(conn, path: str) -> int:
             buf.seek(0)
 
             with conn.cursor() as cur:
+                # COPY into a temp table first, then INSERT ... ON CONFLICT
+                # DO NOTHING from there -- COPY itself can't skip
+                # duplicates.
                 cur.execute("CREATE TEMP TABLE tmp_positions (LIKE ais_positions INCLUDING DEFAULTS) ON COMMIT DROP")
                 cur.copy_expert(
                     """
@@ -158,6 +165,10 @@ def ingest_dynamic_file(conn, path: str) -> int:
 
 
 def ingest_static_file(conn, path: str) -> int:
+    """Ingest one Static_CCG_AIS_UTC_Log_*.nc file's new rows into vessels
+    (upsert by mmsi). COALESCE below: name is set once, never updated
+    again; ship_type only fills in once it's actually known.
+    Returns vessels upserted."""
     filename = os.path.basename(path)
     ds = nc.Dataset(path)
     total = ds.dimensions["Sindex"].size
@@ -175,11 +186,16 @@ def ingest_static_file(conn, path: str) -> int:
         shipname = ds.variables["shipname"][chunk_start:chunk_end]
         shiptype = ds.variables["shiptype"][chunk_start:chunk_end]
 
+        # Keep only static/voyage reports with a usable mmsi.
         keep = np.isin(msg_type, STATIC_MSG_IDS) & _valid_mask(mmsi)
         idx = np.nonzero(keep)[0]
 
+        # One row per mmsi (later rows in this chunk win) -- last-seen
+        # name/type is enough here, no need to keep every report.
         rows: dict[int, tuple] = {}
         for i in idx:
+            # NOTE: unlike every other field in this file, shipname isn't
+            # run through _valid_mask().
             name = str(shipname[i]).strip() if shipname[i] not in (None, "N/A", "") else None
             if not name:
                 continue
@@ -211,6 +227,9 @@ def ingest_static_file(conn, path: str) -> int:
 
 
 def main():
+    # One pass over every stream file currently on disk, then exit --
+    # nothing here loops/watches for new files, so this relies on being
+    # re-invoked periodically (cron) to pick up what's new each time.
     dynamic_files = sorted(glob.glob(os.path.join(STREAM_DIR, "Dynamic_CCG_AIS_UTC_Log_*.nc")))
     static_files = sorted(glob.glob(os.path.join(STREAM_DIR, "Static_CCG_AIS_UTC_Log_*.nc")))
 

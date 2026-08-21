@@ -3,9 +3,9 @@
 This script acts as the pipeline between our source data and SQL database.
 
 Input:
-Path to a CSV file or a directory of CSVs containing pre-decoded AIS data.
-Script works on any CSV with standard AIS field names
-(i.e. column names are case-insensitive and can be in any order)
+Path to a CSV file or a directory of CSVs (or .csv.zip) containing
+pre-decoded AIS data. Script works on any CSV with standard AIS field
+names (i.e. column names are case-insensitive and can be in any order)
 
 Output:
 Writes to a PostgreSQL database containing two tables (initiated by docker/init.sql):
@@ -79,7 +79,9 @@ def already_loaded(conn, filename: str) -> bool:
 
 
 def load_file(csv_path: str) -> tuple[str, int]:
-    """Loads one CSV into the database — returns (filename, row_count), or -1 if already ingested."""
+    """Loads one CSV into the database — returns (filename, row_count).
+    row_count is -1 if already ingested (skipped), 0 if processed but no
+    rows matched (not the same as skipped)."""
     
     filename = Path(csv_path).name
     conn = psycopg2.connect(DATABASE_URL)

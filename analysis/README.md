@@ -5,9 +5,9 @@ is identical regardless of which backend is running.
 
 ## Files
 
-- **`noise.py`** — loads noise GeoTIFFs, renders map overlays, resolves
-  requested (variable, frequency, depth) to whatever's actually been
-  converted (`resolve_depth`).
+- **`noise.py`** — loads noise GeoTIFFs, renders map overlays. Only
+  `combined_noise` is currently supported; a requested (freq, depth) must
+  match an already-converted GeoTIFF exactly, no fallback if it doesn't.
 - **`plots.py`** — region-stats plotting (vessel types, speed, density) for
   the region analysis panel.
 - **`noise_impact.py`** — wraps the `ns_pile_driving_noise_mapping` package
