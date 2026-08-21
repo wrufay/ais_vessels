@@ -4,37 +4,11 @@ single-band GeoTIFFs that the FastAPI backend serves as map overlay images.
 
 Input:
 Daily NetCDFs at /mnt/shared_remote/<YYYYMM>/<YYYYMMDD>.nc (sshfs-mounted).
-Each file covers one calendar day with these dimensions and variables:
-
-    Dimensions:
-      x  = 701   (longitude axis, -69.5° → -59.0°, spacing 0.015°)
-      y  = 417   (latitude  axis,  41.0° →  46.0°, spacing ~0.012°)
-      f  = 5     (frequency bands: 50, 100, 200, 500, 1000 Hz)
-      d  = 19    (depth levels: 10, 20, 30, ..., 150, 175, 200, 300, 500 m)
-      t  = 144   (time steps: 10-minute intervals throughout the day)
-
-    Variables:
-      longitude(x)               – 1-D array of cell-centre longitudes
-      latitude(y)                – 1-D array of cell-centre latitudes
-      frequency(f)                – 1-D array of frequency values in Hz
-      depth(d)                    – 1-D array of depth values in metres
-      time(t)                     – 1-D array (days since epoch, not used here)
-      vessel_noise(x,y,f,d,t)     – modelled vessel noise in dB re 1 µPa
-      combined_noise(x,y,f,d,t)   – vessel + wind noise combined
-      wind_noise(x,y,f,t)         – wind-driven ambient noise (no depth dim)
 
 Output:
 <dst>/<variable>_f<freq>_d<depth>/YYYY-MM-DD.tif (or YYYY-MM.tif with
---monthly) — one (variable, frequency, depth) combination per run, averaged
-across the day's/month's time steps into a single float32 GeoTIFF in
-EPSG:4326, NaN for land/no-data cells. Resumable — skips any day/month whose
-output file already exists, so it's safe to run in batches or after
-interruption.
+--monthly) 
 
-Performance note: each source file requires reading ~337 MB of
-double-precision data over the sshfs mount (~17 s/file on this machine) —
-converting one combo across ~450 days takes roughly 2 hours. Run it in a
-screen/tmux session or as a background job.
 
 Commands to run:
     python pipeline/noise_to_geotiff.py
@@ -64,16 +38,9 @@ DST_DIR = os.path.join(os.path.dirname(__file__), "noise_data")
 # Matches filenames like "20200201.nc" and captures year, month, day groups.
 DATE_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})\.nc$")
 
-# Sanity ceiling for vessel/combined noise, in dB re 1 uPa. Legitimate loud
-# readings across the dataset top out around 141 dB; some source files
-# contain glitched timesteps where a whole block of the grid is pinned to
-# the same value (154-178 dB) regardless of depth -- real underwater sound
-# always attenuates with depth, so depth-invariance across a huge area is
-# the signature of a bad model write, not a real loud event. Discovered via
-# 20200223.nc timestep 70, which pins x=542-700 (all y, all depth) to a
-# fixed per-frequency value. Because monthly averaging is done in linear
-# pressure space (see convert_monthly), a single such reading would
-# otherwise dominate a whole month's average at every pixel it touches.
+# Sanity ceiling, dB re 1 uPa -- real readings top out ~141 dB; glitched
+# timesteps sometimes pin a whole grid block to 154-178 dB (found via
+# 20200223.nc), which real depth-attenuated sound never does.
 MAX_PLAUSIBLE_DB = 145.0
 
 
@@ -88,11 +55,6 @@ def _nearest_index(values: np.ndarray, target: float) -> int:
 
 def find_daily_files(src_dir: str, start: str | None, end: str | None) -> list[tuple[str, str]]:
     """Scan src_dir and return a sorted list of (date, path) pairs.
-
-    Scans all YYYYMM/ subdirectories for YYYYMMDD.nc files, returning those within
-    the [start, end] date range if given (ISO strings, both inclusive)
-    Anything not matching the expected naming pattern is skipped.
-
 
     Parameters
     ----------
@@ -129,32 +91,6 @@ def find_daily_files(src_dir: str, start: str | None, end: str | None) -> list[t
 def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth: float) -> None:
     """Convert one day's NetCDF to a local GeoTIFF.
 
-    Steps
-    -----
-    1. Open the NetCDF and slice the chosen variable at the requested
-       frequency/depth level, giving a (701, 417, 144) array of the day's
-       144 ten-minute time steps. (except for wind_noise, which has no depth dimension.)
-
-    2. Mask land / no-data cells (stored as exactly 0.0 dB) to NaN. This is
-       done BEFORE the next step, because 0 dB converts to a valid-looking
-       pressure and would otherwise pollute the average.
-
-    3. Average in linear pressure space, not in dB. Convert dB to pressure
-       (SPL_linear = 10^(SPL_dB / 20)), take the mean over the 144 time steps,
-       then convert back to dB (SPL_dB = 20 * log10(mean)). Averaging dB
-       directly underweights loud events, so it must be done in linear space.
-
-    4. Transpose to (lat, lon) = (417, 701) and flip vertically so the first
-       row is the northernmost latitude (GeoTIFF convention) and cast to float32,
-       which halves the file size.
-
-    5. Compute the affine transform. rasterio's from_origin() takes the
-       north-west corner of the top-left pixel (not its centre), so we shift
-       the cell-centre coordinates outward by half a pixel in each direction.
-
-    6. Write a single-band float32 GeoTIFF with deflate compression and NaN
-       as the nodata value. 
-
     Parameters
     ----------
     src_path:
@@ -184,17 +120,15 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
         else:
             raw = ds[variable][:, :, fi, :]
         # Use filled() so netCDF masked values (e.g. wind_noise land cells
-        # stored as NaN) become np.nan rather than the default fill (~1e+20).
+        # stored as NaN) become np.nan
         arr = np.ma.filled(raw, np.nan).astype(np.float64)  # (701, 417, 144)
 
-    # Mask any remaining 0.0 dB land cells (vessel_noise / combined_noise
-    # convention): 0 dB → 1.0 µPa would pass as a quiet-ocean cell.
+    # Mask land (0 dB) BEFORE averaging -- masked after, it'd still skew the mean.
     arr[arr <= 0] = np.nan
-    # Mask implausibly loud readings (see MAX_PLAUSIBLE_DB above) — glitched
-    # source timesteps, not real loud events.
+    # Mask implausibly loud readings (see MAX_PLAUSIBLE_DB above)
     arr[arr > MAX_PLAUSIBLE_DB] = np.nan
 
-    # Average in linear space, then back to dB (see Steps 2-3).
+    # Linear-space average, not dB -- dB is logarithmic, underweights loud events.
     linear = 10.0 ** (arr / 20.0)
     with np.errstate(invalid="ignore", divide="ignore"):  # all-NaN land cols
         day_mean_linear = np.nanmean(linear, axis=2)
@@ -203,7 +137,7 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
     # North-up GeoTIFF orientation: (lon,lat) → (lat,lon), then flip N-S.
     grid = np.flipud(day_mean.T).astype(np.float32)  # (417, 701)
 
-    # from_origin() wants the NW corner of the top-left pixel, so shift the
+    # from_origin() wants the NW corner of the top-left pixel, shift the
     # cell-centre coords out by half a pixel.
     dx = float(lon[1] - lon[0])
     dy = float(lat[1] - lat[0])
@@ -237,11 +171,8 @@ def convert_monthly(
 ) -> None:
     """Average all daily files for one calendar month and write a GeoTIFF.
 
-    Averaging is done in linear pressure space across all days × all 144
-    time steps simultaneously, then converted back to dB. This avoids loading
-    all days into memory at once by accumulating a running sum and valid-count
-    array (each ~2.3 MB) instead of stacking the full (701, 417, 144×N) array
-    (~9 GB for a 28-day month).
+    Linear-space average, then back to dB. Uses a running sum/count
+    accumulator (~2.3 MB) instead of stacking every day (~9 GB/month).
 
     Parameters
     ----------
@@ -276,9 +207,7 @@ def convert_monthly(
             raw = ds[variable][:, :, fi, di, :] if di is not None else ds[variable][:, :, fi, :]
             arr = np.ma.filled(raw, np.nan).astype(np.float64)
 
-        # Mask land (0.0 dB) and implausibly loud glitched readings (see
-        # MAX_PLAUSIBLE_DB above) before converting, then add this day into
-        # the running sum/count (see convert_one).
+        # Mask land (0.0 dB) and implausibly loud glitched readings
         arr[arr <= 0] = np.nan
         arr[arr > MAX_PLAUSIBLE_DB] = np.nan
         linear = 10.0 ** (arr / 20.0)
@@ -346,8 +275,7 @@ def main() -> None:
         sys.exit(1)
 
     # This naming convention is mirrored independently in analysis/noise.py's
-    # combo_dirname() — not imported from here since this script and the
-    # backend don't otherwise share code, but keep the two in sync by hand.
+    # combo_dirname().
     out_subdir = os.path.join(args.dst, f"{args.variable}_f{int(args.freq)}_d{int(args.depth)}")
 
     if args.monthly:
