@@ -35,7 +35,7 @@ from shapely.geometry import Point, shape # type: ignore
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
 from noise import render_noise_overlay, noise_range, NOISE_DATA_DIR, combo_dirname, parse_combo_dirname  # noqa: E402 # type: ignore
-from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, compute_impact as compute_noise_impact  # noqa: E402 # type: ignore
+from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, list_parameter_info as list_noise_impact_info, compute_impact as compute_noise_impact  # noqa: E402 # type: ignore
 
 # reads DATABASE_URL from environment (REQUIRED)
 DATABASE_URL: str = os.environ["DATABASE_URL"]
@@ -287,7 +287,7 @@ def get_noise_available():
 
 @app.get("/api/noise/dates")
 def get_noise_dates(
-    variable: str = Query("vessel_noise"),
+    variable: str = Query("combined_noise"),
     freq: float = Query(50),
     depth: float = Query(10),
 ):
@@ -306,22 +306,17 @@ def get_noise_dates(
 @app.get("/api/noise/range")
 def get_noise_range(
     date: str = Query(..., description="YYYY-MM-DD (daily) or YYYY-MM (monthly)"),
-    variable: str = Query("vessel_noise"),
+    variable: str = Query("combined_noise"),
     freq: float = Query(50),
-    # Any of the 19 NetCDF depth levels (10-500m) is a valid input — it gets
-    # snapped server-side to the nearest one actually converted to GeoTIFF
-    # (see resolve_depth in analysis/noise.py). The response's "depth" field
-    # is what was ACTUALLY used, which the frontend must not assume equals
-    # this requested value.
-    depth: float = Query(10, description="Requested depth in metres; response reflects the nearest available depth actually used"),
+    depth: float = Query(10, description="Depth in metres; must match an already-converted GeoTIFF exactly (see analysis/noise.py's module docstring for how to convert more)"),
 ):
     try:
-        vmin, vmax, resolved_depth = noise_range(date, variable=variable, freq=freq, depth=depth)
+        vmin, vmax = noise_range(date, variable=variable, freq=freq, depth=depth)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"vmin": round(vmin, 1), "vmax": round(vmax, 1), "depth": resolved_depth}
+    return {"vmin": round(vmin, 1), "vmax": round(vmax, 1)}
 
 
 # renders the noise data as a PNG image, for the map overlay
@@ -329,14 +324,14 @@ def get_noise_range(
 @app.get("/api/noise/overlay")
 def get_noise_overlay(
     date: str = Query(..., description="YYYY-MM-DD (daily) or YYYY-MM (monthly)"),
-    variable: str = Query("vessel_noise"),
+    variable: str = Query("combined_noise"),
     freq: float = Query(50),
     depth: float = Query(10),
     vmin: float | None = Query(None, description="Override the auto colour-scale minimum (dB)"),
     vmax: float | None = Query(None, description="Override the auto colour-scale maximum (dB)"),
 ):
     try:
-        png, _resolved_depth = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
+        png = render_noise_overlay(date, variable=variable, freq=freq, depth=depth, vmin=vmin, vmax=vmax)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No noise data for {date}")
     except ValueError as e:
@@ -360,6 +355,13 @@ def get_noise_impact_options():
     """Available hearing groups / impact types / metrics, sourced from the
     regulatory thresholds workbook via the noise-impact package's enums."""
     return list_noise_impact_options()
+
+
+@app.get("/api/noise-impact/info")
+def get_noise_impact_info():
+    """Hover-tooltip text for hearing groups / impact types, sourced from
+    the regulatory thresholds workbook's own Info sheet."""
+    return list_noise_impact_info()
 
 
 class NoiseImpactRequest(BaseModel):
