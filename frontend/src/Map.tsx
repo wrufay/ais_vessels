@@ -18,6 +18,7 @@ import WebGLVectorLayer from "ol/layer/WebGLVector";
 import VectorSource from "ol/source/Vector";
 import { Style, Stroke, Fill, Icon, Circle as CircleStyle, Text } from "ol/style";
 import Draw from "ol/interaction/Draw";
+import { ScaleLine } from "ol/control";
 import GeoJSON from "ol/format/GeoJSON";
 import shp from "shpjs";
 import "ol/ol.css";
@@ -56,7 +57,7 @@ import TracksPanel from "./components/TracksPanel";
 import ImpactsPanel from "./components/noise-impact/ImpactsPanel";
 import NoiseImpactParamsPanel from "./components/noise-impact/NoiseImpactParamsPanel";
 import { useNoiseImpact, zoneKey } from "./useNoiseImpact";
-import { IMPACT_COLORS, IMPACT_DASH, IMPACT_ZINDEX } from "./utils/noiseImpactStyles";
+import { zoneColor, IMPACT_DASH, IMPACT_ZINDEX } from "./utils/noiseImpactStyles";
 import { useTheme } from "./useTheme";
 import { useDragResize } from "./useDragResize";
 import { useStateRef } from "./useStateRef";
@@ -123,6 +124,7 @@ export function formatRelativeTime(iso: string): string {
 function ShipMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapObj = useRef<Map | null>(null);
+  const scaleLineRef = useRef<ScaleLine | null>(null);
   const sourceRef = useRef(new VectorSource());
   const drawSourceRef = useRef(new VectorSource());
   const chaSourceRef = useRef(new VectorSource());
@@ -222,7 +224,7 @@ function ShipMap() {
     showImpactsPanel, setShowImpactsPanel,
     showParamsPanel, setShowParamsPanel,
     showNoiseImpact, setShowNoiseImpact,
-    sites: noiseImpactSites, options: noiseImpactOptions,
+    sites: noiseImpactSites, options: noiseImpactOptions, info: noiseImpactInfo,
     site: noiseImpactSite, setSite: setNoiseImpactSite,
     hearingGroups: noiseImpactHearingGroups, toggleHearingGroup: toggleNoiseImpactHearingGroup,
     impactTypes: noiseImpactImpactTypes, toggleImpactType: toggleNoiseImpactImpactType,
@@ -236,6 +238,7 @@ function ShipMap() {
     assessmentPeriodHours: noiseImpactAssessmentPeriodHours,
     running: noiseImpactRunning, error: noiseImpactError, result: noiseImpactResult,
     visibleZoneKeys: noiseImpactVisibleZoneKeys, toggleZoneVisibility: toggleNoiseImpactZoneVisibility,
+    undefinedCombos: noiseImpactUndefinedCombos,
     handleRun: handleRunNoiseImpact,
     resetParams: resetNoiseImpactParams,
   } = useNoiseImpact(API);
@@ -258,6 +261,7 @@ function ShipMap() {
   const [uploadedMoorings, setUploadedMoorings] = useState<Mooring[]>([]);
   const {
     noiseLayerRef,
+    setNoiseLayerReady,
     showNoise, setShowNoise,
     noiseOpacity, setNoiseOpacity,
     noiseLoading, setNoiseLoading,
@@ -552,6 +556,18 @@ function ShipMap() {
     noiseImpactLayerRef.current?.setVisible(showNoiseImpact);
   }, [showNoiseImpact]);
 
+  // Scale bar is noise-impact-only -- distances only matter for reading
+  // zone size/extent, not for the vessel-track/mooring/region views this
+  // map otherwise shows -- so it's added/removed with the Impacts panel
+  // itself rather than living on the map permanently.
+  useEffect(() => {
+    const map = mapObj.current;
+    const scaleLine = scaleLineRef.current;
+    if (!map || !scaleLine) return;
+    if (showImpactsPanel) map.addControl(scaleLine);
+    else map.removeControl(scaleLine);
+  }, [showImpactsPanel]);
+
   // Turn on bathymetry and zoom to the WEA whenever a new noise-impact
   // result comes in -- keyed on the result/site themselves, not the
   // show/hide toggle above, so this fires once per Run regardless of
@@ -694,6 +710,10 @@ function ShipMap() {
       visible: false,
     });
     noiseLayerRef.current = noiseLayer;
+    // Signals useNoiseLayer's overlay-building effect that the ref is
+    // actually populated now -- see setNoiseLayerReady's own comment in
+    // useNoiseLayer.ts for why a plain ref assignment isn't enough here.
+    setNoiseLayerReady(true);
     noiseLayer.getSource()!.on("imageloadstart", () => setNoiseLoading(true));
     noiseLayer.getSource()!.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
 
@@ -772,7 +792,7 @@ function ShipMap() {
                 });
               }
               const impact = feature.get("impact") as string;
-              const color = IMPACT_COLORS[impact] ?? "#888";
+              const color = zoneColor(feature.get("hearingGroup") as string, feature.get("metric") as string);
               return new Style({
                 stroke: new Stroke({ color, width: 2, lineDash: IMPACT_DASH[impact] }),
                 // 0x38 (~22%), not the old 0x22 (~13%) -- the lighter
@@ -883,6 +903,11 @@ function ShipMap() {
         ? "pointer"
         : "crosshair";
     });
+
+    // Not added here -- see the showImpactsPanel effect below, which adds/
+    // removes it so it only shows up while the noise-impact feature (the
+    // Impacts panel) is actually in use, instead of on every map view.
+    scaleLineRef.current = new ScaleLine({ units: "metric" });
 
     mapObj.current = map;
     return () => map.setTarget(undefined);
@@ -1219,7 +1244,14 @@ function ShipMap() {
       // Read by map.css to push OL's built-in zoom control out from under
       // IconBar (a permanent full-height sidebar) and the params panel
       // when it's open -- same offset CursorCoordinates uses below.
-      style={{ "--map-controls-offset": `${iconBarWidth + (showParamsPanel ? paramsPanelWidth : 0)}px` } as CSSProperties}
+      // --map-controls-offset-right does the same for the scale bar
+      // against the right-anchored Impacts panel (the only panel it
+      // shares screen space with, since it's only ever shown alongside
+      // that panel -- see the showImpactsPanel effect above).
+      style={{
+        "--map-controls-offset": `${iconBarWidth + (showParamsPanel ? paramsPanelWidth : 0)}px`,
+        "--map-controls-offset-right": `${showImpactsPanel ? panelWidth : 0}px`,
+      } as CSSProperties}
     >
       {/* Map — full screen */}
       <div ref={mapRef} className="absolute inset-0" />
@@ -1408,6 +1440,7 @@ function ShipMap() {
           bathymetry={{ bathyLayerRef, showBathymetry, setShowBathymetry, bathyOpacity, setBathyOpacity, bathyLoading, setBathyLoading }}
           noise={{
             noiseLayerRef,
+            setNoiseLayerReady,
             showNoise, setShowNoise,
             noiseOpacity, setNoiseOpacity,
             noiseLoading, setNoiseLoading,
@@ -1436,6 +1469,7 @@ function ShipMap() {
           onToggleZone={toggleNoiseImpactZoneVisibility}
           siteName={noiseImpactSite}
           siteMeta={noiseImpactSites[noiseImpactSite]}
+          undefinedCombos={noiseImpactUndefinedCombos}
           starSize={starSize}
           setStarSize={setStarSize}
           starOpacity={starOpacity}
@@ -1470,6 +1504,7 @@ function ShipMap() {
         <NoiseImpactParamsPanel
           sites={noiseImpactSites}
           options={noiseImpactOptions}
+          info={noiseImpactInfo}
           site={noiseImpactSite}
           setSite={setNoiseImpactSite}
           hearingGroups={noiseImpactHearingGroups}

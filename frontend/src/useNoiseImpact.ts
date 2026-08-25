@@ -20,6 +20,14 @@ export interface NoiseImpactOptions {
   metrics: string[];
 }
 
+// Hover-tooltip text, keyed by the same strings as NoiseImpactOptions --
+// sourced from the thresholds workbook's own Info sheet (see
+// analysis/noise_impact.py's list_parameter_info), not duplicated here.
+export interface NoiseImpactInfo {
+  hearing_groups: Record<string, string>;
+  impact_types: Record<string, string>;
+}
+
 export interface NoiseImpactZone {
   hearing_group: string;
   impact: string;
@@ -79,6 +87,10 @@ export function useNoiseImpact(apiBase: string) {
     impact_types: [],
     metrics: [],
   });
+  const [info, setInfo] = useState<NoiseImpactInfo>({
+    hearing_groups: {},
+    impact_types: {},
+  });
 
   const [site, setSite] = useState("");
   const [hearingGroups, setHearingGroups] = useState<string[]>([]);
@@ -109,6 +121,9 @@ export function useNoiseImpact(apiBase: string) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<NoiseImpactResult | null>(null);
   const [visibleZoneKeys, setVisibleZoneKeys] = useState<Set<string>>(new Set());
+  // Selected hearing-group/impact-type/metric combos with no matching row
+  // in Noise_Impact_Thresholds.xlsx at all -- see the diff in handleRun.
+  const [undefinedCombos, setUndefinedCombos] = useState<string[]>([]);
 
   // Populate the Scenario/Species cards from the backend so this never
   // hardcodes a site list or threshold-category list that could drift from
@@ -134,6 +149,12 @@ export function useNoiseImpact(apiBase: string) {
         // the common case needs no setup at all.
         setOptions(data);
         setMetrics((prev) => (prev.length > 0 ? prev : data.metrics));
+      })
+      .catch(() => {});
+    fetch(`${apiBase}/api/noise-impact/info`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: NoiseImpactInfo | null) => {
+        if (data) setInfo(data);
       })
       .catch(() => {});
   }, [apiBase]);
@@ -235,6 +256,29 @@ export function useNoiseImpact(apiBase: string) {
       });
       setVisibleZoneKeys(defaultVisible);
 
+      // A selected hearing-group/impact-type/metric combo with no
+      // matching row in Noise_Impact_Thresholds.xlsx never appears in
+      // data.zones at all -- distinct from a zone that DID compute but
+      // found zero exceedance (that's a normal, expected result, shown
+      // inline in the panel instead). Diff the requested combos against
+      // what came back and flag anything genuinely undefined, since that
+      // usually means the selection doesn't match what the workbook
+      // actually covers, not just "nothing was loud enough." Surfaced as
+      // an inline panel note (see ImpactsPanel) rather than a blocking
+      // alert() -- worth flagging (silently dropping it would be
+      // misleading), but not worth interrupting the flow for.
+      const returned = new Set(data.zones.map(zoneKey));
+      const missing: string[] = [];
+      for (const hg of hearingGroups) {
+        for (const it of impactTypes) {
+          for (const m of metrics) {
+            const key = zoneKey({ hearing_group: hg, impact: it, metric: m });
+            if (!returned.has(key)) missing.push(`${hg} – ${it} – ${m}`);
+          }
+        }
+      }
+      setUndefinedCombos(missing);
+
       // Params panel stays open (not auto-closed) -- surface results in
       // the Impacts panel underneath while leaving inputs visible/editable
       // for another run, rather than forcing a re-open to tweak anything.
@@ -250,7 +294,7 @@ export function useNoiseImpact(apiBase: string) {
     showImpactsPanel, setShowImpactsPanel,
     showParamsPanel, setShowParamsPanel,
     showNoiseImpact, setShowNoiseImpact,
-    sites, options,
+    sites, options, info,
     site, setSite,
     hearingGroups, toggleHearingGroup,
     impactTypes, toggleImpactType,
@@ -265,6 +309,7 @@ export function useNoiseImpact(apiBase: string) {
     running, error, result,
     resetParams,
     visibleZoneKeys, toggleZoneVisibility,
+    undefinedCombos,
     handleRun,
   };
 }

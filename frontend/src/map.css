@@ -13,3 +13,47 @@
   left: calc(var(--map-controls-offset, 0px) + 0.5em);
   transition: left 0.3s ease-in-out;
 }
+
+/* Right-anchored (not left, like .ol-zoom above) -- glued to the bottom
+   right corner, offset by --map-controls-offset-right so it clears the
+   Impacts panel while that's open (the only time this control is even
+   added to the map -- see the showImpactsPanel effect in Map.tsx).
+   Flush against the bottom edge (bottom: 0), same as CursorCoordinates'
+   own `bottom-0` -- and restyled below to match that component's pill
+   look exactly (size, colors, font), rather than OL's default ruler-bar
+   appearance, since the two sit in the same visual role (a small
+   measurement readout anchored to the map edge). */
+.ol-scale-line {
+  left: auto !important;
+  right: calc(var(--map-controls-offset-right, 0px) + 0.5em) !important;
+  bottom: 0 !important;
+  z-index: 10;
+  transition: right 0.3s ease-in-out;
+
+  /* Match CursorCoordinates.tsx: bg-[#fcfffd]/60 dark:bg-slate-900/60
+     px-1.5 py-0.5 text-xs text-slate-600 dark:text-slate-300 font-inter
+     -- square corners (no rounding), unlike that component's rounded-sm. */
+  background: rgba(252, 255, 253, 0.6);
+  border-radius: 0;
+  padding: 0.125rem 0.375rem;
+}
+
+:root.dark .ol-scale-line {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+/* OL's default inner span draws a ruler-tick border under the text --
+   stripped so the label reads as a plain pill like CursorCoordinates,
+   not a ruler. */
+.ol-scale-line-inner {
+  border: none;
+  margin: 0;
+  font-family: "Inter", sans-serif;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: #475569;
+}
+
+:root.dark .ol-scale-line-inner {
+  color: #cbd5e1;
+}

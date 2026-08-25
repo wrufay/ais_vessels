@@ -22,6 +22,15 @@ export const NOISE_EXTENT = [
 // layer and include it in the map's layer list.
 export function useNoiseLayer(apiBase: string) {
   const noiseLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
+  // Map.tsx assigns noiseLayerRef.current in its own map-init effect, which
+  // runs AFTER this hook's effects on first mount (registered later in the
+  // same render) -- so the overlay-building effect below would otherwise
+  // hit its `if (!noiseLayerRef.current) return` on the one and only time
+  // its other dependencies start out already valid, and never get a second
+  // chance to build the real overlay. A plain ref mutation doesn't trigger
+  // a re-run on its own; this state flag (flipped by Map.tsx right after
+  // assigning the ref) does.
+  const [noiseLayerReady, setNoiseLayerReady] = useState(false);
   const [showNoise, setShowNoise] = useState(false);
   const [noiseOpacity, setNoiseOpacity] = useState(0.5);
   const [noiseLoading, setNoiseLoading] = useState(false);
@@ -79,7 +88,7 @@ export function useNoiseLayer(apiBase: string) {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => setNoiseRange(data))
       .catch(() => setNoiseRange(null));
-  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride]);
+  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride, noiseLayerReady]);
 
   useEffect(() => {
     noiseLayerRef.current?.setOpacity(noiseOpacity);
@@ -87,6 +96,7 @@ export function useNoiseLayer(apiBase: string) {
 
   return {
     noiseLayerRef,
+    setNoiseLayerReady,
     showNoise, setShowNoise,
     noiseOpacity, setNoiseOpacity,
     noiseLoading, setNoiseLoading,

@@ -2,7 +2,7 @@ import { useState } from "react";
 import ClosePanelBtn from "../ClosePanelBtn";
 import PanelHeader from "../PanelHeader";
 import CollapsibleHeader from "../CollapsibleHeader";
-import type { NoiseImpactSite, NoiseImpactOptions } from "../../useNoiseImpact";
+import type { NoiseImpactSite, NoiseImpactOptions, NoiseImpactInfo } from "../../useNoiseImpact";
 
 const runIcon = (
   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
@@ -61,6 +61,7 @@ function CheckboxList({
   selected,
   onToggle,
   hideSelectAll,
+  tooltip,
 }: {
   label: string;
   options: string[];
@@ -69,6 +70,10 @@ function CheckboxList({
   // Metrics only has 2 options and defaults to both selected already --
   // select-all/unselect-all buttons don't save a click there, just clutter.
   hideSelectAll?: boolean;
+  // Per-option hover text (see NoiseImpactInfo) -- undefined for an option
+  // with no matching workbook entry just means no title attribute, not an
+  // error.
+  tooltip?: (value: string) => string | undefined;
 }) {
   return (
     <div>
@@ -110,6 +115,7 @@ function CheckboxList({
               key={o}
               type="button"
               onClick={() => onToggle(o)}
+              title={tooltip?.(o)}
               className={`px-1.5 py-0.5 rounded-full border border-slate-400 text-[11px] font-geologica transition active:scale-95 ${
                 on
                   ? "bg-[#3d5a80] text-white"
@@ -165,6 +171,7 @@ function CollapsibleCheckboxCategoryList({
   onToggle,
   categoryOpen,
   onToggleCategory,
+  tooltip,
 }: {
   label: string;
   options: string[];
@@ -172,6 +179,9 @@ function CollapsibleCheckboxCategoryList({
   onToggle: (value: string) => void;
   categoryOpen: Record<string, boolean>;
   onToggleCategory: (category: string) => void;
+  // Per-option hover text (see NoiseImpactInfo) -- undefined for an option
+  // with no matching workbook entry just means no title attribute.
+  tooltip?: (value: string) => string | undefined;
 }) {
   const groups = groupHearingGroups(options);
   return (
@@ -259,6 +269,7 @@ function CollapsibleCheckboxCategoryList({
                   {g.options.map((o) => (
                     <label
                       key={o}
+                      title={tooltip?.(o)}
                       className="flex items-center gap-2 py-0.5 cursor-pointer"
                     >
                       <input
@@ -309,27 +320,29 @@ function NumberField({
   );
 }
 
-type Tab = "scenario" | "pile" | "species";
+type Tab = "scenario" | "source" | "species";
 const TABS: { id: Tab; label: string }[] = [
   { id: "scenario", label: "Scenario" },
-  { id: "pile", label: "Pile" },
+  { id: "source", label: "Source" },
   { id: "species", label: "Species" },
 ];
 
-// The noise-impact parameter panel -- Scenario / Pile driving / Species,
-// as tabs (rather than the three-card side-by-side layout this replaced --
+// The noise-impact parameter panel -- Scenario / Source / Species, as
+// tabs (rather than the three-card side-by-side layout this replaced --
 // see wireframe.png), since a side panel is too narrow to lay them out
 // side by side. Tabs map 1:1 onto the backend's three param groups
 // (analysis/noise_impact.py -> TLModelParams / NoiseLevelParams /
 // ExposureAssessmentParams): Scenario picks which precomputed site to use
 // (site is a dropdown, not a map click -- see useNoiseImpact's module
-// docstring), Pile driving is the noise-source params, Species is which
-// hearing groups/impact types/metrics/depth range to evaluate thresholds
-// for. Lives in the left SidePanel (Map.tsx) instead of a modal so it can
-// stay open alongside the Impacts results panel on the right.
+// docstring), Source is the pile driving source's properties, Species is
+// which hearing groups/impact types/metrics/depth range to evaluate
+// thresholds for. Lives in the left SidePanel (Map.tsx) instead of a
+// modal so it can stay open alongside the Impacts results panel on the
+// right.
 function NoiseImpactParamsPanel({
   sites,
   options,
+  info,
   site,
   setSite,
   hearingGroups,
@@ -358,6 +371,7 @@ function NoiseImpactParamsPanel({
 }: {
   sites: Record<string, NoiseImpactSite>;
   options: NoiseImpactOptions;
+  info: NoiseImpactInfo;
   site: string;
   setSite: (v: string) => void;
   hearingGroups: string[];
@@ -424,7 +438,7 @@ function NoiseImpactParamsPanel({
     hearingGroupsInvalid || impactTypesInvalid || metricsInvalid;
   const tabInvalid: Record<Tab, boolean> = {
     scenario: siteInvalid,
-    pile: pileInvalid,
+    source: pileInvalid,
     species: speciesInvalid,
   };
   const canRun = !siteInvalid && !pileInvalid && !speciesInvalid;
@@ -514,10 +528,10 @@ function NoiseImpactParamsPanel({
           </div>
         )}
 
-        {tab === "pile" && (
+        {tab === "source" && (
           <div className="flex flex-col gap-2.5">
             <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-              Define the noise source.
+              Define pile driving source properties.
             </p>
             <NumberField
               label="Peak SPL (dB)"
@@ -563,6 +577,7 @@ function NoiseImpactParamsPanel({
                   [category]: !(prev[category] ?? false),
                 }))
               }
+              tooltip={(o) => info.hearing_groups[o]}
             />
             <hr></hr>
             <CheckboxList
@@ -570,6 +585,7 @@ function NoiseImpactParamsPanel({
               options={options.impact_types}
               selected={impactTypes}
               onToggle={onToggleImpactType}
+              tooltip={(o) => info.impact_types[o]}
             />
             <div className="grid grid-cols-2 gap-2.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <NumberField

@@ -114,9 +114,7 @@ function LayersPanel({
                 <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Variable</span>
                 <select value={noiseVariable} onChange={(e) => setNoiseVariable(e.target.value)}
                   className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
-                  <option value="vessel_noise">Vessel noise</option>
                   <option value="combined_noise">Combined noise</option>
-                  <option value="wind_noise">Wind noise</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
@@ -140,15 +138,13 @@ function LayersPanel({
                       </select>
                     </div>
                   )}
-                  {noiseVariable !== "wind_noise" && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Depth</span>
-                      <select value={noiseDepth} onChange={(e) => setNoiseDepth(Number(e.target.value))}
-                        className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
-                        {depths.map(d => <option key={d} value={d}>{d} m</option>)}
-                      </select>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Depth</span>
+                    <select value={noiseDepth} onChange={(e) => setNoiseDepth(Number(e.target.value))}
+                      className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
+                      {depths.map(d => <option key={d} value={d}>{d} m</option>)}
+                    </select>
+                  </div>
                 </>;
               })()}
               <div className="mt-1 flex flex-col gap-1">

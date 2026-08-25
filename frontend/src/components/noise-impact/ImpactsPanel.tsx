@@ -8,7 +8,7 @@ import {
   type NoiseImpactResult,
   type NoiseImpactSite,
 } from "../../useNoiseImpact";
-import { IMPACT_COLORS, formatKmOrTiny } from "../../utils/noiseImpactStyles";
+import { zoneColor, formatKmOrTiny } from "../../utils/noiseImpactStyles";
 
 const checkIcon = (
   <svg
@@ -43,6 +43,7 @@ function ImpactsPanel({
   onToggleZone,
   siteName,
   siteMeta,
+  undefinedCombos,
   starSize,
   setStarSize,
   starOpacity,
@@ -59,6 +60,7 @@ function ImpactsPanel({
   onToggleZone: (key: string) => void;
   siteName: string;
   siteMeta: NoiseImpactSite | undefined;
+  undefinedCombos: string[];
   starSize: number;
   setStarSize: (v: number) => void;
   starOpacity: number;
@@ -70,6 +72,7 @@ function ImpactsPanel({
   // version made a "the run just came back clean" result look like there
   // was nothing here at all until you noticed the caret.
   const [notExceededOpen, setNotExceededOpen] = useState(true);
+  const [undefinedOpen, setUndefinedOpen] = useState(false);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -195,8 +198,7 @@ function ImpactsPanel({
                                 <span
                                   className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 self-start"
                                   style={{
-                                    backgroundColor:
-                                      IMPACT_COLORS[z.impact] ?? "#888",
+                                    backgroundColor: zoneColor(z.hearing_group, z.metric),
                                   }}
                                 />
                                 <span className="flex-1 min-w-0">
@@ -267,6 +269,34 @@ function ImpactsPanel({
                 </>
               );
             })()
+          )}
+
+          {undefinedCombos.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] mt-2">
+              <button
+                onClick={() => setUndefinedOpen((p) => !p)}
+                className="flex items-start gap-2 w-full text-left leading-relaxed"
+              >
+                <span
+                  className={`text-[9px] shrink-0 mt-0.5 transition-transform duration-150 ${
+                    undefinedOpen ? "rotate-90" : ""
+                  }`}
+                >
+                  ▶
+                </span>
+                <span>
+                  Thresholds for the following {undefinedCombos.length} parameter
+                  combination{undefinedCombos.length > 1 ? "s" : ""} are not defined:
+                </span>
+              </button>
+              {undefinedOpen && (
+                <ul className="mt-1 pl-4 list-disc list-inside leading-relaxed">
+                  {undefinedCombos.map((c) => (
+                    <li key={c}>{c}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
       )}

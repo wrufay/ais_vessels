@@ -196,7 +196,7 @@ function TracksPanel({
                 active ? "bg-slate-100 dark:bg-slate-800" : "hover:bg-slate-50 dark:hover:bg-slate-800"
               }`}
             >
-              <div className={`font-inter text-xs truncate ${active ? "text-[#293241]" : "text-slate-600 dark:text-slate-300"}`}>
+              <div className={`font-inter text-xs truncate text-slate-600 dark:text-slate-300`}>
                 {v.vessel_name || "Unknown vessel"}
               </div>
               <div className="flex items-center gap-2 mt-1">

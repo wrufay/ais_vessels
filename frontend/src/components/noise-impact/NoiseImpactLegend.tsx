@@ -1,5 +1,5 @@
 import { zoneKey, type NoiseImpactResult, type NoiseImpactSite } from "../../useNoiseImpact";
-import { IMPACT_COLORS, IMPACT_DASH, formatKmOrTiny } from "../../utils/noiseImpactStyles";
+import { zoneColor, IMPACT_DASH, formatKmOrTiny } from "../../utils/noiseImpactStyles";
 import { regionColor } from "../../utils/mapStyles";
 
 const weaColor = regionColor("WEA").stroke;
@@ -67,7 +67,7 @@ function NoiseImpactLegend({
         <div className="flex flex-col gap-1.5 pt-1.5 border-t border-[#3d5a80]/20 dark:border-[#3d5a80]/30">
           {visibleZones.map((z) => (
             <div key={zoneKey(z)} className="flex items-start gap-2">
-              <LineSwatch color={IMPACT_COLORS[z.impact] ?? "#888"} dash={IMPACT_DASH[z.impact]} />
+              <LineSwatch color={zoneColor(z.hearing_group, z.metric)} dash={IMPACT_DASH[z.impact]} />
               <span>
                 <span className="block text-slate-700 dark:text-slate-200">{z.hearing_group} — {z.impact}</span>
                 <span className="block text-slate-500 dark:text-slate-400">
