@@ -15,3 +15,10 @@ pgdata_backup*.tar.gz
 *.sqlite
 pipeline/*.log
 pipeline/noise_data/
+
+# Personal mock-API dev tool, not part of the shared project -- kept
+# locally (MacBook) only, gitignored. analysis/noise_impact.py no longer
+# has a fallback to anything under here (removed deliberately, so a
+# missing /home/shared mount fails loudly instead of silently using fake
+# data), so nothing in this directory is load-bearing for the real app.
+mock_api/

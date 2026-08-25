@@ -518,13 +518,6 @@ function NoiseImpactParamsPanel({
                 Precomputed transmission-loss model.
               </div>
             )}
-            {siteMeta?.using_fixture_data && (
-              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] leading-relaxed">
-                Using synthetic placeholder data, since the real ~950MB dataset
-                isn't available on this machine. Results here aren't
-                scientifically meaningful (fine for UI development).
-              </div>
-            )}
           </div>
         )}
 

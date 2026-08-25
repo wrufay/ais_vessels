@@ -1,10 +1,8 @@
 """Compute regulatory noise-impact zones via ns_pile_driving_noise_mapping
 (wrapped since it returns numpy/xarray/DataFrame, not HTTP-servable).
 
-Site is fixed per SITES entry, no arbitrary-point mode. Real CSnap data
-(/home/shared) isn't present on e.g. a laptop, so this falls back to a
-vendored package + synthetic fixtures (mock_api/); using_fixture_data
-says which is active.
+Site is fixed per SITES entry, no arbitrary-point mode. Requires the real
+package + CSnap data at /home/shared -- no fallback if that's not mounted.
 """
 
 import os
@@ -13,14 +11,10 @@ import threading
 from datetime import date, timedelta
 
 import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
 from shapely.geometry import Polygon, mapping  # type: ignore
 
-_REAL_CODE_DIR = "/home/shared/noise_impact_code"
-_VENDORED_CODE_DIR = os.path.join(os.path.dirname(__file__), "..", "mock_api", "vendor")
-
-NOISE_IMPACT_CODE_DIR = os.environ.get("NOISE_IMPACT_CODE_DIR")
-if not NOISE_IMPACT_CODE_DIR:
-    NOISE_IMPACT_CODE_DIR = _REAL_CODE_DIR if os.path.isdir(_REAL_CODE_DIR) else _VENDORED_CODE_DIR
+NOISE_IMPACT_CODE_DIR = os.environ.get("NOISE_IMPACT_CODE_DIR", "/home/shared/noise_impact_code")
 sys.path.insert(0, NOISE_IMPACT_CODE_DIR)
 
 from ns_pile_driving_noise_mapping import (  # noqa: E402 # type: ignore
@@ -88,41 +82,22 @@ def _cached_polar_field_interpolator(ds, src_lon, src_lat, *args, **kwargs):
 _npnm_core.PolarFieldInterpolator = _cached_polar_field_interpolator
 
 
-_FIXTURES_ROOT = os.path.join(os.path.dirname(__file__), "..", "mock_api", "noise_impact_fixtures")
-
-
-def _data_folder(real_path: str, fixture_subdir: str) -> str:
-    """Real CSnap data if this machine has it mounted, else the small
-    synthetic fixture for the same site — see module docstring."""
-    return real_path if os.path.isdir(real_path) else os.path.join(_FIXTURES_ROOT, fixture_subdir)
-
-
 # Each site is a transmission-loss model already run offline for a fixed
 # source location/depth/frequency/date — see module docstring.
 SITES = {
     "French Bank": dict(
-        data_folder=_data_folder(
-            "/home/shared/pileDrivingSoundPropagation/testFrenchBank/output/modelRun/csnapOut/",
-            "french_bank",
-        ),
+        data_folder="/home/shared/pileDrivingSoundPropagation/testFrenchBank/output/modelRun/csnapOut/",
         src_freq=100, src_depth=135,
         src_lon=-61.477536, src_lat=44.6143972,
         noise_date=date(2020, 7, 15),
     ),
     "Sydney Bight": dict(
-        data_folder=_data_folder(
-            "/home/shared/pileDrivingSoundPropagation/sydneyBight/output/modelRun/csnapOut/",
-            "sydney_bight",
-        ),
+        data_folder="/home/shared/pileDrivingSoundPropagation/sydneyBight/output/modelRun/csnapOut/",
         src_freq=100, src_depth=45,
         src_lon=-59.82201388888889, src_lat=46.522622222222225,
         noise_date=date(2020, 7, 15),
     ),
 }
-
-
-def _is_fixture(site: str) -> bool:
-    return os.path.normpath(SITES[site]["data_folder"]).startswith(os.path.normpath(_FIXTURES_ROOT))
 
 
 def list_sites() -> dict:
@@ -135,7 +110,6 @@ def list_sites() -> dict:
             "src_depth": cfg["src_depth"],
             "src_freq": cfg["src_freq"],
             "noise_date": cfg["noise_date"].isoformat(),
-            "using_fixture_data": _is_fixture(name),
         }
         for name, cfg in SITES.items()
     }
@@ -149,6 +123,38 @@ def list_options() -> dict:
         "hearing_groups": [g.value for g in HearingGroup],
         "impact_types": [i.value for i in Impact],
         "metrics": [m.value for m in Metric],
+    }
+
+
+def list_parameter_info() -> dict:
+    """Hover-tooltip text for hearing groups / impact types, straight from
+    the thresholds workbook's own "Info" sheet -- so tooltip wording lives
+    with the domain expert's source of truth (Noise_Impact_Thresholds.xlsx)
+    instead of being duplicated in this codebase. Located the same way the
+    package itself locates the workbook (ExposureAssessmentParams' own
+    default file path), so this always matches whatever's at
+    NOISE_IMPACT_CODE_DIR.
+
+    The Info sheet is a stack of labeled key/description blocks (a
+    "<Category>, Description" header row, then key -> description rows
+    until a blank row) -- only the HearingGroup and Impact blocks are
+    pulled out, since those are the only options this app lets you select.
+    """
+    file_path = ExposureAssessmentParams._get_default_data_file_path()
+    info_sheet = pd.read_excel(file_path, sheet_name="Info", header=None)
+
+    def _block(marker: str) -> dict:
+        start = info_sheet.index[info_sheet[0] == marker][0] + 1
+        block = {}
+        for key, desc in info_sheet.iloc[start:, :2].itertuples(index=False):
+            if pd.isna(key):
+                break
+            block[str(key)] = str(desc)
+        return block
+
+    return {
+        "hearing_groups": _block("HearingGroup"),
+        "impact_types": _block("Impact"),
     }
 
 
@@ -216,6 +222,5 @@ def compute_impact(
 
     return {
         "source": {"lon": tl_model_params.src_lon, "lat": tl_model_params.src_lat},
-        "using_fixture_data": _is_fixture(site),
         "zones": zones,
     }

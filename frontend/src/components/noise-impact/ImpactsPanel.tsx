@@ -144,11 +144,6 @@ function ImpactsPanel({
 
       {result && (
         <div className="px-5 pb-6 flex flex-col gap-2">
-          {result.using_fixture_data && (
-            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-2 text-[11px] leading-relaxed">
-              Synthetic placeholder data, not scientifically meaningful.
-            </div>
-          )}
           <div className="pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
             Legend
           </div>

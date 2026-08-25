@@ -6,12 +6,6 @@ export interface NoiseImpactSite {
   src_depth: number;
   src_freq: number;
   noise_date: string;
-  // True when the backend had no access to the real ~950MB CSnap dataset
-  // (/home/shared) and fell back to small synthetic fixture data instead
-  // (see analysis/noise_impact.py's module docstring) -- e.g. running
-  // locally on a laptop for UI work. Surfaced so fake data is never
-  // silently presented as real.
-  using_fixture_data: boolean;
 }
 
 export interface NoiseImpactOptions {
@@ -44,7 +38,6 @@ export interface NoiseImpactZone {
 
 export interface NoiseImpactResult {
   source: { lon: number; lat: number };
-  using_fixture_data: boolean;
   zones: NoiseImpactZone[];
 }
 
