@@ -53,6 +53,22 @@ def _nearest_index(values: np.ndarray, target: float) -> int:
     return int(np.argmin(np.abs(values - target)))
 
 
+def _to_linear(arr: np.ndarray) -> np.ndarray:
+    """dB → linear, with exactly 0 dB treated as zero energy.
+
+    The NetCDFs have no land mask: vessel_noise is exactly 0 wherever no ship
+    is nearby (open sea and land alike), while combined/wind are never 0.
+    Those zeros must count as silence, not be skipped -- skipping them averaged
+    vessel_noise over loud timesteps only, so it could exceed combined_noise.
+    """
+    return np.where(arr == 0, 0.0, 10.0 ** (arr / 20.0))
+
+
+def _to_db(mean_linear: np.ndarray) -> np.ndarray:
+    """Linear mean → dB; zero energy (no vessel the whole period) → NaN/nodata."""
+    return np.where(mean_linear > 0, 20.0 * np.log10(mean_linear), np.nan)
+
+
 def find_daily_files(src_dir: str, start: str | None, end: str | None) -> list[tuple[str, str]]:
     """Scan src_dir and return a sorted list of (date, path) pairs.
 
@@ -123,16 +139,14 @@ def convert_one(src_path: str, dst_path: str, variable: str, freq: float, depth:
         # stored as NaN) become np.nan
         arr = np.ma.filled(raw, np.nan).astype(np.float64)  # (701, 417, 144)
 
-    # Mask land (0 dB) BEFORE averaging -- masked after, it'd still skew the mean.
-    arr[arr <= 0] = np.nan
     # Mask implausibly loud readings (see MAX_PLAUSIBLE_DB above)
     arr[arr > MAX_PLAUSIBLE_DB] = np.nan
 
     # Linear-space average, not dB -- dB is logarithmic, underweights loud events.
-    linear = 10.0 ** (arr / 20.0)
-    with np.errstate(invalid="ignore", divide="ignore"):  # all-NaN land cols
+    linear = _to_linear(arr)
+    with np.errstate(invalid="ignore", divide="ignore"):  # all-NaN cols
         day_mean_linear = np.nanmean(linear, axis=2)
-        day_mean = 20.0 * np.log10(day_mean_linear)  # (701, 417), dB
+        day_mean = _to_db(day_mean_linear)  # (701, 417), dB
 
     # North-up GeoTIFF orientation: (lon,lat) → (lat,lon), then flip N-S.
     grid = np.flipud(day_mean.T).astype(np.float32)  # (417, 701)
@@ -207,17 +221,16 @@ def convert_monthly(
             raw = ds[variable][:, :, fi, di, :] if di is not None else ds[variable][:, :, fi, :]
             arr = np.ma.filled(raw, np.nan).astype(np.float64)
 
-        # Mask land (0.0 dB) and implausibly loud glitched readings
-        arr[arr <= 0] = np.nan
+        # Mask implausibly loud glitched readings
         arr[arr > MAX_PLAUSIBLE_DB] = np.nan
-        linear = 10.0 ** (arr / 20.0)
+        linear = _to_linear(arr)
         linear_sum += np.nansum(linear, axis=2)
         valid_count += np.sum(~np.isnan(linear), axis=2).astype(np.int64)
 
-    # Mean over all days, back to dB; valid_count == 0 means land → NaN.
+    # Mean over all days, back to dB; valid_count == 0 (every step glitched) → NaN.
     with np.errstate(invalid="ignore", divide="ignore"):
         mean_linear = np.where(valid_count > 0, linear_sum / valid_count, np.nan)
-        month_mean = 20.0 * np.log10(mean_linear)
+        month_mean = _to_db(mean_linear)
 
     grid = np.flipud(month_mean.T).astype(np.float32)  # (417, 701), north-up
 
