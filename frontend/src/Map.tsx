@@ -572,11 +572,13 @@ function ShipMap() {
   // result comes in -- keyed on the result/site themselves, not the
   // show/hide toggle above, so this fires once per Run regardless of
   // whether the visuals happen to be shown or hidden at that moment.
-  // Bathymetry only ever gets turned ON here, never back off -- it's
-  // broadly useful map context on its own, not something tied to one
-  // result, so there's no reason to yank it away again later.
+  // If bathymetry was off before the Run, remember that this turned it on,
+  // so Reset (which clears the result) can turn it back off -- see the
+  // effect below. If the user already had it on, Reset leaves it on.
+  const bathyTurnedOnByImpactRef = useRef(false);
   useEffect(() => {
     if (!noiseImpactResult) return;
+    if (!showBathymetry) bathyTurnedOnByImpactRef.current = true;
     setShowBathymetry(true);
     const weaRegion = WEA_REGIONS.find((r) => r.name === noiseImpactSite);
     // Zoom to the WEA regardless of whether any threshold was actually
@@ -592,6 +594,15 @@ function ShipMap() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noiseImpactResult, noiseImpactSite]);
+
+  // Reset clears the result -- undo the bathymetry switch-on above if a
+  // Run is what turned it on.
+  useEffect(() => {
+    if (noiseImpactResult || !bathyTurnedOnByImpactRef.current) return;
+    bathyTurnedOnByImpactRef.current = false;
+    setShowBathymetry(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noiseImpactResult]);
 
   // rebuild mooring points when date range or uploaded moorings change
   useEffect(() => {

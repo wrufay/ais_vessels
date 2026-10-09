@@ -172,10 +172,14 @@ export function useNoiseImpact(apiBase: string) {
 
   // Puts every input field back to its just-loaded state -- site back to
   // the sites list's first entry (same fallback the initial /sites fetch
-  // above uses), everything else back to its blank/default value. Leaves
-  // any already-computed result/legend alone; this is a form reset, not a
-  // "start over" that would also blow away what Run already produced.
+  // above uses), everything else back to its blank/default value -- and
+  // clears whatever Run already produced (zones/source/WEA on the map, the
+  // results list, legend, and any error), so Reset is a full "start over".
   function resetParams() {
+    setResult(null);
+    setVisibleZoneKeys(new Set());
+    setUndefinedCombos([]);
+    setError(null);
     setSite(Object.keys(sites)[0] ?? "");
     setHearingGroups([]);
     setImpactTypes([]);
