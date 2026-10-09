@@ -304,6 +304,25 @@ function NumberField({
   onChange: (v: number) => void;
   step?: number;
 }) {
+  // The box keeps its own raw text so it can sit empty or half-typed (e.g.
+  // "" or "-") mid-edit -- feeding Number(e.target.value) straight back as
+  // the value turned "" into 0 and snapped the box back to "0" on every
+  // keystroke. Only a real number is passed up to the parent; leaving the
+  // box blank/invalid restores whatever it held before this edit started
+  // (not the last valid keystroke -- backspacing "-0.01" passes through
+  // "-0.0", which would otherwise leave it at 0).
+  const [text, setText] = useState(String(value));
+  const [valueBeforeEdit, setValueBeforeEdit] = useState(value);
+
+  // Pick up changes made from outside (e.g. the Reset button), but leave
+  // text alone when it already means the same number (e.g. "-0.0" mid-way
+  // to typing "-0.05").
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
+    if (Number(text) !== value) setText(String(value));
+  }
+
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -311,9 +330,20 @@ function NumberField({
       </span>
       <input
         type="number"
-        value={value}
+        value={text}
         step={step ?? 1}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setText(raw);
+          if (raw !== "" && Number.isFinite(Number(raw))) onChange(Number(raw));
+        }}
+        onFocus={() => setValueBeforeEdit(value)}
+        onBlur={() => {
+          if (text === "" || !Number.isFinite(Number(text))) {
+            setText(String(valueBeforeEdit));
+            onChange(valueBeforeEdit);
+          }
+        }}
         className={inputClass}
       />
     </label>
