@@ -237,6 +237,7 @@ function ShipMap() {
     nPiles: noiseImpactNPiles,
     assessmentPeriodHours: noiseImpactAssessmentPeriodHours,
     running: noiseImpactRunning, error: noiseImpactError, result: noiseImpactResult,
+    resultSite: noiseImpactResultSite,
     visibleZoneKeys: noiseImpactVisibleZoneKeys, toggleZoneVisibility: toggleNoiseImpactZoneVisibility,
     undefinedCombos: noiseImpactUndefinedCombos,
     handleRun: handleRunNoiseImpact,
@@ -528,7 +529,7 @@ function ShipMap() {
     // a region on the map can never make this disappear or interfere with
     // it. Styled distinctly (see the layer's style callback) and drawn
     // beneath the zone polygons.
-    const weaRegion = WEA_REGIONS.find((r) => r.name === noiseImpactSite);
+    const weaRegion = WEA_REGIONS.find((r) => r.name === noiseImpactResultSite);
     if (weaRegion) {
       const weaGeom = fmt.readGeometry(weaRegion.geojson, {
         dataProjection: "EPSG:4326",
@@ -538,7 +539,7 @@ function ShipMap() {
         new Feature({ geometry: weaGeom, isWeaOutline: true })
       );
     }
-  }, [noiseImpactResult, noiseImpactVisibleZoneKeys, noiseImpactSite]);
+  }, [noiseImpactResult, noiseImpactVisibleZoneKeys, noiseImpactResultSite]);
 
   // "Impact mode": while the Impacts panel is open, show its zone layer's
   // polygons (they stay populated in the source underneath, see above --
@@ -580,7 +581,7 @@ function ShipMap() {
     if (!noiseImpactResult) return;
     if (!showBathymetry) bathyTurnedOnByImpactRef.current = true;
     setShowBathymetry(true);
-    const weaRegion = WEA_REGIONS.find((r) => r.name === noiseImpactSite);
+    const weaRegion = WEA_REGIONS.find((r) => r.name === noiseImpactResultSite);
     // Zoom to the WEA regardless of whether any threshold was actually
     // exceeded -- a clean result is still a result worth seeing in
     // context of the region it was computed for.
@@ -593,7 +594,7 @@ function ShipMap() {
       mapObj.current.getView().fit(geom.getExtent(), { padding: [80, 80, 80, 80], maxZoom: 11, duration: 500 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noiseImpactResult, noiseImpactSite]);
+  }, [noiseImpactResult, noiseImpactResultSite]);
 
   // Reset clears the result -- undo the bathymetry switch-on above if a
   // Run is what turned it on.
@@ -1478,8 +1479,8 @@ function ShipMap() {
           result={noiseImpactResult}
           visibleZoneKeys={noiseImpactVisibleZoneKeys}
           onToggleZone={toggleNoiseImpactZoneVisibility}
-          siteName={noiseImpactSite}
-          siteMeta={noiseImpactSites[noiseImpactSite]}
+          siteName={noiseImpactResultSite}
+          siteMeta={noiseImpactSites[noiseImpactResultSite]}
           undefinedCombos={noiseImpactUndefinedCombos}
           starSize={starSize}
           setStarSize={setStarSize}

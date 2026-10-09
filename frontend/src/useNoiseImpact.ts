@@ -113,6 +113,11 @@ export function useNoiseImpact(apiBase: string) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<NoiseImpactResult | null>(null);
+  // The site `result` was computed for -- NOT the same as `site`, which is
+  // just the dropdown's current value and changes the moment the user picks
+  // another one. The map/legend read this instead, so switching sites
+  // changes nothing on screen until the next Run.
+  const [resultSite, setResultSite] = useState("");
   const [visibleZoneKeys, setVisibleZoneKeys] = useState<Set<string>>(new Set());
   // Selected hearing-group/impact-type/metric combos with no matching row
   // in Noise_Impact_Thresholds.xlsx at all -- see the diff in handleRun.
@@ -177,6 +182,7 @@ export function useNoiseImpact(apiBase: string) {
   // results list, legend, and any error), so Reset is a full "start over".
   function resetParams() {
     setResult(null);
+    setResultSite("");
     setVisibleZoneKeys(new Set());
     setUndefinedCombos([]);
     setError(null);
@@ -230,6 +236,7 @@ export function useNoiseImpact(apiBase: string) {
       }
       const data: NoiseImpactResult = await res.json();
       setResult(data);
+      setResultSite(site);
 
       // Default visibility: when a hearing-group/impact-type pair has a
       // zone under more than one metric (the common case, since Metrics
@@ -303,7 +310,7 @@ export function useNoiseImpact(apiBase: string) {
     nStrikesPerPile, setNStrikesPerPile,
     nPiles, setNPiles,
     assessmentPeriodHours, setAssessmentPeriodHours,
-    running, error, result,
+    running, error, result, resultSite,
     resetParams,
     visibleZoneKeys, toggleZoneVisibility,
     undefinedCombos,
