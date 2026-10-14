@@ -55,6 +55,7 @@ import RegionsPanel from "./components/RegionsPanel";
 import LayersPanel from "./components/LayersPanel";
 import TracksPanel from "./components/TracksPanel";
 import ImpactsPanel from "./components/noise-impact/ImpactsPanel";
+import FeedbackPanel from "./components/FeedbackPanel";
 import NoiseImpactParamsPanel from "./components/noise-impact/NoiseImpactParamsPanel";
 import { useNoiseImpact, zoneKey } from "./useNoiseImpact";
 import { zoneColor, IMPACT_DASH, IMPACT_ZINDEX } from "./utils/noiseImpactStyles";
@@ -219,6 +220,7 @@ function ShipMap() {
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
+  const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const {
     showImpactsPanel, setShowImpactsPanel,
@@ -244,7 +246,7 @@ function ShipMap() {
     resetParams: resetNoiseImpactParams,
   } = useNoiseImpact(API);
   const [lastOpenedPanel, setLastOpenedPanel] = useState<
-    "vessel" | "region" | "layer" | "mooring" | "impacts"
+    "vessel" | "region" | "layer" | "mooring" | "impacts" | "feedback"
   >("vessel");
   const [clickedRegionNames, setClickedRegionNames] = useState<Set<string>>(
     new Set()
@@ -386,6 +388,7 @@ function ShipMap() {
     mooringListElRef,
     regionListElRef,
     openVesselPanel: () => {
+      setShowFeedbackPanel(false);
       setShowRegionPanel(false);
       setShowMooringPanel(false);
       setShowLayerPanel(false);
@@ -393,18 +396,21 @@ function ShipMap() {
       setVesselListOpen(true);
     },
     openMooringPanel: () => {
+      setShowFeedbackPanel(false);
       setShowVesselPanel(false);
       setShowRegionPanel(false);
       setShowLayerPanel(false);
       setShowMooringPanel(true);
     },
     openRegionPanel: () => {
+      setShowFeedbackPanel(false);
       setShowVesselPanel(false);
       setShowMooringPanel(false);
       setShowLayerPanel(false);
       setShowRegionPanel(true);
     },
     openMapPanel: () => {
+      setShowFeedbackPanel(false);
       setShowVesselPanel(false);
       setShowRegionPanel(false);
       setShowMooringPanel(false);
@@ -417,15 +423,17 @@ function ShipMap() {
     else if (showLayerPanel) setLastOpenedPanel("layer");
     else if (showMooringPanel) setLastOpenedPanel("mooring");
     else if (showImpactsPanel) setLastOpenedPanel("impacts");
-  }, [showVesselPanel, showRegionPanel, showLayerPanel, showMooringPanel, showImpactsPanel]);
+    else if (showFeedbackPanel) setLastOpenedPanel("feedback");
+  }, [showVesselPanel, showRegionPanel, showLayerPanel, showMooringPanel, showImpactsPanel, showFeedbackPanel]);
   const anyPanelOpen =
-    showVesselPanel || showRegionPanel || showLayerPanel || showMooringPanel || showImpactsPanel;
+    showVesselPanel || showRegionPanel || showLayerPanel || showMooringPanel || showImpactsPanel || showFeedbackPanel;
   function closeActivePanel() {
     setShowVesselPanel(false);
     setShowRegionPanel(false);
     setShowLayerPanel(false);
     setShowMooringPanel(false);
     setShowImpactsPanel(false);
+    setShowFeedbackPanel(false);
   }
   function openLastPanel() {
     if (lastOpenedPanel === "vessel") setShowVesselPanel(true);
@@ -433,6 +441,7 @@ function ShipMap() {
     else if (lastOpenedPanel === "layer") setShowLayerPanel(true);
     else if (lastOpenedPanel === "mooring") setShowMooringPanel(true);
     else if (lastOpenedPanel === "impacts") setShowImpactsPanel(true);
+    else if (lastOpenedPanel === "feedback") setShowFeedbackPanel(true);
   }
   useEffect(() => {
     regionTrackLayerRef.current?.updateStyleVariables({ dotSize: regionDotSize });
@@ -1311,6 +1320,7 @@ function ShipMap() {
         setShowMooringPanel={setShowMooringPanel}
         setShowLayerPanel={setShowLayerPanel}
         setShowImpactsPanel={setShowImpactsPanel}
+        setShowFeedbackPanel={setShowFeedbackPanel}
         measuring={measuring}
         setMeasuring={setMeasuring}
         drawnPolygon={drawnPolygon}
@@ -1490,6 +1500,30 @@ function ShipMap() {
           setStarSizeOpen={setStarSizeOpen}
         />
       </SidePanel>
+
+      <SidePanel open={showFeedbackPanel} width={panelWidth} onWidthChange={setPanelWidth}>
+        <FeedbackPanel api={API} />
+      </SidePanel>
+
+      {/* Feedback button -- sits just above OL's attribution "i" in the
+          bottom-right corner, only while no right-side panel is open
+          (an open panel covers that corner anyway). */}
+      {!anyPanelOpen && (
+        <div className="ol-control feedback-control">
+          <button
+            type="button"
+            title="Report an issue or suggest a feature"
+            aria-label="Send feedback"
+            onClick={() => setShowFeedbackPanel(true)}
+          >
+            <svg className="w-3.5 h-3.5 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              <line x1="12" y1="7" x2="12" y2="11" />
+              <line x1="12" y1="14" x2="12.01" y2="14" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Vessel type filter modal */}
       {showTypeFilter && (

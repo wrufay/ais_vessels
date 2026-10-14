@@ -26,6 +26,9 @@ services:
 
       # added localhost:3000 for quick frontend dev
       - CORS_ORIGINS=http://localhost,http://localhost:3000,http://localhost:5173
+
+      # password for the /feedback-inbox page -- set it in .env (gitignored)
+      - FEEDBACK_INBOX_PASSWORD=${FEEDBACK_INBOX_PASSWORD:-}
     volumes:
       # locally converted noise GeoTIFFs (see pipeline/noise_to_geotiff.py)
       - ./pipeline/noise_data:/app/pipeline/noise_data:ro

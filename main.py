@@ -21,15 +21,18 @@ image and restarting the container on each iteration.
 Note: This requires `docker compose up db` running for Postgres.
 """
 
+import hmac
 import os
 import sys
+from contextlib import asynccontextmanager
+from typing import Annotated, Literal
 
 import pandas as pd # type: ignore
 import psycopg2 # type: ignore
 import psycopg2.extras # type: ignore
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
@@ -47,7 +50,35 @@ def query(sql: str, params=None) -> list[dict]:
             cur.execute(sql, params or [])
             return [dict(r) for r in cur.fetchall()]
 
-app = FastAPI()
+
+# Same statement as docker/init.sql's -- also run on every startup because
+# init.sql only runs when a brand-new database is created, and the live
+# database predates this table.
+FEEDBACK_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS feedback (
+    id          BIGSERIAL PRIMARY KEY,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    category    TEXT NOT NULL CHECK (category IN ('issue', 'feature', 'other')),
+    message     TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 2000),
+    email       TEXT,
+    status      TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'in_progress', 'completed', 'rejected')),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+"""
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(FEEDBACK_TABLE_SQL)
+    finally:
+        conn.close()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 CORS_ORIGINS = os.environ.get(
     "CORS_ORIGINS",
@@ -398,3 +429,65 @@ def post_noise_impact_compute(req: NoiseImpactRequest):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- FEEDBACK ---
+
+# Shared password for the /feedback-inbox page, set in the server's .env
+# (never committed). Unset means the inbox is locked for everyone.
+FEEDBACK_INBOX_PASSWORD = os.environ.get("FEEDBACK_INBOX_PASSWORD", "")
+
+
+class FeedbackRequest(BaseModel):
+    category: Literal["issue", "feature", "other"]
+    message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    email: Annotated[str, StringConstraints(strip_whitespace=True, max_length=254)] | None = None
+
+
+class FeedbackStatusRequest(BaseModel):
+    status: Literal["pending", "in_progress", "completed", "rejected"]
+
+
+def check_inbox_password(password: str | None):
+    if not FEEDBACK_INBOX_PASSWORD:
+        raise HTTPException(status_code=503, detail="Feedback inbox password is not configured on the server")
+    if not password or not hmac.compare_digest(password.encode(), FEEDBACK_INBOX_PASSWORD.encode()):
+        raise HTTPException(status_code=401, detail="Wrong password")
+
+
+# saves one submission from the Feedback side panel -- open to everyone
+@app.post("/api/feedback")
+def post_feedback(req: FeedbackRequest):
+    rows = query(
+        """INSERT INTO feedback (category, message, email)
+           VALUES (%s, %s, %s)
+           RETURNING id, created_at""",
+        [req.category, req.message, req.email or None],
+    )
+    return rows[0]
+
+
+# lists every submission, newest first -- used by the /feedback-inbox page
+@app.get("/api/feedback")
+def get_feedback(x_inbox_password: str | None = Header(None)):
+    check_inbox_password(x_inbox_password)
+    return query(
+        """SELECT id, created_at, category, message, email, status, updated_at
+           FROM feedback
+           ORDER BY created_at DESC, id DESC"""
+    )
+
+
+# changes one submission's status from the /feedback-inbox page
+@app.patch("/api/feedback/{feedback_id}")
+def patch_feedback_status(feedback_id: int, req: FeedbackStatusRequest, x_inbox_password: str | None = Header(None)):
+    check_inbox_password(x_inbox_password)
+    rows = query(
+        """UPDATE feedback SET status = %s, updated_at = NOW()
+           WHERE id = %s
+           RETURNING id, status, updated_at""",
+        [req.status, feedback_id],
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    return rows[0]

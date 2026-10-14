@@ -111,6 +111,7 @@ function IconBar({
   setShowMooringPanel,
   setShowLayerPanel,
   setShowImpactsPanel,
+  setShowFeedbackPanel,
   measuring,
   setMeasuring,
   drawnPolygon,
@@ -140,6 +141,7 @@ function IconBar({
   setMeasuring: Dispatch<SetStateAction<boolean>>;
   setShowLayerPanel: Dispatch<SetStateAction<boolean>>;
   setShowImpactsPanel: Dispatch<SetStateAction<boolean>>;
+  setShowFeedbackPanel: Dispatch<SetStateAction<boolean>>;
   onAnalyse: () => void;
   onAllTraffic: () => void;
   onClearTraffic: () => void;
@@ -149,8 +151,10 @@ function IconBar({
   toggleTheme: () => void;
   innerRef?: (el: HTMLDivElement | null) => void;
 }) {
-  // Only one panel is open at a time -- toggling one closes the other 4.
-  const panelSetters = [setShowVesselPanel, setShowRegionPanel, setShowMooringPanel, setShowLayerPanel, setShowImpactsPanel];
+  // Only one panel is open at a time -- toggling one closes the others
+  // (including Feedback, which has no icon here -- it opens from the map's
+  // bottom-right corner).
+  const panelSetters = [setShowVesselPanel, setShowRegionPanel, setShowMooringPanel, setShowLayerPanel, setShowImpactsPanel, setShowFeedbackPanel];
   function togglePanel(setShow: Dispatch<SetStateAction<boolean>>) {
     panelSetters.forEach((setter) => (setter === setShow ? setter((p) => !p) : setter(false)));
   }

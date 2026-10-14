@@ -57,3 +57,13 @@
 :root.dark .ol-scale-line-inner {
   color: #cbd5e1;
 }
+
+/* Feedback button (Map.tsx) -- styled as an OL control so it matches the
+   attribution "i" button it sits directly above in the bottom-right
+   corner (.ol-attribution is at bottom/right .5em, ~1.375em tall). */
+.feedback-control {
+  position: absolute;
+  right: 0.5em;
+  bottom: 2.4em;
+  z-index: 10;
+}
