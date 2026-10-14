@@ -32,7 +32,7 @@ import psycopg2 # type: ignore
 import psycopg2.extras # type: ignore
 from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
@@ -459,6 +459,10 @@ class FeedbackStatusRequest(BaseModel):
     status: Literal["pending", "in_progress", "completed", "rejected"]
 
 
+class FeedbackDeleteRequest(BaseModel):
+    ids: Annotated[list[int], Field(min_length=1, max_length=1000)]
+
+
 def check_inbox_password(password: str | None):
     if not FEEDBACK_INBOX_PASSWORD:
         raise HTTPException(status_code=503, detail="Feedback inbox password is not configured on the server")
@@ -502,3 +506,12 @@ def patch_feedback_status(feedback_id: int, req: FeedbackStatusRequest, x_inbox_
     if not rows:
         raise HTTPException(status_code=404, detail="Feedback not found")
     return rows[0]
+
+
+# permanently deletes the ticked submissions from the /feedback-inbox page --
+# one request for the whole selection, so it's all-or-nothing
+@app.post("/api/feedback/delete")
+def delete_feedback(req: FeedbackDeleteRequest, x_inbox_password: str | None = Header(None)):
+    check_inbox_password(x_inbox_password)
+    rows = query("DELETE FROM feedback WHERE id = ANY(%s) RETURNING id", [req.ids])
+    return {"deleted": [r["id"] for r in rows]}

@@ -60,6 +60,15 @@ const CATEGORY_CLASS: Record<string, string> = {
   other: "bg-purple-100 text-purple-700",
 };
 
+const trashIcon = (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h18" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+
 function readStoredPassword(): string {
   try {
     return sessionStorage.getItem(PASSWORD_KEY) ?? "";
@@ -99,10 +108,25 @@ function FeedbackInbox() {
   const [loading, setLoading] = useState(false);
   // bumped on every password submit so retrying the same password refetches
   const [attempt, setAttempt] = useState(0);
+  // delete mode (opened with the trash-can button): ticked ids, and whether
+  // the confirmation box is up
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     document.title = "Feedback inbox";
   }, []);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !deleting) setConfirming(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirming, deleting]);
 
   useEffect(() => {
     if (!password) return;
@@ -146,6 +170,48 @@ function FeedbackInbox() {
     }
   }
 
+  function togglePicked(id: number) {
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function stopSelecting() {
+    setSelecting(false);
+    setPicked(new Set());
+    setConfirming(false);
+  }
+
+  async function deletePicked() {
+    setDeleting(true);
+    setError(null);
+    try {
+      const r = await fetch(`${API}/api/feedback/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Inbox-Password": password },
+        body: JSON.stringify({ ids: [...picked] }),
+      });
+      if (r.status === 401) {
+        storePassword(null);
+        setPassword("");
+        throw new Error("Wrong password.");
+      }
+      if (!r.ok) throw new Error(`Couldn't delete the feedback (${r.status}).`);
+      const { deleted }: { deleted: number[] } = await r.json();
+      const gone = new Set(deleted);
+      setItems((cur) => cur?.filter((it) => !gone.has(it.id)) ?? cur);
+      stopSelecting();
+    } catch (err) {
+      setConfirming(false);
+      setError(errorText(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (!password || items === null) {
     return (
       <div className="w-full h-screen overflow-y-auto bg-slate-50 flex items-center justify-center">
@@ -183,9 +249,50 @@ function FeedbackInbox() {
   return (
     <div className="w-full h-screen overflow-y-auto bg-slate-50">
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="flex items-baseline justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 min-h-[30px]">
           <h1 className="text-lg font-semibold text-slate-700">Feedback inbox</h1>
-          <span className="text-sm text-slate-500">{items.length} total</span>
+          {!selecting ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-500">{items.length} total</span>
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelecting(true)}
+                  title="Delete feedback"
+                  aria-label="Delete feedback"
+                  className="w-[30px] h-[30px] inline-flex items-center justify-center rounded-md border border-slate-300 bg-white text-slate-500 hover:text-red-600 hover:border-red-300 hover:bg-red-50 transition"
+                >
+                  {trashIcon}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setPicked(picked.size === items.length ? new Set() : new Set(items.map((it) => it.id)))}
+                className="text-xs text-slate-500 underline hover:text-slate-700"
+              >
+                {picked.size === items.length ? "Clear selection" : "Select all"}
+              </button>
+              <span className="text-sm text-slate-500">{picked.size} selected</span>
+              <button
+                type="button"
+                onClick={stopSelecting}
+                className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-600 text-xs font-medium hover:bg-slate-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={picked.size === 0}
+                onClick={() => setConfirming(true)}
+                className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 transition disabled:opacity-40 disabled:hover:bg-red-600"
+              >
+                Delete selected{picked.size > 0 && ` (${picked.size})`}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 mb-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs text-slate-500">
@@ -206,13 +313,34 @@ function FeedbackInbox() {
               const closed = it.status === "completed" || it.status === "rejected";
               const statusInfo = STATUSES.find((s) => s.value === it.status) ?? STATUSES[0];
               const categoryLabel = FEEDBACK_CATEGORIES.find((c) => c.value === it.category)?.label ?? it.category;
+              const isPicked = picked.has(it.id);
               return (
                 <div
                   key={it.id}
-                  className={`grid grid-cols-[minmax(0,1fr)_9rem] sm:grid-cols-[7rem_minmax(0,1fr)_9rem] gap-x-4 gap-y-2 items-start px-4 py-3 border-b border-slate-100 last:border-b-0 ${
-                    it.status === "in_progress" ? "bg-blue-50" : ""
-                  }`}
+                  // in delete mode the whole row ticks its checkbox, except
+                  // clicks on the status dropdown or the email link
+                  onClick={
+                    selecting
+                      ? (e) => {
+                          if (!(e.target as HTMLElement).closest("select, a, input")) togglePicked(it.id);
+                        }
+                      : undefined
+                  }
+                  className={`grid gap-x-4 gap-y-2 items-start px-4 py-3 border-b border-slate-100 last:border-b-0 ${
+                    selecting
+                      ? "grid-cols-[1.25rem_minmax(0,1fr)_9rem] sm:grid-cols-[1.25rem_7rem_minmax(0,1fr)_9rem] cursor-pointer"
+                      : "grid-cols-[minmax(0,1fr)_9rem] sm:grid-cols-[7rem_minmax(0,1fr)_9rem]"
+                  } ${isPicked ? "bg-red-50" : it.status === "in_progress" ? "bg-blue-50" : ""}`}
                 >
+                  {selecting && (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select "${it.title}"`}
+                      checked={isPicked}
+                      onChange={() => togglePicked(it.id)}
+                      className="mt-0.5 w-4 h-4 accent-red-600 cursor-pointer"
+                    />
+                  )}
                   <div className="order-1">
                     <span
                       className={`inline-block text-xs font-semibold px-2 py-0.5 rounded ${CATEGORY_CLASS[it.category] ?? ""} ${
@@ -222,7 +350,7 @@ function FeedbackInbox() {
                       {categoryLabel}
                     </span>
                   </div>
-                  <div className="order-3 col-span-2 sm:order-2 sm:col-span-1">
+                  <div className="order-3 col-span-full sm:order-2 sm:col-span-1">
                     <p className={`text-sm font-semibold break-words ${closed ? "text-slate-400" : "text-slate-700"}`}>
                       {it.title}
                     </p>
@@ -263,6 +391,58 @@ function FeedbackInbox() {
           </div>
         )}
       </div>
+
+      {confirming && (
+        <div
+          onClick={() => !deleting && setConfirming(false)}
+          className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-feedback-title"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-xl shadow-xl w-[420px] max-w-full p-5"
+          >
+            <h2 id="delete-feedback-title" className="text-base font-semibold text-slate-700 mb-1.5">
+              Delete {picked.size} feedback item{picked.size === 1 ? "" : "s"}?
+            </h2>
+            <p className="text-[13px] text-slate-500 mb-3">These will be removed from the inbox:</p>
+            <ul className="list-disc pl-7 pr-3 py-2 mb-3 bg-slate-50 border border-slate-200 rounded-md text-[13px] text-slate-700 max-h-36 overflow-y-auto space-y-1">
+              {items
+                .filter((it) => picked.has(it.id))
+                .map((it) => (
+                  <li key={it.id} className="break-words">
+                    <span className="font-semibold">{it.title}</span>{" "}
+                    <span className="text-slate-400">
+                      — {it.message.length > 40 ? `${it.message.slice(0, 40)}…` : it.message}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+            <p className="text-[13px] text-red-700 font-medium">This can't be undone.</p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                autoFocus
+                disabled={deleting}
+                onClick={() => setConfirming(false)}
+                className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-600 text-xs font-medium hover:bg-slate-100 transition disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={deletePicked}
+                className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 transition disabled:opacity-60"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
