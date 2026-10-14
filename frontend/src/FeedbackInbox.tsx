@@ -16,6 +16,7 @@ interface FeedbackItem {
   id: number;
   created_at: string;
   category: string;
+  title: string;
   message: string;
   email: string | null;
   status: Status;
@@ -35,8 +36,7 @@ const STATUSES: { value: Status; label: string; description: string; legendClass
     label: "In progress",
     description: "accepted and being worked on",
     legendClass: "text-blue-700",
-    // left plain -- the whole row is already highlighted light blue
-    selectClass: "bg-white text-slate-700 border-slate-300",
+    selectClass: "bg-blue-100 text-blue-800 border-blue-300",
   },
   {
     value: "completed",
@@ -223,7 +223,12 @@ function FeedbackInbox() {
                     </span>
                   </div>
                   <div className="order-3 col-span-2 sm:order-2 sm:col-span-1">
-                    <p className={`text-sm whitespace-pre-wrap break-words ${closed ? "text-slate-400" : "text-slate-700"}`}>
+                    <p className={`text-sm font-semibold break-words ${closed ? "text-slate-400" : "text-slate-700"}`}>
+                      {it.title}
+                    </p>
+                    <p
+                      className={`text-sm whitespace-pre-wrap break-words mt-0.5 ${closed ? "text-slate-400" : "text-slate-600"}`}
+                    >
                       {it.message}
                     </p>
                     <p className="text-xs text-slate-400 mt-0.5">
@@ -244,8 +249,10 @@ function FeedbackInbox() {
                     onChange={(e) => changeStatus(it.id, e.target.value as Status)}
                     className={`order-2 sm:order-3 w-full rounded-md border text-xs font-semibold px-2 py-1.5 focus:outline-none ${statusInfo.selectClass}`}
                   >
+                    {/* Chromium (Edge/Chrome) paints the open list with the select's
+                        colours unless each option sets its own -- keep it plain */}
                     {STATUSES.map((s) => (
-                      <option key={s.value} value={s.value}>
+                      <option key={s.value} value={s.value} className="bg-white text-slate-700 font-normal">
                         {s.label}
                       </option>
                     ))}

@@ -7,6 +7,7 @@ export const FEEDBACK_CATEGORIES = [
   { value: "other", label: "Other" },
 ] as const;
 
+export const FEEDBACK_TITLE_MAX_LENGTH = 120;
 export const FEEDBACK_MAX_LENGTH = 2000;
 
 // The Feedback side-panel's content -- lets anyone report an issue or
@@ -16,6 +17,7 @@ export const FEEDBACK_MAX_LENGTH = 2000;
 // closed, so whatever was typed survives closing and reopening the panel.
 function FeedbackPanel({ api }: { api: string }) {
   const [category, setCategory] = useState<string>("issue");
+  const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
@@ -24,6 +26,10 @@ function FeedbackPanel({ api }: { api: string }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!title.trim()) {
+      setError("Add a short title first.");
+      return;
+    }
     if (!message.trim()) {
       setError("Write a short description first.");
       return;
@@ -35,9 +41,10 @@ function FeedbackPanel({ api }: { api: string }) {
       const r = await fetch(`${api}/api/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, message, email: email.trim() || null }),
+        body: JSON.stringify({ category, title, message, email: email.trim() || null }),
       });
       if (!r.ok) throw new Error(`${r.status}`);
+      setTitle("");
       setMessage("");
       setEmail("");
       setSent(true);
@@ -74,6 +81,25 @@ function FeedbackPanel({ api }: { api: string }) {
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Title</span>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setSent(false);
+              setError(null);
+            }}
+            maxLength={FEEDBACK_TITLE_MAX_LENGTH}
+            placeholder="A short summary"
+            className={inputClass}
+          />
+          <span className="self-end text-[11px] text-slate-400 dark:text-slate-500">
+            {title.length} / {FEEDBACK_TITLE_MAX_LENGTH}
+          </span>
         </label>
 
         <label className="flex flex-col gap-1.5">

@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     id          BIGSERIAL PRIMARY KEY,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     category    TEXT NOT NULL CHECK (category IN ('issue', 'feature', 'other')),
+    title       TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 120),
     message     TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 2000),
     email       TEXT,
     status      TEXT NOT NULL DEFAULT 'pending'

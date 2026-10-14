@@ -59,12 +59,21 @@ CREATE TABLE IF NOT EXISTS feedback (
     id          BIGSERIAL PRIMARY KEY,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     category    TEXT NOT NULL CHECK (category IN ('issue', 'feature', 'other')),
+    title       TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 120),
     message     TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 2000),
     email       TEXT,
     status      TEXT NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'in_progress', 'completed', 'rejected')),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
+"""
+
+# Adds the title column to feedback tables created before it existed;
+# submissions from back then get "(no title)". No-op once it's there.
+FEEDBACK_TITLE_COLUMN_SQL = """
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS
+    title TEXT NOT NULL DEFAULT '(no title)' CHECK (char_length(title) BETWEEN 1 AND 120);
+ALTER TABLE feedback ALTER COLUMN title DROP DEFAULT;
 """
 
 
@@ -74,6 +83,7 @@ async def lifespan(app: FastAPI):
     try:
         with conn, conn.cursor() as cur:
             cur.execute(FEEDBACK_TABLE_SQL)
+            cur.execute(FEEDBACK_TITLE_COLUMN_SQL)
     finally:
         conn.close()
     yield
@@ -440,6 +450,7 @@ FEEDBACK_INBOX_PASSWORD = os.environ.get("FEEDBACK_INBOX_PASSWORD", "")
 
 class FeedbackRequest(BaseModel):
     category: Literal["issue", "feature", "other"]
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
     message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
     email: Annotated[str, StringConstraints(strip_whitespace=True, max_length=254)] | None = None
 
@@ -459,10 +470,10 @@ def check_inbox_password(password: str | None):
 @app.post("/api/feedback")
 def post_feedback(req: FeedbackRequest):
     rows = query(
-        """INSERT INTO feedback (category, message, email)
-           VALUES (%s, %s, %s)
+        """INSERT INTO feedback (category, title, message, email)
+           VALUES (%s, %s, %s, %s)
            RETURNING id, created_at""",
-        [req.category, req.message, req.email or None],
+        [req.category, req.title, req.message, req.email or None],
     )
     return rows[0]
 
@@ -472,7 +483,7 @@ def post_feedback(req: FeedbackRequest):
 def get_feedback(x_inbox_password: str | None = Header(None)):
     check_inbox_password(x_inbox_password)
     return query(
-        """SELECT id, created_at, category, message, email, status, updated_at
+        """SELECT id, created_at, category, title, message, email, status, updated_at
            FROM feedback
            ORDER BY created_at DESC, id DESC"""
     )
