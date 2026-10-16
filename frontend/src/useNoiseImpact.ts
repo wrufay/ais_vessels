@@ -41,6 +41,13 @@ export interface NoiseImpactResult {
   zones: NoiseImpactZone[];
 }
 
+// Download formats -- keys of analysis/noise_impact.py's EXPORT_FORMATS.
+export const EXPORT_FORMATS = [
+  { value: "shp", label: "Shapefile (.shp)" },
+  { value: "gpkg", label: "GeoPackage (.gpkg)" },
+] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number]["value"];
+
 export function zoneKey(z: { hearing_group: string; impact: string; metric: string }): string {
   return `${z.hearing_group}|${z.impact}|${z.metric}`;
 }
@@ -123,7 +130,7 @@ export function useNoiseImpact(apiBase: string) {
   // in Noise_Impact_Thresholds.xlsx at all -- see the diff in handleRun.
   const [undefinedCombos, setUndefinedCombos] = useState<string[]>([]);
   // The exact request body `result` came from -- like resultSite, so the
-  // Shapefile download matches what's on the map even if the inputs were
+  // zones download matches what's on the map even if the inputs were
   // edited after Run.
   const [lastRunRequest, setLastRunRequest] = useState<object | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -305,10 +312,11 @@ export function useNoiseImpact(apiBase: string) {
     }
   }
 
-  // Downloads the last Run's exceeded zones as a zipped Shapefile, built
-  // server-side by ns_pile_driving_noise_mapping's export_hazard_zones
-  // (see analysis/noise_impact.py's export_impact_shapefile).
-  async function handleExport() {
+  // Downloads the last Run's exceeded zones as a zip (the file in the
+  // chosen format + a README), built server-side by
+  // ns_pile_driving_noise_mapping's export_hazard_zones (see
+  // analysis/noise_impact.py's export_impact).
+  async function handleExport(format: ExportFormat) {
     if (!lastRunRequest || exporting) return;
     setExporting(true);
     setExportError(null);
@@ -316,7 +324,7 @@ export function useNoiseImpact(apiBase: string) {
       const res = await fetch(`${apiBase}/api/noise-impact/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lastRunRequest),
+        body: JSON.stringify({ ...lastRunRequest, format }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);

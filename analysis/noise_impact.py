@@ -227,7 +227,15 @@ def compute_impact(
     }
 
 
-def export_impact_shapefile(
+# Download formats export_impact supports: key -> (README name, file
+# extension). export_hazard_zones picks the format from the extension.
+EXPORT_FORMATS = {
+    "shp": ("Shapefile", ".shp"),
+    "gpkg": ("GeoPackage", ".gpkg"),
+}
+
+
+def export_impact(
     site: str,
     hearing_groups: list[str],
     impact_types: list[str],
@@ -238,18 +246,24 @@ def export_impact_shapefile(
     n_strikes_per_pile: int,
     n_piles: int,
     assessment_period_hours: float,
+    fmt: str,
 ) -> tuple[str, bytes]:
     """Same run as compute_impact, saved with the package's own
-    export_hazard_zones as a Shapefile, returned as (zip filename, zip
-    bytes) -- a Shapefile is several files (.shp/.shx/.dbf/.prj/.cpg), so
-    it's zipped into one download, along with a README describing the
-    scenario and the (shortened) column names.
+    export_hazard_zones in one of EXPORT_FORMATS, returned as (zip
+    filename, zip bytes). Either format is zipped with a README describing
+    the scenario and the column names (none of which is stored in the
+    file itself) -- and a Shapefile is several files (.shp/.shx/.dbf/.prj/
+    .cpg) anyway.
 
     Only exceeded zones are exported: the package writes not-exceeded ones
     as zero-area polygons (every vertex at the source), which GIS tools
     flag as invalid -- and the app shows no shape for them either. The
     README lists them instead.
     """
+    if fmt not in EXPORT_FORMATS:
+        raise ValueError(f"Unknown export format: {fmt}")
+    format_name, ext = EXPORT_FORMATS[fmt]
+
     result, _, noise_level_params = _run_model(
         site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
         sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
@@ -266,14 +280,14 @@ def export_impact_shapefile(
 
     name = f"noise-impact_{site.replace(' ', '-')}_{date.today().isoformat()}"
     with tempfile.TemporaryDirectory() as tmp:
-        shp_path = os.path.join(tmp, f"{name}.shp")
-        _npnm_core.export_hazard_zones(zone_data, df_th, shp_path)
+        out_path = os.path.join(tmp, f"{name}{ext}")
+        _npnm_core.export_hazard_zones(zone_data, df_th, out_path)
         # Column names as actually written (the package shortens them to
-        # Shapefile's 10-character limit), so the README can't drift from
-        # the file if the package renames them.
-        columns = [c for c in gpd.read_file(shp_path, rows=0).columns if c != "geometry"]
-        readme = _shapefile_readme(
-            site, depth_range, noise_level_params, zone_data, df_th,
+        # 10 characters for Shapefiles only), so the README can't drift
+        # from the file if the package renames them.
+        columns = [c for c in gpd.read_file(out_path, rows=0).columns if c != "geometry"]
+        readme = _export_readme(
+            format_name, site, depth_range, noise_level_params, zone_data, df_th,
             df_th_not_exceeded, columns,
         )
         with open(os.path.join(tmp, f"{name}_README.txt"), "w", encoding="utf-8") as f:
@@ -282,7 +296,8 @@ def export_impact_shapefile(
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for fname in sorted(os.listdir(tmp)):
                 zf.write(os.path.join(tmp, fname), arcname=fname)
-    return f"{name}.zip", buf.getvalue()
+    # format in the zip name, so downloading both formats doesn't collide
+    return f"{name}_{fmt}.zip", buf.getvalue()
 
 
 def _run_model(
@@ -291,7 +306,7 @@ def _run_model(
 ):
     """Build the package's params from plain values and run
     calculate_noise_impact -- shared by compute_impact and
-    export_impact_shapefile so both always run the identical model."""
+    export_impact so both always run the identical model."""
     if site not in SITES:
         raise ValueError(f"Unknown site: {site}")
 
@@ -320,35 +335,45 @@ def _zone_exceeded(zone) -> bool:
     return float(zone["Distance"].max()) > 0
 
 
-# What each exported Shapefile column means, keyed by the shortened names
-# export_hazard_zones writes (its SHAPEFILE_FIELDNAMES). Any column not
-# listed here still shows up in the README, just without a description.
-_SHAPEFILE_COLUMN_DESCRIPTIONS = {
-    "Area_m2": "Zone area (m²)",
-    "RMin_m": "Shortest distance from the pile to the zone edge (m)",
-    "RMax_m": "Longest distance from the pile to the zone edge (m)",
-    "RMean_m": "Mean distance from the pile to the zone edge (m)",
-    "RSD_m": "Standard deviation of that distance across directions (m)",
-    "HGroup": "Hearing group (see HEARING GROUPS)",
-    "Th_dB": "Threshold the noise reaches or exceeds inside the zone (dB)",
+# What each exported column means, keyed by the names export_hazard_zones
+# writes: full names in a GeoPackage, its shortened SHAPEFILE_FIELDNAMES in
+# a Shapefile (10-character limit). Any column not listed here still shows
+# up in the README, just without a description.
+_AREA = "Zone area (m²)"
+_RMIN = "Shortest distance from the pile to the zone edge (m)"
+_RMAX = "Longest distance from the pile to the zone edge (m)"
+_RMEAN = "Mean distance from the pile to the zone edge (m)"
+_RSD = "Standard deviation of that distance across directions (m)"
+_HGROUP = "Hearing group (see HEARING GROUPS)"
+_TH = "Threshold the noise reaches or exceeds inside the zone (dB)"
+_EXPHRS = ("Exposure period the threshold is defined for, in hours, from the "
+           "thresholds table (empty if the threshold has none)")
+_EXPORT_COLUMN_DESCRIPTIONS = {
+    "Area_m2": _AREA,
+    "MinRadius_m": _RMIN, "RMin_m": _RMIN,
+    "MaxRadius_m": _RMAX, "RMax_m": _RMAX,
+    "MeanRadius_m": _RMEAN, "RMean_m": _RMEAN,
+    "RadiusSD_m": _RSD, "RSD_m": _RSD,
+    "HearingGroup": _HGROUP, "HGroup": _HGROUP,
+    "Threshold_dB": _TH, "Th_dB": _TH,
     "Impact": "Impact type (see IMPACT TYPES)",
     "Metric": "Noise metric the threshold applies to (see METRICS)",
-    "ExpHrs": "Exposure period the threshold is defined for, in hours, from "
-              "the thresholds table (empty if the threshold has none)",
+    "HoursOfExposure": _EXPHRS, "ExpHrs": _EXPHRS,
     "IsWeighted": "Whether noise levels are weighted by the hearing group's "
                   "hearing sensitivity (see WEIGHTING)",
 }
 
 
-def _shapefile_readme(
-    site, depth_range, noise_level_params, zone_data, df_th, df_th_not_exceeded, columns,
+def _export_readme(
+    format_name, site, depth_range, noise_level_params, zone_data, df_th,
+    df_th_not_exceeded, columns,
 ) -> str:
-    """Plain-text README for the Shapefile zip: the scenario that produced
-    the zones (none of which is stored in the Shapefile itself), the zones
-    in the file and the thresholds that weren't exceeded, and what the
-    shortened column names and their values mean. Hearing group / impact /
-    metric / weighting wording comes from the thresholds workbook's Info
-    sheet, same as the app's tooltips."""
+    """Plain-text README for the download zip: the scenario that produced
+    the zones (none of which is stored in the file itself), the zones in
+    the file and the thresholds that weren't exceeded, and what the column
+    names and their values mean. Hearing group / impact / metric /
+    weighting wording comes from the thresholds workbook's Info sheet, same
+    as the app's tooltips."""
     cfg = SITES[site]
     info = _read_info_blocks("HearingGroup", "Impact", "Metric", "IsWeighted")
     lat, lon = cfg["src_lat"], cfg["src_lon"]
@@ -377,7 +402,7 @@ def _shapefile_readme(
         f"NOISE IMPACT ZONES – {site.upper()}",
         "",
         *textwrap.wrap(
-            "Each shape in this Shapefile is the area around the pile where "
+            f"Each shape in this {format_name} is the area around the pile where "
             "pile-driving noise reaches or exceeds the threshold for one "
             "hearing group, impact type and noise metric.", 78),
         "",
@@ -406,7 +431,7 @@ def _shapefile_readme(
         lines.append("THRESHOLDS NOT EXCEEDED (no zone, so not in this file)")
         lines += [f"  {label(th)}" for th in df_th_not_exceeded.itertuples()]
         lines.append("")
-    lines += section("COLUMNS", [(c, _SHAPEFILE_COLUMN_DESCRIPTIONS.get(c, "")) for c in columns])
+    lines += section("COLUMNS", [(c, _EXPORT_COLUMN_DESCRIPTIONS.get(c, "")) for c in columns])
     lines += section("HEARING GROUPS", values_used("HearingGroup", "HearingGroup"))
     lines += section("IMPACT TYPES", values_used("Impact", "Impact"))
     lines += section("METRICS", values_used("Metric", "Metric"))

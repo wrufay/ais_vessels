@@ -38,7 +38,7 @@ from shapely.geometry import Point, shape # type: ignore
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
 from noise import render_noise_overlay, noise_range, NOISE_DATA_DIR, combo_dirname, parse_combo_dirname  # noqa: E402 # type: ignore
-from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, list_parameter_info as list_noise_impact_info, compute_impact as compute_noise_impact, export_impact_shapefile as export_noise_impact_shapefile  # noqa: E402 # type: ignore
+from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, list_parameter_info as list_noise_impact_info, compute_impact as compute_noise_impact, export_impact as export_noise_impact  # noqa: E402 # type: ignore
 
 # reads DATABASE_URL from environment (REQUIRED)
 DATABASE_URL: str = os.environ["DATABASE_URL"]
@@ -444,12 +444,17 @@ def post_noise_impact_compute(req: NoiseImpactRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# returns the same run's exceeded impact zones as a zipped Shapefile download.
-# used by useNoiseImpact.ts's handleExport, with the last Run's exact request body.
+class NoiseImpactExportRequest(NoiseImpactRequest):
+    # keys of analysis/noise_impact.py's EXPORT_FORMATS
+    format: Literal["shp", "gpkg"] = "shp"
+
+
+# returns the same run's exceeded impact zones as a zipped Shapefile or GeoPackage download.
+# used by useNoiseImpact.ts's handleExport, with the last Run's exact request body + format.
 @app.post("/api/noise-impact/export")
-def post_noise_impact_export(req: NoiseImpactRequest):
+def post_noise_impact_export(req: NoiseImpactExportRequest):
     try:
-        filename, data = export_noise_impact_shapefile(
+        filename, data = export_noise_impact(
             site=req.site,
             hearing_groups=req.hearing_groups,
             impact_types=req.impact_types,
@@ -460,6 +465,7 @@ def post_noise_impact_export(req: NoiseImpactRequest):
             n_strikes_per_pile=req.n_strikes_per_pile,
             n_piles=req.n_piles,
             assessment_period_hours=req.assessment_period_hours,
+            fmt=req.format,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

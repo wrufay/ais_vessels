@@ -5,6 +5,8 @@ import SizeOpacityPanel from "../SizeOpacityPanel";
 import NoiseImpactLegend from "./NoiseImpactLegend";
 import {
   zoneKey,
+  EXPORT_FORMATS,
+  type ExportFormat,
   type NoiseImpactResult,
   type NoiseImpactSite,
 } from "../../useNoiseImpact";
@@ -70,7 +72,7 @@ function ImpactsPanel({
   setStarOpacity: (v: number) => void;
   starSizeOpen: boolean;
   setStarSizeOpen: (v: boolean) => void;
-  onExport: () => void;
+  onExport: (format: ExportFormat) => void;
   exporting: boolean;
   exportError: string | null;
 }) {
@@ -79,6 +81,7 @@ function ImpactsPanel({
   // was nothing here at all until you noticed the caret.
   const [notExceededOpen, setNotExceededOpen] = useState(true);
   const [undefinedOpen, setUndefinedOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("shp");
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -229,13 +232,31 @@ function ImpactsPanel({
                       {/* All exceeded zones from the last Run, whether or
                           not they're toggled visible above. */}
                       <div className="flex flex-col gap-1.5 pt-2">
-                        <button
-                          onClick={onExport}
-                          disabled={exporting}
-                          className="self-start px-2.5 py-1 rounded-md bg-[#3d5a80] text-white text-[11px] hover:bg-[#2e4460] active:bg-slate-500 shadow-sm active:scale-95 transition disabled:opacity-60 disabled:cursor-wait"
-                        >
-                          {exporting ? "Preparing…" : "Download zones (Shapefile .zip)"}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={exportFormat}
+                            onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                            disabled={exporting}
+                            aria-label="Download format"
+                            className="text-[11px] text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition cursor-pointer disabled:cursor-wait"
+                          >
+                            {EXPORT_FORMATS.map((f) => (
+                              <option key={f.value} value={f.value}>
+                                {f.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => onExport(exportFormat)}
+                            disabled={exporting}
+                            className="px-2.5 py-1 rounded-md bg-[#3d5a80] text-white text-[11px] hover:bg-[#2e4460] active:bg-slate-500 shadow-sm active:scale-95 transition disabled:opacity-60 disabled:cursor-wait"
+                          >
+                            {exporting ? "Preparing…" : "Download zones"}
+                          </button>
+                        </div>
+                        <div className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                          Downloads a .zip with the zones and a README describing the scenario.
+                        </div>
                         {exportError && (
                           <div className="px-3 py-2 rounded-md bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs text-red-600 dark:text-red-400">
                             {exportError}
