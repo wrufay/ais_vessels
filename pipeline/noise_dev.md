@@ -41,10 +41,19 @@ depths x 5 freqs `combined_noise` currently shows. For `wind_noise`,
 
 ## 3. Code changes to re-add a variable once its data is actually complete
 
-Once (and only once) a variable has full coverage, make these changes:
+**Done 2026-10-16 for both `vessel_noise` and `wind_noise`** (all 95 / 5
+combos converted). What that took, for reference if another variable is
+ever added:
 
-- **`analysis/noise.py`** — add the variable back to `NOISE_VARIABLES`.
+- **`analysis/noise.py`** — add the variable to `NOISE_VARIABLES`. If its
+  values make the auto colour scale useless, give it an entry in
+  `AUTO_SCALE_FLOOR_DB` (vessel has one: it has cells down to ~-118 dB
+  where a ship barely reached all month).
 
-- **`frontend/src/components/LayersPanel.tsx`** — add the `<option>` back
-  to the variable `<select>` (around where `combined_noise`'s option is).
+- **`frontend/src/components/LayersPanel.tsx`** — add the `<option>` to the
+  variable `<select>`. Vessel also gets a note under the colour bar, since
+  months with no ship noise at a cell are stored as no-data (blank).
 
+- **`frontend/src/useNoiseLayer.ts`** — a variable without a depth
+  dimension goes in `NO_DEPTH_VARIABLES` (wind does): the Depth row is
+  hidden and requests always use its single `_d10` folder.

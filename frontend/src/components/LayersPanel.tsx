@@ -1,5 +1,5 @@
 import type { useBathymetry } from "../useBathymetry";
-import type { useNoiseLayer } from "../useNoiseLayer";
+import { variableHasDepth, type useNoiseLayer } from "../useNoiseLayer";
 import { useBasemap as useBasemapHook, BASEMAPS } from "../useBasemap";
 import PanelHeader from "./PanelHeader";
 import CollapsibleHeader from "./CollapsibleHeader";
@@ -115,6 +115,8 @@ function LayersPanel({
                 <select value={noiseVariable} onChange={(e) => setNoiseVariable(e.target.value)}
                   className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
                   <option value="combined_noise">Combined noise</option>
+                  <option value="vessel_noise">Vessel noise</option>
+                  <option value="wind_noise">Wind noise</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
@@ -138,13 +140,15 @@ function LayersPanel({
                       </select>
                     </div>
                   )}
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Depth</span>
-                    <select value={noiseDepth} onChange={(e) => setNoiseDepth(Number(e.target.value))}
-                      className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
-                      {depths.map(d => <option key={d} value={d}>{d} m</option>)}
-                    </select>
-                  </div>
+                  {variableHasDepth(noiseVariable) && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500 w-12 shrink-0">Depth</span>
+                      <select value={noiseDepth} onChange={(e) => setNoiseDepth(Number(e.target.value))}
+                        className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 flex-1">
+                        {depths.map(d => <option key={d} value={d}>{d} m</option>)}
+                      </select>
+                    </div>
+                  )}
                 </>;
               })()}
               <div className="mt-1 flex flex-col gap-1">
@@ -178,6 +182,11 @@ function LayersPanel({
                     className="spin-arrows w-16 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 tabular-nums text-right"
                   />
                 </div>
+                {noiseVariable === "vessel_noise" && (
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                    Blank areas: no vessel noise reached them that month.
+                  </div>
+                )}
                 {(noiseVminOverride !== null || noiseVmaxOverride !== null) && (
                   <div className="flex items-center justify-end">
                     <button

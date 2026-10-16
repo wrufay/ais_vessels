@@ -12,6 +12,11 @@ export const NOISE_EXTENT = [
   ...fromLonLat([-59.0, 46.0]),
 ] as [number, number, number, number];
 
+// wind_noise has no depth dimension -- its GeoTIFFs only exist as one
+// `_d10` folder per freq, which is what every wind request asks for.
+const NO_DEPTH_VARIABLES = new Set(["wind_noise"]);
+export const variableHasDepth = (variable: string) => !NO_DEPTH_VARIABLES.has(variable);
+
 // Owns all state and side effects for the ocean noise raster overlay --
 // which variable/date/freq/depth is showing, its opacity, the fetched
 // list of available combinations, and rebuilding the layer's image source
@@ -34,7 +39,7 @@ export function useNoiseLayer(apiBase: string) {
   const [showNoise, setShowNoise] = useState(false);
   const [noiseOpacity, setNoiseOpacity] = useState(0.5);
   const [noiseLoading, setNoiseLoading] = useState(false);
-  const [noiseVariable, setNoiseVariable] = useState("combined_noise");
+  const [noiseVariable, setNoiseVariableState] = useState("combined_noise");
   const [noiseDate, setNoiseDate] = useState("2020-02");
   const [noiseFreq, setNoiseFreq] = useState(50);
   const [noiseDepth, setNoiseDepth] = useState(10);
@@ -43,6 +48,19 @@ export function useNoiseLayer(apiBase: string) {
   const [noiseVmaxOverride, setNoiseVmaxOverride] = useState<number | "" | null>(null);
   const [noiseAvailable, setNoiseAvailable] = useState<Record<string, { freq: number; depth: number }[]>>({});
   const [noiseDates, setNoiseDates] = useState<string[]>([]);
+
+  // Variables have very different dB ranges, so a scale typed in for one
+  // would be meaningless for the next -- go back to auto on every switch.
+  const setNoiseVariable = (variable: string) => {
+    setNoiseVariableState(variable);
+    setNoiseVminOverride(null);
+    setNoiseVmaxOverride(null);
+  };
+  // Depth sent to the API. noiseDepth itself is left alone for depthless
+  // variables, so switching to wind and back keeps the user's depth.
+  const requestDepth = variableHasDepth(noiseVariable)
+    ? noiseDepth
+    : (noiseAvailable[noiseVariable]?.[0]?.depth ?? 10);
 
   useEffect(() => {
     noiseLayerRef.current?.setVisible(showNoise);
@@ -60,23 +78,28 @@ export function useNoiseLayer(apiBase: string) {
     if (!options || options.length === 0) return;
     const freqs = [...new Set(options.map((o) => o.freq))].sort((a, b) => a - b);
     if (!freqs.includes(noiseFreq)) setNoiseFreq(freqs[0]);
+    if (!variableHasDepth(noiseVariable)) return;
     const depths = [...new Set(options.filter((o) => o.freq === (freqs.includes(noiseFreq) ? noiseFreq : freqs[0])).map((o) => o.depth))].sort((a, b) => a - b);
     if (!depths.includes(noiseDepth)) setNoiseDepth(depths[0]);
   }, [noiseVariable, noiseAvailable]);
 
   useEffect(() => {
-    fetch(`${apiBase}/api/noise/dates?variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`)
+    // ignore a reply that lands after the user has already moved on
+    let stale = false;
+    fetch(`${apiBase}/api/noise/dates?variable=${noiseVariable}&freq=${noiseFreq}&depth=${requestDepth}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((dates: string[]) => {
+        if (stale) return;
         setNoiseDates(dates);
         if (dates.length > 0 && !dates.includes(noiseDate)) setNoiseDate(dates[dates.length - 1]);
       })
       .catch(() => {});
-  }, [noiseVariable, noiseFreq, noiseDepth]);
+    return () => { stale = true; };
+  }, [noiseVariable, noiseFreq, requestDepth]);
 
   useEffect(() => {
     if (!noiseLayerRef.current) return;
-    let url = `${apiBase}/api/noise/overlay?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`;
+    let url = `${apiBase}/api/noise/overlay?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${requestDepth}`;
     if (noiseVminOverride !== null && noiseVminOverride !== "") url += `&vmin=${noiseVminOverride}`;
     if (noiseVmaxOverride !== null && noiseVmaxOverride !== "") url += `&vmax=${noiseVmaxOverride}`;
     const newSource = new ImageStatic({ url, imageExtent: NOISE_EXTENT, projection: "EPSG:3857" });
@@ -84,11 +107,13 @@ export function useNoiseLayer(apiBase: string) {
     newSource.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
     noiseLayerRef.current.setSource(newSource);
 
-    fetch(`${apiBase}/api/noise/range?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${noiseDepth}`)
+    let stale = false;
+    fetch(`${apiBase}/api/noise/range?date=${noiseDate}&variable=${noiseVariable}&freq=${noiseFreq}&depth=${requestDepth}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setNoiseRange(data))
-      .catch(() => setNoiseRange(null));
-  }, [noiseDate, noiseVariable, noiseFreq, noiseDepth, noiseVminOverride, noiseVmaxOverride, noiseLayerReady]);
+      .then((data) => { if (!stale) setNoiseRange(data); })
+      .catch(() => { if (!stale) setNoiseRange(null); });
+    return () => { stale = true; };
+  }, [noiseDate, noiseVariable, noiseFreq, requestDepth, noiseVminOverride, noiseVmaxOverride, noiseLayerReady]);
 
   useEffect(() => {
     noiseLayerRef.current?.setOpacity(noiseOpacity);

@@ -33,7 +33,13 @@ NOISE_DATA_DIR = os.environ.get(
 # Static grid extent
 NOISE_EXTENT = {"min_lon": -69.5, "max_lon": -59.0, "min_lat": 41.0, "max_lat": 46.0}
 
-NOISE_VARIABLES = {"combined_noise"}
+NOISE_VARIABLES = {"combined_noise", "vessel_noise", "wind_noise"}
+
+# dB below which cells are left out when auto-picking the colour scale.
+# vessel_noise has cells down to about -118 dB where a ship barely reached
+# all month; counting them drags the blue end so low that real shipping noise
+# all lands in the reds. Those cells are still drawn (as the lowest colour).
+AUTO_SCALE_FLOOR_DB = {"vessel_noise": 0.0}
 
 _COMBO_DIRNAME_RE = re.compile(r"^(.+)_f(\d+)_d(\d+)$")
 
@@ -61,6 +67,19 @@ def parse_combo_dirname(name: str) -> tuple[str, int, int] | None:
     return variable, int(freq), int(depth)
 
 
+def _auto_range(values: np.ndarray, variable: str) -> tuple[float, float]:
+    """2nd/98th percentile of the finite `values`, ignoring any below the
+    variable's AUTO_SCALE_FLOOR_DB. (0, 1) if nothing is left."""
+    finite = values[~np.isnan(values)]
+    floor = AUTO_SCALE_FLOOR_DB.get(variable)
+    if floor is not None:
+        finite = finite[finite >= floor]
+    if not finite.size:
+        return 0.0, 1.0
+    vmin, vmax = np.percentile(finite, [2, 98])
+    return float(vmin), float(vmax)
+
+
 def _load_grid(date: str, variable: str, freq: float, depth: float) -> np.ndarray:
     """Return the raster grid for one (date, variable, freq, depth) combo."""
     if variable not in NOISE_VARIABLES:
@@ -77,7 +96,8 @@ def _load_grid(date: str, variable: str, freq: float, depth: float) -> np.ndarra
 def noise_range(
     date: str, variable: str = "combined_noise", freq: float = 50, depth: float = 10
 ) -> tuple[float, float]:
-    """Return (vmin_dB, vmax_dB) — the 2nd/98th percentile of the grid.
+    """Return (vmin_dB, vmax_dB) — the 2nd/98th percentile of the grid
+    (above AUTO_SCALE_FLOOR_DB, if the variable has one).
 
     Always auto-computed (no override) — this is what the frontend calls
     on load to pre-fill the dB inputs before the user has customized
@@ -85,11 +105,7 @@ def noise_range(
     user-supplied vmin/vmax is passed to that function instead.
     """
     grid = _load_grid(date, variable, freq, depth)
-    finite = grid[~np.isnan(grid)]
-    if not finite.size:
-        return 0.0, 1.0
-    vmin, vmax = np.percentile(finite, [2, 98])
-    return float(vmin), float(vmax)
+    return _auto_range(grid, variable)
 
 
 def render_noise_overlay(
@@ -104,7 +120,7 @@ def render_noise_overlay(
     vmin/vmax set the dB values mapped to the two ends of the colour scale
     (RdYlBu_r colormap). Pass either/both explicitly to fix the scale; any
     left as None fall back to that image's own 2nd/98th percentile,
-    computed after smoothing.
+    computed after smoothing (above AUTO_SCALE_FLOOR_DB, if any).
     """
     grid = _load_grid(date, variable, freq, depth)
 
@@ -115,12 +131,11 @@ def render_noise_overlay(
     smoothed[nodata] = np.nan
 
     if vmin is None or vmax is None:
-        finite = smoothed[~nodata]
-        auto_vmin, auto_vmax = np.percentile(finite, [2, 98]) if finite.size else (0.0, 1.0)
+        auto_vmin, auto_vmax = _auto_range(smoothed, variable)
         if vmin is None:
-            vmin = float(auto_vmin)
+            vmin = auto_vmin
         if vmax is None:
-            vmax = float(auto_vmax)
+            vmax = auto_vmax
 
     norm = mcolors.Normalize(vmin=vmin, vmax=vmax, clip=True)
     rgba = matplotlib.colormaps["RdYlBu_r"](norm(np.nan_to_num(smoothed)), bytes=True)
