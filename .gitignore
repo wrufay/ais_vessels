@@ -22,3 +22,6 @@ pipeline/noise_data/
 # missing /home/shared mount fails loudly instead of silently using fake
 # data), so nothing in this directory is load-bearing for the real app.
 mock_api/
+
+noise_impact_code/
+log/

@@ -122,6 +122,12 @@ export function useNoiseImpact(apiBase: string) {
   // Selected hearing-group/impact-type/metric combos with no matching row
   // in Noise_Impact_Thresholds.xlsx at all -- see the diff in handleRun.
   const [undefinedCombos, setUndefinedCombos] = useState<string[]>([]);
+  // The exact request body `result` came from -- like resultSite, so the
+  // Shapefile download matches what's on the map even if the inputs were
+  // edited after Run.
+  const [lastRunRequest, setLastRunRequest] = useState<object | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // Populate the Scenario/Species cards from the backend so this never
   // hardcodes a site list or threshold-category list that could drift from
@@ -186,6 +192,8 @@ export function useNoiseImpact(apiBase: string) {
     setVisibleZoneKeys(new Set());
     setUndefinedCombos([]);
     setError(null);
+    setLastRunRequest(null);
+    setExportError(null);
     setSite(Object.keys(sites)[0] ?? "");
     setHearingGroups([]);
     setImpactTypes([]);
@@ -213,22 +221,24 @@ export function useNoiseImpact(apiBase: string) {
     if (!ready || running) return;
     setRunning(true);
     setError(null);
+    setExportError(null);
+    const request = {
+      site,
+      hearing_groups: hearingGroups,
+      impact_types: impactTypes,
+      metrics,
+      depth_range: [depthMin, depthMax],
+      spl_peak: splPeak,
+      sel_single_strike: selSingleStrike,
+      n_strikes_per_pile: nStrikesPerPile,
+      n_piles: nPiles,
+      assessment_period_hours: assessmentPeriodHours,
+    };
     try {
       const res = await fetch(`${apiBase}/api/noise-impact/compute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site,
-          hearing_groups: hearingGroups,
-          impact_types: impactTypes,
-          metrics,
-          depth_range: [depthMin, depthMax],
-          spl_peak: splPeak,
-          sel_single_strike: selSingleStrike,
-          n_strikes_per_pile: nStrikesPerPile,
-          n_piles: nPiles,
-          assessment_period_hours: assessmentPeriodHours,
-        }),
+        body: JSON.stringify(request),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -237,6 +247,7 @@ export function useNoiseImpact(apiBase: string) {
       const data: NoiseImpactResult = await res.json();
       setResult(data);
       setResultSite(site);
+      setLastRunRequest(request);
 
       // Default visibility: when a hearing-group/impact-type pair has a
       // zone under more than one metric (the common case, since Metrics
@@ -294,6 +305,39 @@ export function useNoiseImpact(apiBase: string) {
     }
   }
 
+  // Downloads the last Run's exceeded zones as a zipped Shapefile, built
+  // server-side by ns_pile_driving_noise_mapping's export_hazard_zones
+  // (see analysis/noise_impact.py's export_impact_shapefile).
+  async function handleExport() {
+    if (!lastRunRequest || exporting) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/noise-impact/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lastRunRequest),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail || `Download failed (${res.status})`);
+      }
+      const filename =
+        res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+        "noise-impact.zip";
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Failed to download zones.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return {
     showImpactsPanel, setShowImpactsPanel,
     showParamsPanel, setShowParamsPanel,
@@ -315,5 +359,6 @@ export function useNoiseImpact(apiBase: string) {
     visibleZoneKeys, toggleZoneVisibility,
     undefinedCombos,
     handleRun,
+    exporting, exportError, handleExport,
   };
 }

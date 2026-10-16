@@ -32,11 +32,13 @@ services:
     volumes:
       # locally converted noise GeoTIFFs (see pipeline/noise_to_geotiff.py)
       - ./pipeline/noise_data:/app/pipeline/noise_data:ro
-      # pile-driving noise-impact package + its precomputed transmission
-      # -loss model data, maintained outside this repo (see
-      # analysis/noise_impact.py's module docstring) -- mounted read-only
-      # at the same absolute host path since noise_impact.py hardcodes it.
-      - /home/shared/noise_impact_code:/home/shared/noise_impact_code:ro
+      # pile-driving noise-impact package: this checkout's own gitignored
+      # clone of Wilfried's repo (see .gitignore), so dev and deployed
+      # copies each use their own version. analysis/noise_impact.py looks
+      # for it at ../noise_impact_code, i.e. /app/noise_impact_code here.
+      - ./noise_impact_code:/app/noise_impact_code:ro
+      # its precomputed transmission-loss model data -- mounted at the same
+      # absolute host path since noise_impact.py's SITES hardcodes it.
       - /home/shared/pileDrivingSoundPropagation:/home/shared/pileDrivingSoundPropagation:ro
     depends_on:
       db:

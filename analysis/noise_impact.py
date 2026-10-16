@@ -2,19 +2,29 @@
 (wrapped since it returns numpy/xarray/DataFrame, not HTTP-servable).
 
 Site is fixed per SITES entry, no arbitrary-point mode. Requires the real
-package + CSnap data at /home/shared -- no fallback if that's not mounted.
+package (a gitignored clone of Wilfried's repo at <repo>/noise_impact_code,
+or wherever NOISE_IMPACT_CODE_DIR points) + CSnap data at /home/shared --
+no fallback if either is missing.
 """
 
+import io
 import os
 import sys
+import tempfile
+import textwrap
 import threading
+import zipfile
 from datetime import date, timedelta
 
+import geopandas as gpd  # type: ignore
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from shapely.geometry import Polygon, mapping  # type: ignore
 
-NOISE_IMPACT_CODE_DIR = os.environ.get("NOISE_IMPACT_CODE_DIR", "/home/shared/noise_impact_code")
+NOISE_IMPACT_CODE_DIR = os.environ.get(
+    "NOISE_IMPACT_CODE_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "noise_impact_code"),
+)
 sys.path.insert(0, NOISE_IMPACT_CODE_DIR)
 
 from ns_pile_driving_noise_mapping import (  # noqa: E402 # type: ignore
@@ -135,11 +145,20 @@ def list_parameter_info() -> dict:
     default file path), so this always matches whatever's at
     NOISE_IMPACT_CODE_DIR.
 
-    The Info sheet is a stack of labeled key/description blocks (a
-    "<Category>, Description" header row, then key -> description rows
-    until a blank row) -- only the HearingGroup and Impact blocks are
-    pulled out, since those are the only options this app lets you select.
+    Only the HearingGroup and Impact blocks are pulled out, since those are
+    the only options this app lets you select.
     """
+    blocks = _read_info_blocks("HearingGroup", "Impact")
+    return {
+        "hearing_groups": blocks["HearingGroup"],
+        "impact_types": blocks["Impact"],
+    }
+
+
+def _read_info_blocks(*markers: str) -> dict[str, dict[str, str]]:
+    """The named key -> description blocks from the workbook's "Info"
+    sheet, which is a stack of labeled blocks (a "<Category>, Description"
+    header row, then key -> description rows until a blank row)."""
     file_path = ExposureAssessmentParams._get_default_data_file_path()
     info_sheet = pd.read_excel(file_path, sheet_name="Info", header=None)
 
@@ -152,10 +171,7 @@ def list_parameter_info() -> dict:
             block[str(key)] = str(desc)
         return block
 
-    return {
-        "hearing_groups": _block("HearingGroup"),
-        "impact_types": _block("Impact"),
-    }
+    return {marker: _block(marker) for marker in markers}
 
 
 def compute_impact(
@@ -181,30 +197,15 @@ def compute_impact(
     e.g. (-40.0, -0.01). TL load is cached per site (see above); the rest
     re-runs fresh every call.
     """
-    if site not in SITES:
-        raise ValueError(f"Unknown site: {site}")
-
-    tl_model_params = TLModelParams(model_name=site, **SITES[site])
-    exposure_params = ExposureAssessmentParams(
-        hearing_groups=hearing_groups,
-        impact_types=impact_types,
-        metrics=metrics,
-        depth_range=depth_range,
+    result, tl_model_params, _ = _run_model(
+        site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
+        sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
     )
-    noise_level_params = NoiseLevelParams(
-        SPL_peak=spl_peak,
-        SEL_single_strike=sel_single_strike,
-        n_strikes_per_pile=n_strikes_per_pile,
-        n_piles=n_piles,
-        assessment_period=timedelta(hours=assessment_period_hours),
-    )
-
-    result = calculate_noise_impact(exposure_params, tl_model_params, noise_level_params)
 
     zones = []
     for zone, th_row in zip(result["zone_data"], result["df_th"].itertuples()):
         geometry = None
-        if float(zone["Distance"].max()) > 0:
+        if _zone_exceeded(zone):
             coords = list(zip(zone["Longitude"].tolist(), zone["Latitude"].tolist()))
             geometry = mapping(Polygon(coords))
         zones.append({
@@ -224,3 +225,190 @@ def compute_impact(
         "source": {"lon": tl_model_params.src_lon, "lat": tl_model_params.src_lat},
         "zones": zones,
     }
+
+
+def export_impact_shapefile(
+    site: str,
+    hearing_groups: list[str],
+    impact_types: list[str],
+    metrics: list[str],
+    depth_range: tuple[float, float],
+    spl_peak: float,
+    sel_single_strike: float,
+    n_strikes_per_pile: int,
+    n_piles: int,
+    assessment_period_hours: float,
+) -> tuple[str, bytes]:
+    """Same run as compute_impact, saved with the package's own
+    export_hazard_zones as a Shapefile, returned as (zip filename, zip
+    bytes) -- a Shapefile is several files (.shp/.shx/.dbf/.prj/.cpg), so
+    it's zipped into one download, along with a README describing the
+    scenario and the (shortened) column names.
+
+    Only exceeded zones are exported: the package writes not-exceeded ones
+    as zero-area polygons (every vertex at the source), which GIS tools
+    flag as invalid -- and the app shows no shape for them either. The
+    README lists them instead.
+    """
+    result, _, noise_level_params = _run_model(
+        site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
+        sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
+    )
+
+    keep = [i for i, zone in enumerate(result["zone_data"]) if _zone_exceeded(zone)]
+    if not keep:
+        raise ValueError("No threshold was exceeded, so there are no zones to export.")
+    zone_data = [result["zone_data"][i] for i in keep]
+    # reset_index: the package pairs zones with threshold rows by DataFrame
+    # index (pd.concat in create_geodataframe), not by position.
+    df_th = result["df_th"].iloc[keep].reset_index(drop=True)
+    df_th_not_exceeded = result["df_th"].drop(index=result["df_th"].index[keep])
+
+    name = f"noise-impact_{site.replace(' ', '-')}_{date.today().isoformat()}"
+    with tempfile.TemporaryDirectory() as tmp:
+        shp_path = os.path.join(tmp, f"{name}.shp")
+        _npnm_core.export_hazard_zones(zone_data, df_th, shp_path)
+        # Column names as actually written (the package shortens them to
+        # Shapefile's 10-character limit), so the README can't drift from
+        # the file if the package renames them.
+        columns = [c for c in gpd.read_file(shp_path, rows=0).columns if c != "geometry"]
+        readme = _shapefile_readme(
+            site, depth_range, noise_level_params, zone_data, df_th,
+            df_th_not_exceeded, columns,
+        )
+        with open(os.path.join(tmp, f"{name}_README.txt"), "w", encoding="utf-8") as f:
+            f.write(readme)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for fname in sorted(os.listdir(tmp)):
+                zf.write(os.path.join(tmp, fname), arcname=fname)
+    return f"{name}.zip", buf.getvalue()
+
+
+def _run_model(
+    site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
+    sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
+):
+    """Build the package's params from plain values and run
+    calculate_noise_impact -- shared by compute_impact and
+    export_impact_shapefile so both always run the identical model."""
+    if site not in SITES:
+        raise ValueError(f"Unknown site: {site}")
+
+    tl_model_params = TLModelParams(model_name=site, **SITES[site])
+    exposure_params = ExposureAssessmentParams(
+        hearing_groups=hearing_groups,
+        impact_types=impact_types,
+        metrics=metrics,
+        depth_range=depth_range,
+    )
+    noise_level_params = NoiseLevelParams(
+        SPL_peak=spl_peak,
+        SEL_single_strike=sel_single_strike,
+        n_strikes_per_pile=n_strikes_per_pile,
+        n_piles=n_piles,
+        assessment_period=timedelta(hours=assessment_period_hours),
+    )
+
+    result = calculate_noise_impact(exposure_params, tl_model_params, noise_level_params)
+    return result, tl_model_params, noise_level_params
+
+
+def _zone_exceeded(zone) -> bool:
+    """A zone whose threshold was never exceeded comes back with every
+    boundary distance at 0 (i.e. collapsed onto the source)."""
+    return float(zone["Distance"].max()) > 0
+
+
+# What each exported Shapefile column means, keyed by the shortened names
+# export_hazard_zones writes (its SHAPEFILE_FIELDNAMES). Any column not
+# listed here still shows up in the README, just without a description.
+_SHAPEFILE_COLUMN_DESCRIPTIONS = {
+    "Area_m2": "Zone area (m²)",
+    "RMin_m": "Shortest distance from the pile to the zone edge (m)",
+    "RMax_m": "Longest distance from the pile to the zone edge (m)",
+    "RMean_m": "Mean distance from the pile to the zone edge (m)",
+    "RSD_m": "Standard deviation of that distance across directions (m)",
+    "HGroup": "Hearing group (see HEARING GROUPS)",
+    "Th_dB": "Threshold the noise reaches or exceeds inside the zone (dB)",
+    "Impact": "Impact type (see IMPACT TYPES)",
+    "Metric": "Noise metric the threshold applies to (see METRICS)",
+    "ExpHrs": "Exposure period the threshold is defined for, in hours, from "
+              "the thresholds table (empty if the threshold has none)",
+    "IsWeighted": "Whether noise levels are weighted by the hearing group's "
+                  "hearing sensitivity (see WEIGHTING)",
+}
+
+
+def _shapefile_readme(
+    site, depth_range, noise_level_params, zone_data, df_th, df_th_not_exceeded, columns,
+) -> str:
+    """Plain-text README for the Shapefile zip: the scenario that produced
+    the zones (none of which is stored in the Shapefile itself), the zones
+    in the file and the thresholds that weren't exceeded, and what the
+    shortened column names and their values mean. Hearing group / impact /
+    metric / weighting wording comes from the thresholds workbook's Info
+    sheet, same as the app's tooltips."""
+    cfg = SITES[site]
+    info = _read_info_blocks("HearingGroup", "Impact", "Metric", "IsWeighted")
+    lat, lon = cfg["src_lat"], cfg["src_lon"]
+    shallow, deep = sorted(abs(d) for d in depth_range)
+
+    def label(th) -> str:
+        return (f"{th.HearingGroup} – {th.Impact} – {th.Metric} "
+                f"(threshold {float(th.Threshold_dB):g} dB)")
+
+    def section(title: str, rows: list[tuple[str, str]]) -> list[str]:
+        width = max(len(k) for k, _ in rows) + 2
+        out = [title]
+        for key, value in rows:
+            wrapped = textwrap.wrap(value, 78 - 2 - width) or [""]
+            out.append(f"  {key.ljust(width)}{wrapped[0]}")
+            out.extend(f"  {' ' * width}{line}" for line in wrapped[1:])
+        return out + [""]
+
+    def values_used(column: str, block: str) -> list[tuple[str, str]]:
+        keys = dict.fromkeys(
+            str(int(v)) if column == "IsWeighted" else str(v) for v in df_th[column]
+        )
+        return [(k, info[block].get(k, "")) for k in keys]
+
+    lines = [
+        f"NOISE IMPACT ZONES – {site.upper()}",
+        "",
+        *textwrap.wrap(
+            "Each shape in this Shapefile is the area around the pile where "
+            "pile-driving noise reaches or exceeds the threshold for one "
+            "hearing group, impact type and noise metric.", 78),
+        "",
+    ]
+    lines += section("SCENARIO", [
+        ("Pile location", f"{abs(lat):.4f}° {'N' if lat >= 0 else 'S'}, "
+                          f"{abs(lon):.4f}° {'E' if lon >= 0 else 'W'}"),
+        ("Source depth", f"{cfg['src_depth']:g} m"),
+        ("Sound frequency", f"{cfg['src_freq']:g} Hz"),
+        ("Ocean conditions date", cfg["noise_date"].isoformat()),
+        ("Water depths assessed", f"{shallow:g} to {deep:g} m below the surface"),
+        ("SPL peak", f"{noise_level_params.SPL_peak:g} dB re 1 µPa"),
+        ("SEL, single strike", f"{noise_level_params.SEL_single_strike:g} dB re 1 µPa²·s"),
+        ("Strikes per pile", f"{noise_level_params.n_strikes_per_pile:g}"),
+        ("Number of piles", f"{noise_level_params.n_piles:g}"),
+        ("SEL, all strikes", f"{noise_level_params.SEL_cum:.1f} dB re 1 µPa²·s"),
+    ])
+    lines.append(f"ZONES IN THIS FILE ({len(zone_data)})")
+    for zone, th in zip(zone_data, df_th.itertuples()):
+        dist_km = zone["Distance"] / 1000
+        lines.append(f"  {label(th)}")
+        lines.append(f"      {float(zone['Area']) / 1e6:.2f} km², zone edge "
+                     f"{dist_km.min():.2f}–{dist_km.max():.2f} km from the pile")
+    lines.append("")
+    if len(df_th_not_exceeded):
+        lines.append("THRESHOLDS NOT EXCEEDED (no zone, so not in this file)")
+        lines += [f"  {label(th)}" for th in df_th_not_exceeded.itertuples()]
+        lines.append("")
+    lines += section("COLUMNS", [(c, _SHAPEFILE_COLUMN_DESCRIPTIONS.get(c, "")) for c in columns])
+    lines += section("HEARING GROUPS", values_used("HearingGroup", "HearingGroup"))
+    lines += section("IMPACT TYPES", values_used("Impact", "Impact"))
+    lines += section("METRICS", values_used("Metric", "Metric"))
+    lines += section("WEIGHTING", values_used("IsWeighted", "IsWeighted"))
+    return "\n".join(lines).rstrip() + "\n"

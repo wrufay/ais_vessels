@@ -50,6 +50,9 @@ function ImpactsPanel({
   setStarOpacity,
   starSizeOpen,
   setStarSizeOpen,
+  onExport,
+  exporting,
+  exportError,
 }: {
   paramsOpen: boolean;
   onToggleParams: () => void;
@@ -67,6 +70,9 @@ function ImpactsPanel({
   setStarOpacity: (v: number) => void;
   starSizeOpen: boolean;
   setStarSizeOpen: (v: boolean) => void;
+  onExport: () => void;
+  exporting: boolean;
+  exportError: string | null;
 }) {
   // Not-exceeded zones default to expanded -- the collapsed-by-default
   // version made a "the run just came back clean" result look like there
@@ -219,6 +225,22 @@ function ImpactsPanel({
                       </ul>
                       <div className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pt-1">
                         Ø is mean diameter, ± is variation by direction.
+                      </div>
+                      {/* All exceeded zones from the last Run, whether or
+                          not they're toggled visible above. */}
+                      <div className="flex flex-col gap-1.5 pt-2">
+                        <button
+                          onClick={onExport}
+                          disabled={exporting}
+                          className="self-start px-2.5 py-1 rounded-md bg-[#3d5a80] text-white text-[11px] hover:bg-[#2e4460] active:bg-slate-500 shadow-sm active:scale-95 transition disabled:opacity-60 disabled:cursor-wait"
+                        >
+                          {exporting ? "Preparing…" : "Download zones (Shapefile .zip)"}
+                        </button>
+                        {exportError && (
+                          <div className="px-3 py-2 rounded-md bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs text-red-600 dark:text-red-400">
+                            {exportError}
+                          </div>
+                        )}
                       </div>
                     </>
                   )}

@@ -6,6 +6,7 @@ __pycache__/
 frontend/dist/
 pipeline/
 demo/
+noise_impact_code/
 node_modules/
 .env
 README.md

@@ -38,7 +38,7 @@ from shapely.geometry import Point, shape # type: ignore
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
 from noise import render_noise_overlay, noise_range, NOISE_DATA_DIR, combo_dirname, parse_combo_dirname  # noqa: E402 # type: ignore
-from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, list_parameter_info as list_noise_impact_info, compute_impact as compute_noise_impact  # noqa: E402 # type: ignore
+from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, list_parameter_info as list_noise_impact_info, compute_impact as compute_noise_impact, export_impact_shapefile as export_noise_impact_shapefile  # noqa: E402 # type: ignore
 
 # reads DATABASE_URL from environment (REQUIRED)
 DATABASE_URL: str = os.environ["DATABASE_URL"]
@@ -95,7 +95,10 @@ CORS_ORIGINS = os.environ.get(
     "http://localhost,http://localhost:3000,http://localhost:5173",
 ).split(",")
 app.add_middleware(
-    CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
+    # lets a cross-origin frontend (VITE_API_URL dev setup) read file
+    # download names, e.g. /api/noise-impact/export's zip
+    expose_headers=["Content-Disposition"],
 )
 
 
@@ -439,6 +442,32 @@ def post_noise_impact_compute(req: NoiseImpactRequest):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# returns the same run's exceeded impact zones as a zipped Shapefile download.
+# used by useNoiseImpact.ts's handleExport, with the last Run's exact request body.
+@app.post("/api/noise-impact/export")
+def post_noise_impact_export(req: NoiseImpactRequest):
+    try:
+        filename, data = export_noise_impact_shapefile(
+            site=req.site,
+            hearing_groups=req.hearing_groups,
+            impact_types=req.impact_types,
+            metrics=req.metrics,
+            depth_range=req.depth_range,
+            spl_peak=req.spl_peak,
+            sel_single_strike=req.sel_single_strike,
+            n_strikes_per_pile=req.n_strikes_per_pile,
+            n_piles=req.n_piles,
+            assessment_period_hours=req.assessment_period_hours,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # --- FEEDBACK ---

@@ -244,6 +244,7 @@ function ShipMap() {
     undefinedCombos: noiseImpactUndefinedCombos,
     handleRun: handleRunNoiseImpact,
     resetParams: resetNoiseImpactParams,
+    exporting: noiseImpactExporting, exportError: noiseImpactExportError, handleExport: handleExportNoiseImpact,
   } = useNoiseImpact(API);
   const [lastOpenedPanel, setLastOpenedPanel] = useState<
     "vessel" | "region" | "layer" | "mooring" | "impacts" | "feedback"
@@ -1498,6 +1499,9 @@ function ShipMap() {
           setStarOpacity={setStarOpacity}
           starSizeOpen={starSizeOpen}
           setStarSizeOpen={setStarSizeOpen}
+          onExport={handleExportNoiseImpact}
+          exporting={noiseImpactExporting}
+          exportError={noiseImpactExportError}
         />
       </SidePanel>
 
