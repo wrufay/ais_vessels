@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import ClosePanelBtn from "../ClosePanelBtn";
 import PanelHeader from "../PanelHeader";
 import CollapsibleHeader from "../CollapsibleHeader";
 import { pairKey, pairMetrics, runnablePairs } from "../../useNoiseImpact";
-import type { NoiseImpactSite, NoiseImpactOptions, NoiseImpactInfo } from "../../useNoiseImpact";
+import type {
+  NoiseImpactSite,
+  NoiseImpactOptions,
+  NoiseImpactInfo,
+  NoiseImpactCustomThreshold,
+} from "../../useNoiseImpact";
 
 const runIcon = (
   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
@@ -367,6 +372,171 @@ function ThresholdGrid({
   );
 }
 
+// Same limits as analysis/noise_impact.py's CUSTOM_DB_RANGE /
+// CUSTOM_NAME_MAX_LEN -- checked here so a mistake shows up while typing;
+// the backend checks again.
+const CUSTOM_DB_MIN = 100;
+const CUSTOM_DB_MAX = 300;
+const CUSTOM_NAME_MAX_LEN = 60;
+const METRIC_LABELS: Record<string, string> = {
+  SEL_cum: "Cumulative",
+  SPL_peak: "Peak",
+};
+
+// User-entered thresholds: a name, a metric and a dB value each, compared
+// with unweighted noise (a hearing adjustment is just a fixed number of dB
+// at the site's single frequency, so it can be folded into the value).
+// Run alongside the grid's picks -- see analysis/noise_impact.py's
+// _run_custom. A name can have one threshold per metric, like a hearing
+// group in the grid.
+function CustomThresholds({
+  metricOptions,
+  customThresholds,
+  setCustomThresholds,
+}: {
+  metricOptions: string[];
+  customThresholds: NoiseImpactCustomThreshold[];
+  setCustomThresholds: (v: NoiseImpactCustomThreshold[]) => void;
+}) {
+  const [name, setName] = useState("");
+  // "" = not chosen yet: Cumulative, once the metric list has loaded.
+  const [metric, setMetric] = useState("");
+  const [db, setDb] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const chosenMetric =
+    metric || (metricOptions.includes("SEL_cum") ? "SEL_cum" : metricOptions[0] ?? "");
+  const label = (m: string) => METRIC_LABELS[m] ?? m;
+
+  function add(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    const value = Number(db);
+    if (!trimmed) return setError("Enter a name.");
+    if (db.trim() === "" || !(value >= CUSTOM_DB_MIN && value <= CUSTOM_DB_MAX))
+      return setError(`Enter a threshold between ${CUSTOM_DB_MIN} and ${CUSTOM_DB_MAX} dB.`);
+    if (customThresholds.some((t) => t.name === trimmed && t.metric === chosenMetric))
+      return setError(`${trimmed} already has a ${label(chosenMetric).toLowerCase()} threshold.`);
+    setCustomThresholds([
+      ...customThresholds,
+      { name: trimmed, metric: chosenMetric, threshold_db: value },
+    ]);
+    setName("");
+    setDb("");
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 py-1.5">
+        <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">
+          Custom thresholds
+        </span>
+        {customThresholds.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setCustomThresholds([])}
+            className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pb-1.5">
+        Compared with noise without any hearing adjustment. Include any
+        adjustment in the dB value. Not affected by the Metrics setting.
+      </p>
+      {customThresholds.length > 0 && (
+        <ul className="flex flex-col gap-1 pb-2">
+          {customThresholds.map((t, i) => (
+            <li
+              key={`${t.name}|${t.metric}`}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-50 dark:bg-slate-800 text-xs"
+            >
+              <span className="flex-1 min-w-0">
+                <span className="block break-words text-slate-700 dark:text-slate-200">
+                  {t.name}
+                </span>
+                <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                  {label(t.metric)} ({t.metric}) · {t.threshold_db} dB
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setCustomThresholds(customThresholds.filter((_, j) => j !== i))}
+                aria-label={`Remove ${t.name} ${label(t.metric).toLowerCase()} threshold`}
+                title="Remove"
+                className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+              >
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={add} className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 dark:text-slate-400">Name</span>
+          <input
+            type="text"
+            value={name}
+            maxLength={CUSTOM_NAME_MAX_LEN}
+            placeholder="Right whale"
+            onChange={(e) => {
+              setName(e.target.value);
+              setError(null);
+            }}
+            className={inputClass}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 dark:text-slate-400">Metric</span>
+          <select
+            value={chosenMetric}
+            onChange={(e) => {
+              setMetric(e.target.value);
+              setError(null);
+            }}
+            className={`${inputClass} cursor-pointer`}
+          >
+            {metricOptions.map((m) => (
+              <option key={m} value={m}>
+                {label(m)} ({m})
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex items-end gap-2">
+          <label className="flex flex-col gap-1 flex-1 min-w-0">
+            <span className="text-xs text-slate-500 dark:text-slate-400">dB</span>
+            <input
+              type="number"
+              value={db}
+              step={0.1}
+              placeholder="162"
+              onChange={(e) => {
+                setDb(e.target.value);
+                setError(null);
+              }}
+              className={`${inputClass} w-full`}
+            />
+          </label>
+          <button
+            type="submit"
+            className="shrink-0 px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-sm hover:bg-[#293241] transition active:scale-95"
+          >
+            Add
+          </button>
+        </div>
+        {error && (
+          <span className="text-[11px] text-red-600 dark:text-red-400">{error}</span>
+        )}
+      </form>
+    </div>
+  );
+}
+
 function NumberField({
   label,
   value,
@@ -450,6 +620,8 @@ function NoiseImpactParamsPanel({
   setSite,
   pairs,
   setPairs,
+  customThresholds,
+  setCustomThresholds,
   metrics,
   onToggleMetric,
   depthMin,
@@ -477,6 +649,8 @@ function NoiseImpactParamsPanel({
   setSite: (v: string) => void;
   pairs: string[];
   setPairs: (v: string[]) => void;
+  customThresholds: NoiseImpactCustomThreshold[];
+  setCustomThresholds: (v: NoiseImpactCustomThreshold[]) => void;
   metrics: string[];
   onToggleMetric: (v: string) => void;
   depthMin: number;
@@ -513,10 +687,13 @@ function NoiseImpactParamsPanel({
   // so each field/tab can show its own inline dot that updates live, in
   // addition to (not instead of) the summary line at the bottom.
   const siteInvalid = !site;
-  const metricsInvalid = metrics.length === 0;
+  // A custom threshold is enough on its own -- it has its own metric.
+  const hasCustom = customThresholds.length > 0;
+  const metricsInvalid = metrics.length === 0 && !hasCustom;
   // Picked cells greyed out by the metric choice don't count.
   const pairsInvalid =
     !metricsInvalid &&
+    !hasCustom &&
     runnablePairs(options.thresholds, pairs, metrics).length === 0;
   const splPeakInvalid = !(splPeak > 0);
   const selSingleStrikeInvalid = !(selSingleStrike > 0);
@@ -659,6 +836,13 @@ function NoiseImpactParamsPanel({
               pairs={pairs}
               setPairs={setPairs}
             />
+            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <CustomThresholds
+                metricOptions={options.metrics}
+                customThresholds={customThresholds}
+                setCustomThresholds={setCustomThresholds}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-2.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <NumberField
                 label="Depth min (m)"

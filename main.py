@@ -408,6 +408,14 @@ def get_noise_impact_info():
     return list_noise_impact_info()
 
 
+class NoiseImpactCustomThreshold(BaseModel):
+    # Checked (name, metric, dB range, duplicates) in analysis/noise_impact.py's
+    # _validate_custom, which holds the limits.
+    name: str
+    metric: str
+    threshold_db: float
+
+
 class NoiseImpactRequest(BaseModel):
     site: str
     hearing_groups: list[str]
@@ -423,8 +431,12 @@ class NoiseImpactRequest(BaseModel):
     assessment_period_hours: float = 24
     # (hearing group, impact) pairs picked in the threshold grid -- zones
     # outside these are dropped (see analysis/noise_impact.py's _run_model).
-    # None runs every hearing_groups x impact_types combination.
+    # None runs every hearing_groups x impact_types combination; [] runs
+    # none of them (custom thresholds only).
     pairs: list[tuple[str, str]] | None = None
+    # User-entered thresholds, run alongside the workbook ones (see
+    # analysis/noise_impact.py's _run_custom).
+    custom_thresholds: list[NoiseImpactCustomThreshold] = []
 
 
 # returns impact zones after running the pile-driving noise-impact model for one site.
@@ -444,9 +456,12 @@ def post_noise_impact_compute(req: NoiseImpactRequest):
             n_piles=req.n_piles,
             assessment_period_hours=req.assessment_period_hours,
             pairs=req.pairs,
+            custom_thresholds=[c.model_dump() for c in req.custom_thresholds],
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class NoiseImpactExportRequest(NoiseImpactRequest):
@@ -471,10 +486,13 @@ def post_noise_impact_export(req: NoiseImpactExportRequest):
             n_piles=req.n_piles,
             assessment_period_hours=req.assessment_period_hours,
             pairs=req.pairs,
+            custom_thresholds=[c.model_dump() for c in req.custom_thresholds],
             fmt=req.format,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     return Response(
         content=data,
         media_type="application/zip",

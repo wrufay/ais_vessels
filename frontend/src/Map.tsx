@@ -229,6 +229,7 @@ function ShipMap() {
     sites: noiseImpactSites, options: noiseImpactOptions, info: noiseImpactInfo,
     site: noiseImpactSite, setSite: setNoiseImpactSite,
     pairs: noiseImpactPairs, setPairs: setNoiseImpactPairs,
+    customThresholds: noiseImpactCustomThresholds, setCustomThresholds: setNoiseImpactCustomThresholds,
     metrics: noiseImpactMetrics, toggleMetric: toggleNoiseImpactMetric,
     depthMin: noiseImpactDepthMin, setDepthMin: setNoiseImpactDepthMin,
     depthMax: noiseImpactDepthMax, setDepthMax: setNoiseImpactDepthMax,
@@ -501,6 +502,7 @@ function ShipMap() {
         hearingGroup: z.hearing_group,
         impact: z.impact,
         metric: z.metric,
+        customIndex: z.custom_index,
         thresholdDb: z.threshold_db,
         areaKm2: z.area_km2,
       });
@@ -813,7 +815,11 @@ function ShipMap() {
                 });
               }
               const impact = feature.get("impact") as string;
-              const color = zoneColor(feature.get("hearingGroup") as string, feature.get("metric") as string);
+              const color = zoneColor(
+                feature.get("hearingGroup") as string,
+                feature.get("metric") as string,
+                feature.get("customIndex") as number | null
+              );
               return new Style({
                 stroke: new Stroke({ color, width: 2, lineDash: IMPACT_DASH[impact] }),
                 // 0x38 (~22%), not the old 0x22 (~13%) -- the lighter
@@ -1558,6 +1564,8 @@ function ShipMap() {
           setSite={setNoiseImpactSite}
           pairs={noiseImpactPairs}
           setPairs={setNoiseImpactPairs}
+          customThresholds={noiseImpactCustomThresholds}
+          setCustomThresholds={setNoiseImpactCustomThresholds}
           metrics={noiseImpactMetrics}
           onToggleMetric={toggleNoiseImpactMetric}
           depthMin={noiseImpactDepthMin}

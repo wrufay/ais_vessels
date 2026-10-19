@@ -8,16 +8,20 @@ no fallback if either is missing.
 """
 
 import io
+import math
 import os
+import shutil
 import sys
 import tempfile
 import textwrap
 import threading
 import zipfile
 from datetime import date, timedelta
+from pathlib import Path
 
 import geopandas as gpd  # type: ignore
 import numpy as np  # type: ignore
+import openpyxl  # type: ignore
 import pandas as pd  # type: ignore
 from shapely.geometry import Polygon, mapping  # type: ignore
 
@@ -108,6 +112,28 @@ SITES = {
         src_lon=-59.82201388888889, src_lat=46.522622222222225,
         noise_date=date(2020, 7, 15),
     ),
+}
+
+# Custom (user-entered) thresholds -- see _run_custom. Zones from them come
+# back with impact CUSTOM_IMPACT and the user's name as hearing group. The
+# frontend's NoiseImpactParamsPanel mirrors the limits for its inline
+# checks; these are the ones enforced.
+CUSTOM_IMPACT = "Custom"
+CUSTOM_DB_RANGE = (100.0, 300.0)
+CUSTOM_NAME_MAX_LEN = 60
+
+# What a custom row gets in the temporary workbook besides its metric and
+# dB. The package only accepts its own enum names for hearing group and
+# impact, so these are stand-ins: with IsWeighted = 0 the hearing group
+# isn't used (it only picks a weighting curve) and impact is only a label,
+# so the zone depends on nothing but the row's metric and dB. Reference
+# and SourceType just have to pass build_threshold_filter_mask_str.
+_CUSTOM_STANDIN_ROW = {
+    "HearingGroup": HearingGroup.LF_CETACEANS.value,
+    "Impact": Impact.TTS.value,
+    "Reference": Reference.NMFS_2024.value,
+    "SourceType": SourceType.IMPULSIVE.value,
+    "IsWeighted": 0,
 }
 
 
@@ -212,27 +238,39 @@ def compute_impact(
     n_piles: int,
     assessment_period_hours: float,
     pairs: list[tuple[str, str]] | None = None,
+    custom_thresholds: list[dict] | None = None,
 ) -> dict:
     """Run the impact model for one site and return JSON-serializable zones:
 
         {"source": {"lon": ..., "lat": ...},
          "zones": [{"hearing_group", "impact", "metric", "threshold_db",
-                     "area_km2", "geometry"} , ...]}
+                     "area_km2", "geometry", "custom_index"} , ...]}
 
     `geometry` is a GeoJSON Polygon, or None if the threshold was never
     exceeded anywhere. depth_range is negative metres below the surface,
     e.g. (-40.0, -0.01). TL load is cached per site (see above); the rest
     re-runs fresh every call. `pairs`, if given, limits the zones to those
-    (hearing group, impact) pairs -- see _run_model.
+    (hearing group, impact) pairs -- see _run_model. `custom_thresholds`
+    ({"name", "metric", "threshold_db"} each) adds zones for the user's own
+    thresholds, after the workbook ones; their `custom_index` numbers the
+    distinct custom names in order (for the frontend's colours) and is None
+    for workbook zones.
     """
     result, tl_model_params, _ = _run_model(
         site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
         sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
-        pairs,
+        pairs, custom_thresholds,
     )
 
+    custom_names: list[str] = []
     zones = []
     for zone, th_row in zip(result["zone_data"], result["df_th"].itertuples()):
+        custom_index = None
+        if str(th_row.Impact) == CUSTOM_IMPACT:
+            name = str(th_row.HearingGroup)
+            if name not in custom_names:
+                custom_names.append(name)
+            custom_index = custom_names.index(name)
         geometry = None
         if _zone_exceeded(zone):
             coords = list(zip(zone["Longitude"].tolist(), zone["Latitude"].tolist()))
@@ -248,6 +286,7 @@ def compute_impact(
             "radius_km": float(zone["Distance"].mean()) / 1000,
             "radius_std_km": float(zone["Distance"].std()) / 1000,
             "geometry": geometry,
+            "custom_index": custom_index,
         })
 
     return {
@@ -277,6 +316,7 @@ def export_impact(
     assessment_period_hours: float,
     fmt: str,
     pairs: list[tuple[str, str]] | None = None,
+    custom_thresholds: list[dict] | None = None,
 ) -> tuple[str, bytes]:
     """Same run as compute_impact, saved with the package's own
     export_hazard_zones in one of EXPORT_FORMATS, returned as (zip
@@ -297,7 +337,7 @@ def export_impact(
     result, _, noise_level_params = _run_model(
         site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
         sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
-        pairs,
+        pairs, custom_thresholds,
     )
 
     keep = [i for i, zone in enumerate(result["zone_data"]) if _zone_exceeded(zone)]
@@ -334,7 +374,7 @@ def export_impact(
 def _run_model(
     site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
     sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
-    pairs=None,
+    pairs=None, custom_thresholds=None,
 ):
     """Build the package's params from plain values and run
     calculate_noise_impact -- shared by compute_impact and
@@ -343,17 +383,17 @@ def _run_model(
     The package runs every hearing group x impact type combination. With
     `pairs` (the frontend's threshold grid picks), zones for combinations
     outside it are dropped afterwards -- e.g. picking LF Cetaceans TTS and
-    Fish Mortality must not also return Fish TTS."""
+    Fish Mortality must not also return Fish TTS. An empty `pairs` (nothing
+    picked in the grid) skips the workbook run, for custom thresholds only.
+
+    Custom thresholds run separately (_run_custom) and their zones and
+    threshold rows are appended after the workbook ones -- returned as one
+    {"zone_data", "df_th"} result either way."""
     if site not in SITES:
         raise ValueError(f"Unknown site: {site}")
+    custom = _validate_custom(custom_thresholds or [])
 
     tl_model_params = TLModelParams(model_name=site, **SITES[site])
-    exposure_params = ExposureAssessmentParams(
-        hearing_groups=hearing_groups,
-        impact_types=impact_types,
-        metrics=metrics,
-        depth_range=depth_range,
-    )
     noise_level_params = NoiseLevelParams(
         SPL_peak=spl_peak,
         SEL_single_strike=sel_single_strike,
@@ -362,19 +402,121 @@ def _run_model(
         assessment_period=timedelta(hours=assessment_period_hours),
     )
 
-    result = calculate_noise_impact(exposure_params, tl_model_params, noise_level_params)
-    if pairs is not None:
-        wanted = {tuple(p) for p in pairs}
-        keep = [
-            i for i, th in enumerate(result["df_th"].itertuples())
-            if (str(th.HearingGroup), str(th.Impact)) in wanted
-        ]
-        result = {
-            **result,
-            "zone_data": [result["zone_data"][i] for i in keep],
-            "df_th": result["df_th"].iloc[keep].reset_index(drop=True),
-        }
+    parts = []
+    if hearing_groups and impact_types and metrics and pairs != []:
+        exposure_params = ExposureAssessmentParams(
+            hearing_groups=hearing_groups,
+            impact_types=impact_types,
+            metrics=metrics,
+            depth_range=depth_range,
+        )
+        result = calculate_noise_impact(exposure_params, tl_model_params, noise_level_params)
+        if pairs is not None:
+            wanted = {tuple(p) for p in pairs}
+            keep = [
+                i for i, th in enumerate(result["df_th"].itertuples())
+                if (str(th.HearingGroup), str(th.Impact)) in wanted
+            ]
+            result = {
+                **result,
+                "zone_data": [result["zone_data"][i] for i in keep],
+                "df_th": result["df_th"].iloc[keep].reset_index(drop=True),
+            }
+        parts.append(result)
+    if custom:
+        parts.append(_run_custom(custom, tl_model_params, noise_level_params, depth_range))
+    if not parts:
+        raise ValueError("Pick at least one threshold or add a custom threshold.")
+
+    result = {
+        "zone_data": [zone for part in parts for zone in part["zone_data"]],
+        "df_th": pd.concat([part["df_th"] for part in parts], ignore_index=True),
+    }
     return result, tl_model_params, noise_level_params
+
+
+def _validate_custom(custom_thresholds: list[dict]) -> list[dict]:
+    """Checked, cleaned copies of the custom thresholds (name stripped, dB
+    as float). Names are unique per metric, like a hearing group in the
+    workbook, so (name, Custom, metric) identifies one zone."""
+    metrics = [m.value for m in Metric]
+    lo, hi = CUSTOM_DB_RANGE
+    seen = set()
+    cleaned = []
+    for ct in custom_thresholds:
+        name = str(ct["name"]).strip()
+        metric = ct["metric"]
+        db = float(ct["threshold_db"])
+        if not name:
+            raise ValueError("A custom threshold needs a name.")
+        if len(name) > CUSTOM_NAME_MAX_LEN:
+            raise ValueError(
+                f"Custom threshold name is longer than {CUSTOM_NAME_MAX_LEN} characters: {name}")
+        if metric not in metrics:
+            raise ValueError(f"Unknown metric for custom threshold {name}: {metric}")
+        if not lo <= db <= hi:
+            raise ValueError(
+                f"Custom threshold {name}: enter a value between {lo:g} and {hi:g} dB.")
+        if (name, metric) in seen:
+            raise ValueError(f"{name} has more than one {metric} custom threshold.")
+        seen.add((name, metric))
+        cleaned.append({"name": name, "metric": metric, "threshold_db": db})
+    return cleaned
+
+
+def _run_custom(custom, tl_model_params, noise_level_params, depth_range) -> dict:
+    """Run the model for custom thresholds only, as {"zone_data", "df_th"}
+    with the user's names in df_th's HearingGroup column and CUSTOM_IMPACT
+    as Impact.
+
+    The package reads thresholds only from a workbook (ExposureAssessmentParams
+    file_path), so this writes a temporary copy of the bundled one whose
+    Thresholds sheet holds just the custom rows (_CUSTOM_STANDIN_ROW plus
+    each one's metric and dB; IsWeighted 0, so compared with unweighted
+    noise) and points file_path at it. The copy keeps every other sheet --
+    the package reads the weighting parameters from it too. A run of its
+    own, not rows added to the workbook run, so the stand-in hearing group
+    and the custom metrics can't pull extra workbook zones in.
+
+    The package keeps the sheet's row order, so zone i is custom threshold
+    i; checked before renaming, so a change in the package fails loudly
+    instead of putting a name on the wrong zone."""
+    with tempfile.TemporaryDirectory() as tmp:
+        file_path = Path(tmp) / "custom_thresholds.xlsx"
+        shutil.copy(ExposureAssessmentParams._get_default_data_file_path(), file_path)
+        workbook = openpyxl.load_workbook(file_path)
+        sheet = workbook["Thresholds"]
+        header = [cell.value for cell in sheet[1]]
+        sheet.delete_rows(2, sheet.max_row)
+        for ct in custom:
+            row = {**_CUSTOM_STANDIN_ROW, "Metric": ct["metric"], "Threshold_dB": ct["threshold_db"]}
+            sheet.append([row.get(column) for column in header])
+        workbook.save(file_path)
+
+        exposure_params = ExposureAssessmentParams(
+            hearing_groups=[_CUSTOM_STANDIN_ROW["HearingGroup"]],
+            impact_types=[_CUSTOM_STANDIN_ROW["Impact"]],
+            metrics=list(dict.fromkeys(ct["metric"] for ct in custom)),
+            depth_range=depth_range,
+            file_path=file_path,
+        )
+        result = calculate_noise_impact(exposure_params, tl_model_params, noise_level_params)
+
+    df_th = result["df_th"]
+    returned = [(str(th.Metric), float(th.Threshold_dB)) for th in df_th.itertuples()]
+    matches = len(returned) == len(custom) == len(result["zone_data"]) and all(
+        metric == ct["metric"] and math.isclose(db, ct["threshold_db"])
+        for (metric, db), ct in zip(returned, custom)
+    )
+    if not matches:
+        raise RuntimeError(
+            "Custom thresholds came back from the noise model in an unexpected "
+            "form, so their zones can't be labelled safely. Nothing was shown.")
+
+    df_th = df_th.copy()
+    df_th["HearingGroup"] = [ct["name"] for ct in custom]
+    df_th["Impact"] = CUSTOM_IMPACT
+    return {"zone_data": result["zone_data"], "df_th": df_th}
 
 
 def _zone_exceeded(zone) -> bool:
@@ -424,6 +566,15 @@ def _export_readme(
     as the app's tooltips."""
     cfg = SITES[site]
     info = _read_info_blocks("HearingGroup", "Impact", "Metric", "IsWeighted")
+    # Custom thresholds aren't in the workbook's Info sheet.
+    info["Impact"][CUSTOM_IMPACT] = (
+        "User-defined threshold entered in the app, not from the thresholds "
+        "workbook. Compared with noise without any hearing adjustment "
+        "(weighting).")
+    for th in df_th.itertuples():
+        if str(th.Impact) == CUSTOM_IMPACT:
+            info["HearingGroup"].setdefault(
+                str(th.HearingGroup), "Name given to a user-defined threshold (impact type Custom)")
     lat, lon = cfg["src_lat"], cfg["src_lon"]
     shallow, deep = sorted(abs(d) for d in depth_range)
 

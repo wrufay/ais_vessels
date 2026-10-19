@@ -44,6 +44,18 @@ export interface NoiseImpactZone {
   radius_km: number;
   radius_std_km: number;
   geometry: object | null; // GeoJSON Polygon, or null if the threshold was never exceeded
+  // Custom thresholds only (impact "Custom", hearing_group = the user's
+  // name): which distinct custom name this is, in order -- picks its colour
+  // (see zoneColor). null for workbook thresholds.
+  custom_index: number | null;
+}
+
+// A user-entered threshold (Species tab), sent with the run and compared
+// with unweighted noise -- see analysis/noise_impact.py's _run_custom.
+export interface NoiseImpactCustomThreshold {
+  name: string;
+  metric: string;
+  threshold_db: number;
 }
 
 export interface NoiseImpactResult {
@@ -139,6 +151,7 @@ export function useNoiseImpact(apiBase: string) {
   // Picked threshold-grid cells, as pairKey strings.
   const [pairs, setPairs] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<string[]>([]);
+  const [customThresholds, setCustomThresholds] = useState<NoiseImpactCustomThreshold[]>([]);
   // Negative metres below the surface (0 at the surface) -- matches the
   // underlying model's own depth coordinate convention, see main.py's
   // NoiseImpactRequest.depth_range.
@@ -241,6 +254,7 @@ export function useNoiseImpact(apiBase: string) {
     setSite(Object.keys(sites)[0] ?? "");
     setPairs([]);
     setMetrics(options.metrics);
+    setCustomThresholds([]);
     setDepthMin(DEFAULT_DEPTH_MIN);
     setDepthMax(DEFAULT_DEPTH_MAX);
     setSplPeak(DEFAULT_SPL_PEAK);
@@ -254,10 +268,11 @@ export function useNoiseImpact(apiBase: string) {
     const runPairs = runnablePairs(options.thresholds, pairs, metrics).map(
       (p) => p.split("|") as [string, string]
     );
+    // Custom thresholds carry their own metric, so they run even with no
+    // grid pick or no metric ticked.
     const ready =
       site &&
-      runPairs.length > 0 &&
-      metrics.length > 0 &&
+      (runPairs.length > 0 || customThresholds.length > 0) &&
       splPeak > 0 &&
       selSingleStrike > 0 &&
       nStrikesPerPile > 0 &&
@@ -270,6 +285,7 @@ export function useNoiseImpact(apiBase: string) {
     // The package takes hearing-group and impact-type lists and runs every
     // combination of them; `pairs` tells the backend which of those
     // combinations were actually picked (see main.py's NoiseImpactRequest).
+    // An empty pairs list (only custom thresholds) skips the workbook run.
     const request = {
       site,
       hearing_groups: [...new Set(runPairs.map(([hg]) => hg))],
@@ -282,6 +298,7 @@ export function useNoiseImpact(apiBase: string) {
       n_strikes_per_pile: nStrikesPerPile,
       n_piles: nPiles,
       assessment_period_hours: assessmentPeriodHours,
+      custom_thresholds: customThresholds,
     };
     try {
       const res = await fetch(`${apiBase}/api/noise-impact/compute`, {
@@ -396,6 +413,7 @@ export function useNoiseImpact(apiBase: string) {
     site, setSite,
     pairs, setPairs,
     metrics, toggleMetric,
+    customThresholds, setCustomThresholds,
     depthMin, setDepthMin,
     depthMax, setDepthMax,
     splPeak, setSplPeak,

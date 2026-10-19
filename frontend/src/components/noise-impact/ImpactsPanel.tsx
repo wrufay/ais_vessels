@@ -202,7 +202,7 @@ function ImpactsPanel({
                                 <span
                                   className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 self-start"
                                   style={{
-                                    backgroundColor: zoneColor(z.hearing_group, z.metric),
+                                    backgroundColor: zoneColor(z.hearing_group, z.metric, z.custom_index),
                                   }}
                                 />
                                 <span className="flex-1 min-w-0">

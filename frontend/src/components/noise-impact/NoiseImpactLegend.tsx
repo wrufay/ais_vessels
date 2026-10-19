@@ -67,7 +67,7 @@ function NoiseImpactLegend({
         <div className="flex flex-col gap-1.5 pt-1.5 border-t border-[#3d5a80]/20 dark:border-[#3d5a80]/30">
           {visibleZones.map((z) => (
             <div key={zoneKey(z)} className="flex items-start gap-2">
-              <LineSwatch color={zoneColor(z.hearing_group, z.metric)} dash={IMPACT_DASH[z.impact]} />
+              <LineSwatch color={zoneColor(z.hearing_group, z.metric, z.custom_index)} dash={IMPACT_DASH[z.impact]} />
               <span>
                 <span className="block text-slate-700 dark:text-slate-200">{z.hearing_group} — {z.impact}</span>
                 <span className="block text-slate-500 dark:text-slate-400">

@@ -53,8 +53,21 @@ function darken(hex: string, factor: number): string {
     .padStart(6, "0")}`;
 }
 
-export function zoneColor(hearingGroup: string, metric: string): string {
-  const base = HEARING_GROUP_COLORS[hearingGroup] ?? "#888888";
+// Custom (user-entered) thresholds, one colour per distinct custom name
+// (the zone's custom_index), cycling if there are more -- hues kept clear
+// of HEARING_GROUP_COLORS so a custom zone never looks like a workbook one.
+// Same metric shading as above.
+const CUSTOM_COLORS = ["#0e8f9e", "#a3289a", "#8a5a2b", "#6b7a12", "#4f5d6e", "#2b2b2b"];
+
+export function zoneColor(
+  hearingGroup: string,
+  metric: string,
+  customIndex: number | null = null
+): string {
+  const base =
+    customIndex !== null
+      ? CUSTOM_COLORS[customIndex % CUSTOM_COLORS.length]
+      : HEARING_GROUP_COLORS[hearingGroup] ?? "#888888";
   return metric === "SEL_cum" ? darken(base, SEL_CUM_SHADE_FACTOR) : base;
 }
 
