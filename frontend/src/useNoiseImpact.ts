@@ -320,23 +320,25 @@ export function useNoiseImpact(apiBase: string) {
       });
       setVisibleZoneKeys(defaultVisible);
 
-      // A selected hearing-group/impact-type/metric combo with no
-      // matching row in Noise_Impact_Thresholds.xlsx never appears in
-      // data.zones at all -- distinct from a zone that DID compute but
-      // found zero exceedance (that's a normal, expected result, shown
-      // inline in the panel instead). Diff the requested combos against
-      // what came back and flag anything genuinely undefined, since that
-      // usually means the selection doesn't match what the workbook
-      // actually covers, not just "nothing was loud enough." Surfaced as
-      // an inline panel note (see ImpactsPanel) rather than a blocking
-      // alert() -- worth flagging (silently dropping it would be
-      // misleading), but not worth interrupting the flow for.
+      // A picked hearing-group/impact-type/metric combo with no matching
+      // row in Noise_Impact_Thresholds.xlsx never appears in data.zones
+      // at all -- distinct from a zone that DID compute but found zero
+      // exceedance (that's a normal, expected result, shown inline in the
+      // panel instead). Combos the workbook leaves out on purpose (e.g.
+      // fish TTS has no SPL_peak) are already shown in the threshold
+      // grid, so only flag ones the loaded threshold list said exist but
+      // didn't come back -- e.g. the workbook changed since the page
+      // loaded. Surfaced as an inline panel note (see ImpactsPanel)
+      // rather than a blocking alert() -- worth flagging (silently
+      // dropping it would be misleading), but not worth interrupting the
+      // flow for.
+      const expected = new Set(options.thresholds.map((t) => zoneKey(t)));
       const returned = new Set(data.zones.map(zoneKey));
       const missing: string[] = [];
       for (const [hg, it] of runPairs) {
         for (const m of metrics) {
           const key = zoneKey({ hearing_group: hg, impact: it, metric: m });
-          if (!returned.has(key)) missing.push(`${hg} – ${it} – ${m}`);
+          if (expected.has(key) && !returned.has(key)) missing.push(`${hg} – ${it} – ${m}`);
         }
       }
       setUndefinedCombos(missing);
