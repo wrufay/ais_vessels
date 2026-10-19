@@ -2,6 +2,7 @@ import { useState } from "react";
 import ClosePanelBtn from "../ClosePanelBtn";
 import PanelHeader from "../PanelHeader";
 import CollapsibleHeader from "../CollapsibleHeader";
+import { pairKey, pairMetrics, runnablePairs } from "../../useNoiseImpact";
 import type { NoiseImpactSite, NoiseImpactOptions, NoiseImpactInfo } from "../../useNoiseImpact";
 
 const runIcon = (
@@ -50,11 +51,9 @@ function MissingIcon() {
   );
 }
 
-// A plain checkbox list, no caret -- used for Impact types / Metrics,
-// which are short enough (4 and 2 items) that collapsing them just adds an
-// extra click for no space savings. Hearing groups is the one category
-// long/structured enough to warrant carets (see
-// CollapsibleCheckboxCategoryList below).
+// A plain checkbox list, no caret -- used for Metrics, which is short
+// enough (2 items) that collapsing it just adds an extra click for no
+// space savings.
 function CheckboxList({
   label,
   options,
@@ -132,11 +131,12 @@ function CheckboxList({
 }
 
 // Hearing groups (HearingGroup enum in enums.py) fall into natural taxonomic
-// categories -- grouping them makes a 9-item list scannable. Matched by
-// substring against the exact strings the backend returns (which themselves
-// must match Noise_Impact_Thresholds.xlsx exactly, per that enum's own
-// comment), with "Other" as a catch-all so a future new hearing group in the
-// workbook still shows up somewhere instead of silently vanishing.
+// categories -- grouping the grid's rows makes a 9-item list scannable.
+// Matched by substring against the exact strings the backend returns (which
+// themselves must match Noise_Impact_Thresholds.xlsx exactly, per that
+// enum's own comment), with "Other" as a catch-all so a future new hearing
+// group in the workbook still shows up somewhere instead of silently
+// vanishing.
 const HEARING_GROUP_CATEGORIES: {
   label: string;
   match: (o: string) => boolean;
@@ -160,134 +160,208 @@ function groupHearingGroups(
   return groups.filter((g) => g.options.length > 0);
 }
 
-// Same caret-toggle list as CollapsibleCheckboxList, but with the options
-// pre-split into their own nested caret-toggle sub-groups (see
-// groupHearingGroups) -- used only for hearing groups, the one category
-// with enough items (9) and a real taxonomy to make sub-grouping worth it.
-function CollapsibleCheckboxCategoryList({
-  label,
+// Hearing group x impact type grid -- each cell is one threshold to pick,
+// so a combination the workbook doesn't define (e.g. Mortality for marine
+// mammals) can't be picked at all, unlike the separate hearing-group and
+// impact-type lists this replaced, which ran every combination of the two.
+// A cell is:
+//  - a dash: no threshold for any metric;
+//  - a grey box: thresholds exist, but not for the ticked metric(s) --
+//    stays picked underneath, so re-ticking the metric brings it back;
+//  - a checkbox otherwise, tagged "<metric> only" when both metrics are
+//    ticked but only one is defined.
+// Clicking a row/column name picks (or, if all picked, unpicks) every
+// available cell in it. Hover texts come from the workbook (Info sheet
+// descriptions, Reference column) -- nothing hardcoded here.
+function ThresholdGrid({
   options,
-  selected,
-  onToggle,
-  categoryOpen,
-  onToggleCategory,
-  tooltip,
+  info,
+  metrics,
+  pairs,
+  setPairs,
 }: {
-  label: string;
-  options: string[];
-  selected: string[];
-  onToggle: (value: string) => void;
-  categoryOpen: Record<string, boolean>;
-  onToggleCategory: (category: string) => void;
-  // Per-option hover text (see NoiseImpactInfo) -- undefined for an option
-  // with no matching workbook entry just means no title attribute.
-  tooltip?: (value: string) => string | undefined;
+  options: NoiseImpactOptions;
+  info: NoiseImpactInfo;
+  metrics: string[];
+  pairs: string[];
+  setPairs: (v: string[]) => void;
 }) {
-  const groups = groupHearingGroups(options);
+  const impacts = options.impact_types;
+  const groups = groupHearingGroups(options.hearing_groups);
+
+  const references = (hg: string) =>
+    [
+      ...new Set(
+        options.thresholds
+          .filter((t) => t.hearing_group === hg)
+          .map((t) => t.reference)
+      ),
+    ].join(", ");
+  const available = (hg: string, it: string) =>
+    pairMetrics(options.thresholds, hg, it).some((m) => metrics.includes(m));
+
+  // Pick every available cell in `cells`, or unpick them if all are picked.
+  function toggleAll(cells: [string, string][]) {
+    const keys = cells
+      .filter(([hg, it]) => available(hg, it))
+      .map(([hg, it]) => pairKey(hg, it));
+    if (keys.length === 0) return;
+    const allPicked = keys.every((k) => pairs.includes(k));
+    setPairs(
+      allPicked
+        ? pairs.filter((p) => !keys.includes(p))
+        : [...pairs, ...keys.filter((k) => !pairs.includes(k))]
+    );
+  }
+  function toggleOne(key: string) {
+    setPairs(
+      pairs.includes(key) ? pairs.filter((p) => p !== key) : [...pairs, key]
+    );
+  }
+
+  const pickAll = "Click to pick all.";
+  const hoverText = (...lines: (string | undefined)[]) =>
+    lines.filter(Boolean).join("\n");
+
+  function cell(hg: string, it: string) {
+    const defined = pairMetrics(options.thresholds, hg, it);
+    const refs = references(hg);
+    const cite = refs ? ` (${refs})` : "";
+    if (defined.length === 0) {
+      return (
+        <span
+          title={`${it} is undefined for ${hg}${cite}.`}
+          className="inline-block w-5 text-xs text-slate-400 dark:text-slate-500 cursor-help"
+        >
+          –
+        </span>
+      );
+    }
+    if (!available(hg, it)) {
+      return (
+        <span
+          title={`${it} ${metrics.join(" and ")} is undefined for ${hg}${cite}.`}
+          aria-disabled="true"
+          className="inline-block align-middle w-5 h-5 rounded bg-slate-300 dark:bg-slate-600 cursor-not-allowed"
+        />
+      );
+    }
+    const key = pairKey(hg, it);
+    const on = pairs.includes(key);
+    const missing = metrics.filter((m) => !defined.includes(m));
+    const only = defined.filter((m) => metrics.includes(m));
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => toggleOne(key)}
+          title={`${hg} · ${it}`}
+          aria-pressed={on}
+          className={`inline-flex align-middle items-center justify-center w-5 h-5 rounded border transition active:scale-95 ${
+            on
+              ? "bg-[#3d5a80] border-[#3d5a80] text-white"
+              : "bg-white dark:bg-slate-800 border-slate-400 dark:border-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+          }`}
+        >
+          {on && (
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="5 12 10 17 19 7" />
+            </svg>
+          )}
+        </button>
+        {missing.length > 0 && (
+          <span
+            title={`${it} ${missing.join(" and ")} is undefined for ${hg}${cite}, so only ${only.join(" and ")} runs.`}
+            className="block whitespace-nowrap text-[10px] leading-tight text-slate-500 dark:text-slate-400 cursor-help"
+          >
+            {only.map((m) => m.split("_")[0]).join("/")} only
+          </span>
+        )}
+      </>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center gap-2 py-1.5">
         <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">
-          {label}
+          Thresholds
         </span>
-        <span className="text-[11px] text-slate-400 dark:text-slate-500">
-          {selected.length}/{options.length}
-        </span>
+        {pairs.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setPairs([])}
+            className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
+          >
+            Clear
+          </button>
+        )}
       </div>
-      <div className="flex flex-col gap-0.5 pl-1 pb-1">
-        {groups.map((g) => {
-          const groupOpen = categoryOpen[g.label] ?? false;
-          const selectedInGroup = g.options.filter((o) =>
-            selected.includes(o)
-          ).length;
-          return (
-            <div key={g.label}>
-              <CollapsibleHeader
-                open={groupOpen}
-                onToggle={() => onToggleCategory(g.label)}
-                label={g.label}
-                trailing={
-                  <span className="flex items-center gap-2">
-                    {/* CollapsibleHeader's whole row is itself a <button>,
-                        so these can't be real nested <button>s -- clickable
-                        spans with stopPropagation (so they don't also
-                        trigger the caret toggle) instead. */}
-                    {groupOpen && selectedInGroup < g.options.length && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          g.options.forEach(
-                            (o) => !selected.includes(o) && onToggle(o)
-                          );
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== " ") return;
-                          e.stopPropagation();
-                          e.preventDefault();
-                          g.options.forEach(
-                            (o) => !selected.includes(o) && onToggle(o)
-                          );
-                        }}
-                        className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline cursor-pointer"
-                      >
-                        Select all
-                      </span>
-                    )}
-                    {groupOpen && selectedInGroup > 0 && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          g.options.forEach(
-                            (o) => selected.includes(o) && onToggle(o)
-                          );
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== " ") return;
-                          e.stopPropagation();
-                          e.preventDefault();
-                          g.options.forEach(
-                            (o) => selected.includes(o) && onToggle(o)
-                          );
-                        }}
-                        className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline cursor-pointer"
-                      >
-                        Unselect all
-                      </span>
-                    )}
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                      {selectedInGroup}/{g.options.length}
-                    </span>
-                  </span>
-                }
-              />
-              {groupOpen && (
-                <div className="flex flex-col gap-0.5 pl-3 pb-1">
-                  {g.options.map((o) => (
-                    <label
-                      key={o}
-                      title={tooltip?.(o)}
-                      className="flex items-center gap-2 py-0.5 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(o)}
-                        onChange={() => onToggle(o)}
-                        className="accent-[#3d5a80] w-3.5 h-3.5 rounded shrink-0"
-                      />
-                      <span className="text-xs text-slate-600 dark:text-slate-300">
-                        {o}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pb-1">
+        Click a row or column name to pick all of it.
+      </p>
+      <table className="w-full table-fixed border-collapse">
+        <colgroup>
+          <col className="w-[36%]" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th />
+            {impacts.map((it) => (
+              <th key={it} className="px-0.5 py-1 font-normal">
+                <button
+                  type="button"
+                  onClick={() =>
+                    toggleAll(options.hearing_groups.map((hg) => [hg, it]))
+                  }
+                  title={hoverText(info.impact_types[it], pickAll)}
+                  className="text-[10px] font-medium text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
+                >
+                  {it}
+                </button>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((g) => [
+            <tr key={g.label}>
+              <td
+                colSpan={impacts.length + 1}
+                className="pt-2 pb-0.5 text-[10px] text-slate-400 dark:text-slate-500"
+              >
+                {g.label}
+              </td>
+            </tr>,
+            ...g.options.map((hg) => (
+              <tr key={hg} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <th className="py-1 pl-1 text-left font-normal">
+                  <button
+                    type="button"
+                    onClick={() => toggleAll(impacts.map((it) => [hg, it]))}
+                    title={hoverText(info.hearing_groups[hg], pickAll)}
+                    className="block w-full text-left text-xs leading-tight break-words text-slate-600 dark:text-slate-300 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
+                  >
+                    {hg.replace(/^Fish - /, "")}
+                  </button>
+                </th>
+                {impacts.map((it) => (
+                  <td key={it} className="py-1 text-center align-middle">
+                    {cell(hg, it)}
+                  </td>
+                ))}
+              </tr>
+            )),
+          ])}
+        </tbody>
+      </table>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-[10px] text-slate-400 dark:text-slate-500">
+        <span>– undefined</span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-300 dark:bg-slate-600" />
+          undefined for the ticked metric
+        </span>
+        <span>Hover to see why</span>
       </div>
     </div>
   );
@@ -365,8 +439,7 @@ const TABS: { id: Tab; label: string }[] = [
 // ExposureAssessmentParams): Scenario picks which precomputed site to use
 // (site is a dropdown, not a map click -- see useNoiseImpact's module
 // docstring), Source is the pile driving source's properties, Species is
-// which hearing groups/impact types/metrics/depth range to evaluate
-// thresholds for. Lives in the left SidePanel (Map.tsx) instead of a
+// which thresholds (ThresholdGrid)/metrics/depth range to evaluate. Lives in the left SidePanel (Map.tsx) instead of a
 // modal so it can stay open alongside the Impacts results panel on the
 // right.
 function NoiseImpactParamsPanel({
@@ -375,10 +448,8 @@ function NoiseImpactParamsPanel({
   info,
   site,
   setSite,
-  hearingGroups,
-  onToggleHearingGroup,
-  impactTypes,
-  onToggleImpactType,
+  pairs,
+  setPairs,
   metrics,
   onToggleMetric,
   depthMin,
@@ -404,10 +475,8 @@ function NoiseImpactParamsPanel({
   info: NoiseImpactInfo;
   site: string;
   setSite: (v: string) => void;
-  hearingGroups: string[];
-  onToggleHearingGroup: (v: string) => void;
-  impactTypes: string[];
-  onToggleImpactType: (v: string) => void;
+  pairs: string[];
+  setPairs: (v: string[]) => void;
   metrics: string[];
   onToggleMetric: (v: string) => void;
   depthMin: number;
@@ -429,11 +498,6 @@ function NoiseImpactParamsPanel({
   onClose: () => void;
 }) {
   const siteMeta = sites[site];
-  const [hearingGroupCategoryOpen, setHearingGroupCategoryOpen] = useState<
-    Record<string, boolean>
-  >(() =>
-    Object.fromEntries(HEARING_GROUP_CATEGORIES.map((c) => [c.label, true]))
-  );
   const [tab, setTab] = useState<Tab>("scenario");
   // Metrics only has two options (SPL_peak, SEL_cum) and SPL_peak covers
   // the normal case -- collapsed by default so it reads as an advanced/
@@ -449,9 +513,11 @@ function NoiseImpactParamsPanel({
   // so each field/tab can show its own inline dot that updates live, in
   // addition to (not instead of) the summary line at the bottom.
   const siteInvalid = !site;
-  const hearingGroupsInvalid = hearingGroups.length === 0;
-  const impactTypesInvalid = impactTypes.length === 0;
   const metricsInvalid = metrics.length === 0;
+  // Picked cells greyed out by the metric choice don't count.
+  const pairsInvalid =
+    !metricsInvalid &&
+    runnablePairs(options.thresholds, pairs, metrics).length === 0;
   const splPeakInvalid = !(splPeak > 0);
   const selSingleStrikeInvalid = !(selSingleStrike > 0);
   const nStrikesPerPileInvalid = !(nStrikesPerPile > 0);
@@ -464,8 +530,7 @@ function NoiseImpactParamsPanel({
     nStrikesPerPileInvalid ||
     nPilesInvalid ||
     assessmentPeriodInvalid;
-  const speciesInvalid =
-    hearingGroupsInvalid || impactTypesInvalid || metricsInvalid;
+  const speciesInvalid = pairsInvalid || metricsInvalid;
   const tabInvalid: Record<Tab, boolean> = {
     scenario: siteInvalid,
     source: pileInvalid,
@@ -475,8 +540,7 @@ function NoiseImpactParamsPanel({
 
   const missing: string[] = [];
   if (siteInvalid) missing.push("a site");
-  if (hearingGroupsInvalid) missing.push("a hearing group");
-  if (impactTypesInvalid) missing.push("an impact type");
+  if (pairsInvalid) missing.push("a threshold");
   if (metricsInvalid) missing.push("a metric");
   if (splPeakInvalid) missing.push("a peak SPL");
   if (selSingleStrikeInvalid) missing.push("an SEL/strike");
@@ -588,27 +652,12 @@ function NoiseImpactParamsPanel({
               Choose species to view.
             </p>
             
-            <CollapsibleCheckboxCategoryList
-              label="Hearing groups"
-              options={options.hearing_groups}
-              selected={hearingGroups}
-              onToggle={onToggleHearingGroup}
-              categoryOpen={hearingGroupCategoryOpen}
-              onToggleCategory={(category) =>
-                setHearingGroupCategoryOpen((prev) => ({
-                  ...prev,
-                  [category]: !(prev[category] ?? false),
-                }))
-              }
-              tooltip={(o) => info.hearing_groups[o]}
-            />
-            <hr></hr>
-            <CheckboxList
-              label="Impact types"
-              options={options.impact_types}
-              selected={impactTypes}
-              onToggle={onToggleImpactType}
-              tooltip={(o) => info.impact_types[o]}
+            <ThresholdGrid
+              options={options}
+              info={info}
+              metrics={metrics}
+              pairs={pairs}
+              setPairs={setPairs}
             />
             <div className="grid grid-cols-2 gap-2.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <NumberField

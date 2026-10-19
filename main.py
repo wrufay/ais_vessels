@@ -421,6 +421,10 @@ class NoiseImpactRequest(BaseModel):
     n_strikes_per_pile: int
     n_piles: int = 1
     assessment_period_hours: float = 24
+    # (hearing group, impact) pairs picked in the threshold grid -- zones
+    # outside these are dropped (see analysis/noise_impact.py's _run_model).
+    # None runs every hearing_groups x impact_types combination.
+    pairs: list[tuple[str, str]] | None = None
 
 
 # returns impact zones after running the pile-driving noise-impact model for one site.
@@ -439,6 +443,7 @@ def post_noise_impact_compute(req: NoiseImpactRequest):
             n_strikes_per_pile=req.n_strikes_per_pile,
             n_piles=req.n_piles,
             assessment_period_hours=req.assessment_period_hours,
+            pairs=req.pairs,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -465,6 +470,7 @@ def post_noise_impact_export(req: NoiseImpactExportRequest):
             n_strikes_per_pile=req.n_strikes_per_pile,
             n_piles=req.n_piles,
             assessment_period_hours=req.assessment_period_hours,
+            pairs=req.pairs,
             fmt=req.format,
         )
     except ValueError as e:

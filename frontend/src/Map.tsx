@@ -228,8 +228,7 @@ function ShipMap() {
     showNoiseImpact, setShowNoiseImpact,
     sites: noiseImpactSites, options: noiseImpactOptions, info: noiseImpactInfo,
     site: noiseImpactSite, setSite: setNoiseImpactSite,
-    hearingGroups: noiseImpactHearingGroups, toggleHearingGroup: toggleNoiseImpactHearingGroup,
-    impactTypes: noiseImpactImpactTypes, toggleImpactType: toggleNoiseImpactImpactType,
+    pairs: noiseImpactPairs, setPairs: setNoiseImpactPairs,
     metrics: noiseImpactMetrics, toggleMetric: toggleNoiseImpactMetric,
     depthMin: noiseImpactDepthMin, setDepthMin: setNoiseImpactDepthMin,
     depthMax: noiseImpactDepthMax, setDepthMax: setNoiseImpactDepthMax,
@@ -1557,10 +1556,8 @@ function ShipMap() {
           info={noiseImpactInfo}
           site={noiseImpactSite}
           setSite={setNoiseImpactSite}
-          hearingGroups={noiseImpactHearingGroups}
-          onToggleHearingGroup={toggleNoiseImpactHearingGroup}
-          impactTypes={noiseImpactImpactTypes}
-          onToggleImpactType={toggleNoiseImpactImpactType}
+          pairs={noiseImpactPairs}
+          setPairs={setNoiseImpactPairs}
           metrics={noiseImpactMetrics}
           onToggleMetric={toggleNoiseImpactMetric}
           depthMin={noiseImpactDepthMin}

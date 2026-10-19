@@ -32,6 +32,7 @@ from ns_pile_driving_noise_mapping import (  # noqa: E402 # type: ignore
     HearingGroup, Impact, Metric,
 )
 from ns_pile_driving_noise_mapping.core import calculate_noise_impact  # noqa: E402 # type: ignore
+from ns_pile_driving_noise_mapping.enums import Reference, SourceType  # noqa: E402 # type: ignore
 import ns_pile_driving_noise_mapping.core as _npnm_core  # noqa: E402 # type: ignore
 
 
@@ -128,12 +129,37 @@ def list_sites() -> dict:
 def list_options() -> dict:
     """Available hearing groups / impact types / metrics, straight from the
     package's enums — so the frontend never hardcodes a list that could
-    drift from Noise_Impact_Thresholds.xlsx."""
+    drift from Noise_Impact_Thresholds.xlsx. `thresholds` is every
+    hearing group/impact/metric combination that actually has a threshold,
+    so the frontend can grey out the ones that don't."""
     return {
         "hearing_groups": [g.value for g in HearingGroup],
         "impact_types": [i.value for i in Impact],
         "metrics": [m.value for m in Metric],
+        "thresholds": _list_thresholds(),
     }
+
+
+def _list_thresholds() -> list[dict]:
+    """The workbook's Thresholds rows the package can actually run, i.e.
+    those passing the same Reference/SourceType/enum checks as its own
+    build_threshold_filter_mask_str (filters.py). A row with a value the
+    enums don't know (e.g. a typo'd metric) is left out here exactly as the
+    package would skip it at run time."""
+    file_path = ExposureAssessmentParams._get_default_data_file_path()
+    df = pd.read_excel(file_path, sheet_name="Thresholds")
+    df = df[
+        df["Reference"].isin([r.value for r in Reference])
+        & df["SourceType"].isin([s.value for s in SourceType])
+        & df["HearingGroup"].isin([g.value for g in HearingGroup])
+        & df["Impact"].isin([i.value for i in Impact])
+        & df["Metric"].isin([m.value for m in Metric])
+    ]
+    return [
+        {"hearing_group": r.HearingGroup, "impact": r.Impact, "metric": r.Metric,
+         "reference": r.Reference}
+        for r in df.itertuples()
+    ]
 
 
 def list_parameter_info() -> dict:
@@ -185,6 +211,7 @@ def compute_impact(
     n_strikes_per_pile: int,
     n_piles: int,
     assessment_period_hours: float,
+    pairs: list[tuple[str, str]] | None = None,
 ) -> dict:
     """Run the impact model for one site and return JSON-serializable zones:
 
@@ -195,11 +222,13 @@ def compute_impact(
     `geometry` is a GeoJSON Polygon, or None if the threshold was never
     exceeded anywhere. depth_range is negative metres below the surface,
     e.g. (-40.0, -0.01). TL load is cached per site (see above); the rest
-    re-runs fresh every call.
+    re-runs fresh every call. `pairs`, if given, limits the zones to those
+    (hearing group, impact) pairs -- see _run_model.
     """
     result, tl_model_params, _ = _run_model(
         site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
         sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
+        pairs,
     )
 
     zones = []
@@ -247,6 +276,7 @@ def export_impact(
     n_piles: int,
     assessment_period_hours: float,
     fmt: str,
+    pairs: list[tuple[str, str]] | None = None,
 ) -> tuple[str, bytes]:
     """Same run as compute_impact, saved with the package's own
     export_hazard_zones in one of EXPORT_FORMATS, returned as (zip
@@ -267,6 +297,7 @@ def export_impact(
     result, _, noise_level_params = _run_model(
         site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
         sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
+        pairs,
     )
 
     keep = [i for i, zone in enumerate(result["zone_data"]) if _zone_exceeded(zone)]
@@ -303,10 +334,16 @@ def export_impact(
 def _run_model(
     site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
     sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
+    pairs=None,
 ):
     """Build the package's params from plain values and run
     calculate_noise_impact -- shared by compute_impact and
-    export_impact so both always run the identical model."""
+    export_impact so both always run the identical model.
+
+    The package runs every hearing group x impact type combination. With
+    `pairs` (the frontend's threshold grid picks), zones for combinations
+    outside it are dropped afterwards -- e.g. picking LF Cetaceans TTS and
+    Fish Mortality must not also return Fish TTS."""
     if site not in SITES:
         raise ValueError(f"Unknown site: {site}")
 
@@ -326,6 +363,17 @@ def _run_model(
     )
 
     result = calculate_noise_impact(exposure_params, tl_model_params, noise_level_params)
+    if pairs is not None:
+        wanted = {tuple(p) for p in pairs}
+        keep = [
+            i for i, th in enumerate(result["df_th"].itertuples())
+            if (str(th.HearingGroup), str(th.Impact)) in wanted
+        ]
+        result = {
+            **result,
+            "zone_data": [result["zone_data"][i] for i in keep],
+            "df_th": result["df_th"].iloc[keep].reset_index(drop=True),
+        }
     return result, tl_model_params, noise_level_params
 
 

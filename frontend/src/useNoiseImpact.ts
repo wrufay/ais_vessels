@@ -8,10 +8,20 @@ export interface NoiseImpactSite {
   noise_date: string;
 }
 
+// One row of the workbook's Thresholds sheet that the package can run
+// (see analysis/noise_impact.py's _list_thresholds).
+export interface NoiseImpactThreshold {
+  hearing_group: string;
+  impact: string;
+  metric: string;
+  reference: string;
+}
+
 export interface NoiseImpactOptions {
   hearing_groups: string[];
   impact_types: string[];
   metrics: string[];
+  thresholds: NoiseImpactThreshold[];
 }
 
 // Hover-tooltip text, keyed by the same strings as NoiseImpactOptions --
@@ -52,6 +62,38 @@ export function zoneKey(z: { hearing_group: string; impact: string; metric: stri
   return `${z.hearing_group}|${z.impact}|${z.metric}`;
 }
 
+// A threshold-grid cell: one hearing group + one impact type.
+export function pairKey(hearingGroup: string, impact: string): string {
+  return `${hearingGroup}|${impact}`;
+}
+
+// Metrics the workbook defines a threshold for, for one grid cell.
+export function pairMetrics(
+  thresholds: NoiseImpactThreshold[],
+  hearingGroup: string,
+  impact: string
+): string[] {
+  return thresholds
+    .filter((t) => t.hearing_group === hearingGroup && t.impact === impact)
+    .map((t) => t.metric);
+}
+
+// A picked cell only runs if it has a threshold for a ticked metric -- a
+// cell that doesn't stays picked (so re-ticking the metric brings it
+// back) but is left out of the run.
+export function runnablePairs(
+  thresholds: NoiseImpactThreshold[],
+  pairs: string[],
+  metrics: string[]
+): string[] {
+  const runnable = new Set(
+    thresholds
+      .filter((t) => metrics.includes(t.metric))
+      .map((t) => pairKey(t.hearing_group, t.impact))
+  );
+  return pairs.filter((p) => runnable.has(p));
+}
+
 // Owns state for the noise-impact feature: the "Impacts" side panel, its
 // parameter-input modal (Scenario/Pile driving/Species cards), and the run
 // against POST /api/noise-impact/compute. Site is a dropdown, not a map
@@ -86,6 +128,7 @@ export function useNoiseImpact(apiBase: string) {
     hearing_groups: [],
     impact_types: [],
     metrics: [],
+    thresholds: [],
   });
   const [info, setInfo] = useState<NoiseImpactInfo>({
     hearing_groups: {},
@@ -93,8 +136,8 @@ export function useNoiseImpact(apiBase: string) {
   });
 
   const [site, setSite] = useState("");
-  const [hearingGroups, setHearingGroups] = useState<string[]>([]);
-  const [impactTypes, setImpactTypes] = useState<string[]>([]);
+  // Picked threshold-grid cells, as pairKey strings.
+  const [pairs, setPairs] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<string[]>([]);
   // Negative metres below the surface (0 at the surface) -- matches the
   // underlying model's own depth coordinate convention, see main.py's
@@ -126,7 +169,7 @@ export function useNoiseImpact(apiBase: string) {
   // changes nothing on screen until the next Run.
   const [resultSite, setResultSite] = useState("");
   const [visibleZoneKeys, setVisibleZoneKeys] = useState<Set<string>>(new Set());
-  // Selected hearing-group/impact-type/metric combos with no matching row
+  // Picked hearing-group/impact-type/metric combos with no matching row
   // in Noise_Impact_Thresholds.xlsx at all -- see the diff in handleRun.
   const [undefinedCombos, setUndefinedCombos] = useState<string[]>([]);
   // The exact request body `result` came from -- like resultSite, so the
@@ -153,7 +196,7 @@ export function useNoiseImpact(apiBase: string) {
       .then((data: NoiseImpactOptions | null) => {
         if (!data) return;
         // Only populate the option lists (for the checkboxes to render) --
-        // leave hearingGroups/impactTypes at their empty-array initial
+        // leave pairs at its empty-array initial
         // state so nothing is pre-checked; the user picks. Metrics is the
         // one exception: both start selected (see handleRun, which only
         // shows the larger-zone metric per hearing group by default) so
@@ -170,12 +213,6 @@ export function useNoiseImpact(apiBase: string) {
       .catch(() => {});
   }, [apiBase]);
 
-  function toggleHearingGroup(value: string) {
-    setHearingGroups((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
-  }
-  function toggleImpactType(value: string) {
-    setImpactTypes((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
-  }
   function toggleMetric(value: string) {
     setMetrics((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   }
@@ -202,8 +239,7 @@ export function useNoiseImpact(apiBase: string) {
     setLastRunRequest(null);
     setExportError(null);
     setSite(Object.keys(sites)[0] ?? "");
-    setHearingGroups([]);
-    setImpactTypes([]);
+    setPairs([]);
     setMetrics(options.metrics);
     setDepthMin(DEFAULT_DEPTH_MIN);
     setDepthMax(DEFAULT_DEPTH_MAX);
@@ -215,10 +251,12 @@ export function useNoiseImpact(apiBase: string) {
   }
 
   async function handleRun() {
+    const runPairs = runnablePairs(options.thresholds, pairs, metrics).map(
+      (p) => p.split("|") as [string, string]
+    );
     const ready =
       site &&
-      hearingGroups.length > 0 &&
-      impactTypes.length > 0 &&
+      runPairs.length > 0 &&
       metrics.length > 0 &&
       splPeak > 0 &&
       selSingleStrike > 0 &&
@@ -229,10 +267,14 @@ export function useNoiseImpact(apiBase: string) {
     setRunning(true);
     setError(null);
     setExportError(null);
+    // The package takes hearing-group and impact-type lists and runs every
+    // combination of them; `pairs` tells the backend which of those
+    // combinations were actually picked (see main.py's NoiseImpactRequest).
     const request = {
       site,
-      hearing_groups: hearingGroups,
-      impact_types: impactTypes,
+      hearing_groups: [...new Set(runPairs.map(([hg]) => hg))],
+      impact_types: [...new Set(runPairs.map(([, it]) => it))],
+      pairs: runPairs,
       metrics,
       depth_range: [depthMin, depthMax],
       spl_peak: splPeak,
@@ -291,12 +333,10 @@ export function useNoiseImpact(apiBase: string) {
       // misleading), but not worth interrupting the flow for.
       const returned = new Set(data.zones.map(zoneKey));
       const missing: string[] = [];
-      for (const hg of hearingGroups) {
-        for (const it of impactTypes) {
-          for (const m of metrics) {
-            const key = zoneKey({ hearing_group: hg, impact: it, metric: m });
-            if (!returned.has(key)) missing.push(`${hg} – ${it} – ${m}`);
-          }
+      for (const [hg, it] of runPairs) {
+        for (const m of metrics) {
+          const key = zoneKey({ hearing_group: hg, impact: it, metric: m });
+          if (!returned.has(key)) missing.push(`${hg} – ${it} – ${m}`);
         }
       }
       setUndefinedCombos(missing);
@@ -352,8 +392,7 @@ export function useNoiseImpact(apiBase: string) {
     showNoiseImpact, setShowNoiseImpact,
     sites, options, info,
     site, setSite,
-    hearingGroups, toggleHearingGroup,
-    impactTypes, toggleImpactType,
+    pairs, setPairs,
     metrics, toggleMetric,
     depthMin, setDepthMin,
     depthMax, setDepthMax,
