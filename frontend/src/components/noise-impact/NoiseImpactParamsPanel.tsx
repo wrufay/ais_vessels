@@ -280,7 +280,7 @@ function ThresholdGrid({
         {missing.length > 0 && (
           <span
             title={`${it} ${missing.join(" and ")} is undefined for ${hg}${cite}, so only ${only.join(" and ")} runs.`}
-            className="block whitespace-nowrap text-[10px] leading-tight text-slate-500 dark:text-slate-400 cursor-help"
+            className="block whitespace-nowrap text-[9px] leading-tight text-slate-500 dark:text-slate-400 cursor-help"
           >
             {only.map((m) => m.split("_")[0]).join("/")} only
           </span>
