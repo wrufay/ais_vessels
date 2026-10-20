@@ -31,8 +31,11 @@ const resetIcon = (
   </svg>
 );
 
-const inputClass =
-  "text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition";
+const inputBaseClass =
+  "text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 outline-none focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition";
+const inputClass = `text-sm ${inputBaseClass}`;
+// Custom thresholds form: same size as the labels around it.
+const smallInputClass = `text-xs ${inputBaseClass}`;
 
 // "Something's still required" marker for the summary line at the bottom
 // -- individual fields/categories just carry a plain dot instead (see the
@@ -289,7 +292,7 @@ function ThresholdGrid({
   return (
     <div>
       <div className="flex items-center gap-2 py-1.5">
-        <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">
+        <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300 flex-1">
           Thresholds
         </span>
         {pairs.length > 0 && (
@@ -427,7 +430,7 @@ function CustomThresholds({
   return (
     <div>
       <div className="flex items-center gap-2 py-1.5">
-        <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">
+        <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300 flex-1">
           Custom thresholds
         </span>
         {customThresholds.length > 0 && (
@@ -487,7 +490,7 @@ function CustomThresholds({
               setName(e.target.value);
               setError(null);
             }}
-            className={inputClass}
+            className={smallInputClass}
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -498,7 +501,7 @@ function CustomThresholds({
               setMetric(e.target.value);
               setError(null);
             }}
-            className={`${inputClass} cursor-pointer`}
+            className={`${smallInputClass} cursor-pointer`}
           >
             {metricOptions.map((m) => (
               <option key={m} value={m}>
@@ -519,12 +522,12 @@ function CustomThresholds({
                 setDb(e.target.value);
                 setError(null);
               }}
-              className={`${inputClass} w-full`}
+              className={`${smallInputClass} w-full`}
             />
           </label>
           <button
             type="submit"
-            className="shrink-0 px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-sm hover:bg-[#293241] transition active:scale-95"
+            className="shrink-0 px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs hover:bg-[#293241] transition active:scale-95"
           >
             Add
           </button>
