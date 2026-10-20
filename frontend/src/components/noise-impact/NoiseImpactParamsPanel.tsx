@@ -1,7 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import ClosePanelBtn from "../ClosePanelBtn";
 import PanelHeader from "../PanelHeader";
-import CollapsibleHeader from "../CollapsibleHeader";
 import { pairKey, pairMetrics, runnablePairs } from "../../useNoiseImpact";
 import type {
   NoiseImpactSite,
@@ -70,7 +69,9 @@ function CheckboxList({
   hideSelectAll,
   tooltip,
 }: {
-  label: string;
+  // Leave out when a header above already names the list (Metrics, whose
+  // collapsible header carries the label and count) -- drops this header row.
+  label?: string;
   options: string[];
   selected: string[];
   onToggle: (value: string) => void;
@@ -84,36 +85,38 @@ function CheckboxList({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-2 py-1.5">
-        <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">
-          {label}
-        </span>
-        {!hideSelectAll && selected.length < options.length && (
-          <button
-            type="button"
-            onClick={() =>
-              options.forEach((o) => !selected.includes(o) && onToggle(o))
-            }
-            className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
-          >
-            Select all
-          </button>
-        )}
-        {!hideSelectAll && selected.length > 0 && (
-          <button
-            type="button"
-            onClick={() =>
-              options.forEach((o) => selected.includes(o) && onToggle(o))
-            }
-            className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
-          >
-            Unselect all
-          </button>
-        )}
-        <span className="text-[11px] text-[#7c8ca2]">
-          {selected.length}/{options.length}
-        </span>
-      </div>
+      {label !== undefined && (
+        <div className="flex items-center gap-2 py-1.5">
+          <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">
+            {label}
+          </span>
+          {!hideSelectAll && selected.length < options.length && (
+            <button
+              type="button"
+              onClick={() =>
+                options.forEach((o) => !selected.includes(o) && onToggle(o))
+              }
+              className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
+            >
+              Select all
+            </button>
+          )}
+          {!hideSelectAll && selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                options.forEach((o) => selected.includes(o) && onToggle(o))
+              }
+              className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
+            >
+              Unselect all
+            </button>
+          )}
+          <span className="text-[11px] text-[#7c8ca2]">
+            {selected.length}/{options.length}
+          </span>
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5 pl-1 pb-1">
         {options.map((o) => {
           const on = selected.includes(o);
@@ -386,6 +389,36 @@ const METRIC_LABELS: Record<string, string> = {
   SPL_peak: "Peak",
 };
 
+// Foldable section title (Metrics, Custom thresholds) -- same 13px bold as
+// the Exposure depth / Thresholds titles, plus the fold arrow. Not the shared
+// CollapsibleHeader, which is a smaller sub-section style used app-wide.
+function SectionToggle({
+  open,
+  onToggle,
+  title,
+  count,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  title: string;
+  count?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="flex items-center gap-2 flex-1 text-left"
+    >
+      <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
+      <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300">
+        {title}
+        {count}
+      </span>
+    </button>
+  );
+}
+
 // User-entered thresholds: a name, a metric and a dB value each, compared
 // with unweighted noise (a hearing adjustment is just a fixed number of dB
 // at the site's single frequency, so it can be folded into the value).
@@ -396,10 +429,16 @@ function CustomThresholds({
   metricOptions,
   customThresholds,
   setCustomThresholds,
+  open,
+  onToggle,
 }: {
   metricOptions: string[];
   customThresholds: NoiseImpactCustomThreshold[];
   setCustomThresholds: (v: NoiseImpactCustomThreshold[]) => void;
+  // Folded by default -- an optional extra most runs don't need. Added
+  // thresholds still run while folded, hence the count in the header.
+  open: boolean;
+  onToggle: () => void;
 }) {
   const [name, setName] = useState("");
   // "" = not chosen yet: Cumulative, once the metric list has loaded.
@@ -430,9 +469,16 @@ function CustomThresholds({
   return (
     <div>
       <div className="flex items-center gap-2 py-1.5">
-        <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300 flex-1">
-          Custom thresholds
-        </span>
+        <SectionToggle
+          open={open}
+          onToggle={onToggle}
+          title="Custom thresholds"
+          count={
+            customThresholds.length > 0 && (
+              <span className="font-normal text-[#7c8ca2]"> ({customThresholds.length})</span>
+            )
+          }
+        />
         {customThresholds.length > 0 && (
           <button
             type="button"
@@ -443,98 +489,102 @@ function CustomThresholds({
           </button>
         )}
       </div>
-      <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
-        No hearing adjustment is applied. Not affected by the Metrics setting.
-      </p>
-      {customThresholds.length > 0 && (
-        <ul className="flex flex-col gap-1 pb-2">
-          {customThresholds.map((t, i) => (
-            <li
-              key={`${t.name}|${t.metric}`}
-              className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-50 dark:bg-slate-800 text-xs"
-            >
-              <span className="flex-1 min-w-0">
-                <span className="block break-words text-slate-700 dark:text-slate-200">
-                  {t.name}
-                </span>
-                <span className="block text-[11px] text-[#7c8ca2]">
-                  {label(t.metric)} ({t.metric}) · {t.threshold_db} dB
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setCustomThresholds(customThresholds.filter((_, j) => j !== i))}
-                aria-label={`Remove ${t.name} ${label(t.metric).toLowerCase()} threshold`}
-                title="Remove"
-                className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+      {open && (
+        <>
+          <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
+            No hearing adjustment is applied. Not affected by the Metrics setting.
+          </p>
+          {customThresholds.length > 0 && (
+            <ul className="flex flex-col gap-1 pb-2">
+              {customThresholds.map((t, i) => (
+                <li
+                  key={`${t.name}|${t.metric}`}
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-50 dark:bg-slate-800 text-xs"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block break-words text-slate-700 dark:text-slate-200">
+                      {t.name}
+                    </span>
+                    <span className="block text-[11px] text-[#7c8ca2]">
+                      {label(t.metric)} ({t.metric}) · {t.threshold_db} dB
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCustomThresholds(customThresholds.filter((_, j) => j !== i))}
+                    aria-label={`Remove ${t.name} ${label(t.metric).toLowerCase()} threshold`}
+                    title="Remove"
+                    className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form onSubmit={add} className="flex flex-col gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 dark:text-slate-400">Name</span>
+              <input
+                type="text"
+                value={name}
+                maxLength={CUSTOM_NAME_MAX_LEN}
+                placeholder="e.g. whale"
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError(null);
+                }}
+                className={smallInputClass}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 dark:text-slate-400">Metric</span>
+              <select
+                value={chosenMetric}
+                onChange={(e) => {
+                  setMetric(e.target.value);
+                  setError(null);
+                }}
+                className={`${smallInputClass} cursor-pointer`}
               >
-                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                </svg>
+                {metricOptions.map((m) => (
+                  <option key={m} value={m}>
+                    {label(m)} ({m})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-end gap-2">
+              <label className="flex flex-col gap-1 flex-1 min-w-0">
+                <span className="text-xs text-slate-500 dark:text-slate-400">dB</span>
+                <input
+                  type="number"
+                  value={db}
+                  step={0.1}
+                  placeholder="e.g. 162.5"
+                  onChange={(e) => {
+                    setDb(e.target.value);
+                    setError(null);
+                  }}
+                  className={`${smallInputClass} w-full`}
+                />
+              </label>
+              <button
+                type="submit"
+                className="shrink-0 px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs hover:bg-[#293241] transition active:scale-95"
+              >
+                Add
               </button>
-            </li>
-          ))}
-        </ul>
+            </div>
+            {error && (
+              <span className="text-[11px] text-red-600 dark:text-red-400">{error}</span>
+            )}
+          </form>
+        </>
       )}
-      <form onSubmit={add} className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 dark:text-slate-400">Name</span>
-          <input
-            type="text"
-            value={name}
-            maxLength={CUSTOM_NAME_MAX_LEN}
-            placeholder="e.g. whale"
-            onChange={(e) => {
-              setName(e.target.value);
-              setError(null);
-            }}
-            className={smallInputClass}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 dark:text-slate-400">Metric</span>
-          <select
-            value={chosenMetric}
-            onChange={(e) => {
-              setMetric(e.target.value);
-              setError(null);
-            }}
-            className={`${smallInputClass} cursor-pointer`}
-          >
-            {metricOptions.map((m) => (
-              <option key={m} value={m}>
-                {label(m)} ({m})
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex items-end gap-2">
-          <label className="flex flex-col gap-1 flex-1 min-w-0">
-            <span className="text-xs text-slate-500 dark:text-slate-400">dB</span>
-            <input
-              type="number"
-              value={db}
-              step={0.1}
-              placeholder="e.g. 162.5"
-              onChange={(e) => {
-                setDb(e.target.value);
-                setError(null);
-              }}
-              className={`${smallInputClass} w-full`}
-            />
-          </label>
-          <button
-            type="submit"
-            className="shrink-0 px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs hover:bg-[#293241] transition active:scale-95"
-          >
-            Add
-          </button>
-        </div>
-        {error && (
-          <span className="text-[11px] text-red-600 dark:text-red-400">{error}</span>
-        )}
-      </form>
     </div>
   );
 }
@@ -682,7 +732,8 @@ function NoiseImpactParamsPanel({
   // the normal case -- collapsed by default so it reads as an advanced/
   // rarely-touched override rather than a peer of hearing groups/impact
   // types.
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [metricsOpen, setMetricsOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
 
   // Every category needs at least one selection, and the source-level
   // fields need real (positive) values -- a compute call with an empty
@@ -700,6 +751,15 @@ function NoiseImpactParamsPanel({
     !metricsInvalid &&
     !hasCustom &&
     runnablePairs(options.thresholds, pairs, metrics).length === 0;
+  // The model's depths run from 0 at the surface downwards (negative).
+  // Positive values match no depth at all and quietly give 0 km2 zones,
+  // so they're blocked here; min > max is rejected by the backend anyway.
+  const depthError =
+    depthMin > 0 || depthMax > 0
+      ? "Depths must be negative (below the surface)."
+      : depthMin > depthMax
+        ? "Depth min must be smaller than Depth max."
+        : null;
   const splPeakInvalid = !(splPeak > 0);
   const selSingleStrikeInvalid = !(selSingleStrike > 0);
   const nStrikesPerPileInvalid = !(nStrikesPerPile > 0);
@@ -712,7 +772,7 @@ function NoiseImpactParamsPanel({
     nStrikesPerPileInvalid ||
     nPilesInvalid ||
     assessmentPeriodInvalid;
-  const speciesInvalid = pairsInvalid || metricsInvalid;
+  const speciesInvalid = pairsInvalid || metricsInvalid || depthError !== null;
   const tabInvalid: Record<Tab, boolean> = {
     scenario: siteInvalid,
     source: pileInvalid,
@@ -724,6 +784,7 @@ function NoiseImpactParamsPanel({
   if (siteInvalid) missing.push("a site");
   if (pairsInvalid) missing.push("a threshold");
   if (metricsInvalid) missing.push("a metric");
+  if (depthError) missing.push("a valid depth range");
   if (splPeakInvalid) missing.push("a peak SPL");
   if (selSingleStrikeInvalid) missing.push("an SEL/strike");
   if (nStrikesPerPileInvalid) missing.push("strikes/pile");
@@ -830,51 +891,67 @@ function NoiseImpactParamsPanel({
 
         {tab === "species" && (
           <div className="flex flex-col gap-2">
-            <ThresholdGrid
-              options={options}
-              info={info}
-              metrics={metrics}
-              pairs={pairs}
-              setPairs={setPairs}
-            />
+            {/* Depth applies to both the grid and custom thresholds, so it
+                comes first. Metrics only changes the grid, so it sits right
+                under it; custom thresholds are the optional extra, last. */}
+            <div>
+              <div className="flex items-center gap-2 py-1.5">
+                <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300 flex-1">
+                  Exposure depth
+                </span>
+              </div>
+              <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
+                Noise is averaged over this depth range.
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <NumberField
+                  label="Depth min (m)"
+                  value={depthMin}
+                  onChange={setDepthMin}
+                  step={0.1}
+                  small
+                />
+                <NumberField
+                  label="Depth max (m)"
+                  value={depthMax}
+                  onChange={setDepthMax}
+                  step={0.1}
+                  small
+                />
+              </div>
+              {depthError && (
+                <span className="block pt-1.5 text-[11px] text-red-600 dark:text-red-400">
+                  {depthError}
+                </span>
+              )}
+            </div>
             <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <CustomThresholds
-                metricOptions={options.metrics}
-                customThresholds={customThresholds}
-                setCustomThresholds={setCustomThresholds}
+              <ThresholdGrid
+                options={options}
+                info={info}
+                metrics={metrics}
+                pairs={pairs}
+                setPairs={setPairs}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <NumberField
-                label="Depth min (m)"
-                value={depthMin}
-                onChange={setDepthMin}
-                step={0.1}
-                small
-              />
-              <NumberField
-                label="Depth max (m)"
-                value={depthMax}
-                onChange={setDepthMax}
-                step={0.1}
-                small
-              />
-            </div>
-
             <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <CollapsibleHeader
-                open={advancedOpen}
-                onToggle={() => setAdvancedOpen((p) => !p)}
-                label="Advanced parameters"
-              />
-              {advancedOpen && (
+              <div className="flex items-center gap-2 py-1.5">
+                <SectionToggle
+                  open={metricsOpen}
+                  onToggle={() => setMetricsOpen((p) => !p)}
+                  title="Metrics"
+                />
+                <span className="text-[11px] text-[#7c8ca2]">
+                  {metrics.length}/{options.metrics.length}
+                </span>
+              </div>
+              {metricsOpen && (
                 <>
                   <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1">
                     Both metrics run. The larger zone is shown, the smaller is
                     hidden in the results. Untick one to run only the other.
                   </p>
                   <CheckboxList
-                    label="Metrics"
                     options={options.metrics}
                     selected={metrics}
                     onToggle={onToggleMetric}
@@ -882,6 +959,15 @@ function NoiseImpactParamsPanel({
                   />
                 </>
               )}
+            </div>
+            <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <CustomThresholds
+                metricOptions={options.metrics}
+                customThresholds={customThresholds}
+                setCustomThresholds={setCustomThresholds}
+                open={customOpen}
+                onToggle={() => setCustomOpen((p) => !p)}
+              />
             </div>
           </div>
         )}
