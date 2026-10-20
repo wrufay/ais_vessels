@@ -200,12 +200,17 @@ function ThresholdGrid({
   metrics,
   pairs,
   setPairs,
+  open,
+  onToggle,
 }: {
   options: NoiseImpactOptions;
   info: NoiseImpactInfo;
   metrics: string[];
   pairs: string[];
   setPairs: (v: string[]) => void;
+  // Open by default; the count keeps picks visible while folded.
+  open: boolean;
+  onToggle: () => void;
 }) {
   const impacts = options.impact_types;
   const groups = groupHearingGroups(options.hearing_groups);
@@ -312,9 +317,16 @@ function ThresholdGrid({
   return (
     <div>
       <div className="flex items-center gap-2 py-1.5">
-        <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300 flex-1">
-          Thresholds
-        </span>
+        <SectionToggle
+          open={open}
+          onToggle={onToggle}
+          title="Thresholds"
+          count={
+            pairs.length > 0 && (
+              <span className="font-normal text-[#7c8ca2]"> ({pairs.length})</span>
+            )
+          }
+        />
         {pairs.length > 0 && (
           <button
             type="button"
@@ -325,74 +337,78 @@ function ThresholdGrid({
           </button>
         )}
       </div>
-      <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1">
-        Click a row or column name to select all.
-      </p>
-      <table className="w-full table-fixed border-collapse">
-        <colgroup>
-          <col className="w-[36%]" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th />
-            {impacts.map((it) => (
-              <th key={it} className="px-0.5 py-1 font-normal">
-                <button
-                  type="button"
-                  onClick={() =>
-                    toggleAll(options.hearing_groups.map((hg) => [hg, it]))
-                  }
-                  title={hoverText(info.impact_types[it], pickAll)}
-                  className="text-[10px] text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
-                >
-                  {it}
-                </button>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {groups.map((g) => [
-            <tr key={g.label}>
-              <td
-                colSpan={impacts.length + 1}
-                className="pt-2 pb-0.5 text-[10px] text-[#7c8ca2]"
-              >
-                {g.label}
-              </td>
-            </tr>,
-            ...g.options.map((hg) => (
-              <tr key={hg} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                <th className="py-1 pl-1 text-left font-normal">
-                  <button
-                    type="button"
-                    onClick={() => toggleAll(impacts.map((it) => [hg, it]))}
-                    title={hoverText(info.hearing_groups[hg], pickAll)}
-                    className="block w-full text-left text-xs leading-tight break-words text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
-                  >
-                    {hg.replace(/^Fish - /, "")}
-                  </button>
-                </th>
+      {open && (
+        <>
+          <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1">
+            Click a row or column name to select all.
+          </p>
+          <table className="w-full table-fixed border-collapse">
+            <colgroup>
+              <col className="w-[36%]" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th />
                 {impacts.map((it) => (
-                  <td key={it} className="py-1 text-center align-middle">
-                    {cell(hg, it)}
-                  </td>
+                  <th key={it} className="px-0.5 py-1 font-normal">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleAll(options.hearing_groups.map((hg) => [hg, it]))
+                      }
+                      title={hoverText(info.impact_types[it], pickAll)}
+                      className="text-[10px] text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
+                    >
+                      {it}
+                    </button>
+                  </th>
                 ))}
               </tr>
-            )),
-          ])}
-        </tbody>
-      </table>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-[10px] text-[#7c8ca2]">
-        <span>– No threshold</span>
-        {anyGreyed && (
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-300 dark:bg-slate-600" />
-            Not for this metric
-          </span>
-        )}
-        <span>Hover for details</span>
-      </div>
+            </thead>
+            <tbody>
+              {groups.map((g) => [
+                <tr key={g.label}>
+                  <td
+                    colSpan={impacts.length + 1}
+                    className="pt-2 pb-0.5 text-[10px] text-[#7c8ca2]"
+                  >
+                    {g.label}
+                  </td>
+                </tr>,
+                ...g.options.map((hg) => (
+                  <tr key={hg} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <th className="py-1 pl-1 text-left font-normal">
+                      <button
+                        type="button"
+                        onClick={() => toggleAll(impacts.map((it) => [hg, it]))}
+                        title={hoverText(info.hearing_groups[hg], pickAll)}
+                        className="block w-full text-left text-xs leading-tight break-words text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
+                      >
+                        {hg.replace(/^Fish - /, "")}
+                      </button>
+                    </th>
+                    {impacts.map((it) => (
+                      <td key={it} className="py-1 text-center align-middle">
+                        {cell(hg, it)}
+                      </td>
+                    ))}
+                  </tr>
+                )),
+              ])}
+            </tbody>
+          </table>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-[10px] text-[#7c8ca2]">
+            <span>– No threshold</span>
+            {anyGreyed && (
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-300 dark:bg-slate-600" />
+                Not for this metric
+              </span>
+            )}
+            <span>Hover for details</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -408,9 +424,9 @@ const METRIC_LABELS: Record<string, string> = {
   SPL_peak: "Peak",
 };
 
-// Foldable section title (Metrics, Custom thresholds) -- same 13px bold as
-// the Exposure depth / Thresholds titles, plus the fold arrow. Not the shared
-// CollapsibleHeader, which is a smaller sub-section style used app-wide.
+// Foldable section title for the Species tab's four sections (13px bold
+// plus the fold arrow). Not the shared CollapsibleHeader, which is a
+// smaller sub-section style used app-wide.
 function SectionToggle({
   open,
   onToggle,
@@ -751,6 +767,8 @@ function NoiseImpactParamsPanel({
   // the normal case -- collapsed by default so it reads as an advanced/
   // rarely-touched override rather than a peer of hearing groups/impact
   // types.
+  const [depthOpen, setDepthOpen] = useState(true);
+  const [thresholdsOpen, setThresholdsOpen] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
 
@@ -915,9 +933,11 @@ function NoiseImpactParamsPanel({
                 under it; custom thresholds are the optional extra, last. */}
             <div>
               <div className="flex items-center gap-2 py-1.5">
-                <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300 flex-1">
-                  Exposure depth
-                </span>
+                <SectionToggle
+                  open={depthOpen}
+                  onToggle={() => setDepthOpen((p) => !p)}
+                  title="Exposure depth"
+                />
                 {(depthMin !== DEFAULT_DEPTH_MIN || depthMax !== DEFAULT_DEPTH_MAX) && (
                   <button
                     type="button"
@@ -931,25 +951,30 @@ function NoiseImpactParamsPanel({
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
-                Noise is averaged over this depth range.
-              </p>
-              <div className="grid grid-cols-2 gap-2.5">
-                <NumberField
-                  label="Depth min (m)"
-                  value={depthMin}
-                  onChange={setDepthMin}
-                  step={0.1}
-                  small
-                />
-                <NumberField
-                  label="Depth max (m)"
-                  value={depthMax}
-                  onChange={setDepthMax}
-                  step={0.1}
-                  small
-                />
-              </div>
+              {depthOpen && (
+                <>
+                  <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
+                    Noise is averaged over this depth range.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <NumberField
+                      label="Depth min (m)"
+                      value={depthMin}
+                      onChange={setDepthMin}
+                      step={0.1}
+                      small
+                    />
+                    <NumberField
+                      label="Depth max (m)"
+                      value={depthMax}
+                      onChange={setDepthMax}
+                      step={0.1}
+                      small
+                    />
+                  </div>
+                </>
+              )}
+              {/* Outside the fold so a bad value can't hide. */}
               {depthError && (
                 <span className="block pt-1.5 text-[11px] text-red-600 dark:text-red-400">
                   {depthError}
@@ -963,6 +988,8 @@ function NoiseImpactParamsPanel({
                 metrics={metrics}
                 pairs={pairs}
                 setPairs={setPairs}
+                open={thresholdsOpen}
+                onToggle={() => setThresholdsOpen((p) => !p)}
               />
             </div>
             <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">
