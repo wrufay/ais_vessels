@@ -317,13 +317,15 @@ function ThresholdGrid({
             <th />
             {impacts.map((it) => (
               <th key={it} className="px-0.5 py-1 font-normal">
+                {/* Grey halfway between slate-500 and slate-400, so it sits
+                    between the row names and the group labels (both themes). */}
                 <button
                   type="button"
                   onClick={() =>
                     toggleAll(options.hearing_groups.map((hg) => [hg, it]))
                   }
                   title={hoverText(info.impact_types[it], pickAll)}
-                  className="text-[10px] font-medium text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
+                  className="text-[10px] text-[#7c8ca2] hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
                 >
                   {it}
                 </button>
@@ -348,7 +350,7 @@ function ThresholdGrid({
                     type="button"
                     onClick={() => toggleAll(impacts.map((it) => [hg, it]))}
                     title={hoverText(info.hearing_groups[hg], pickAll)}
-                    className="block w-full text-left text-xs leading-tight break-words text-slate-600 dark:text-slate-300 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
+                    className="block w-full text-left text-xs leading-tight break-words text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
                   >
                     {hg.replace(/^Fish - /, "")}
                   </button>
