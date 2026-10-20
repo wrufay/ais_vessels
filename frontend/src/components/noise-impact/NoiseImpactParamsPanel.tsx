@@ -368,11 +368,13 @@ function ThresholdGrid({
               </tr>
             </thead>
             <tbody>
-              {groups.map((g) => [
+              {groups.map((g, gi) => [
                 <tr key={g.label}>
+                  {/* No top gap on the first group, so it sits right under
+                      the column headings; later groups keep it as a divider. */}
                   <td
                     colSpan={impacts.length + 1}
-                    className="pt-2 pb-0.5 text-[10px] text-[#7c8ca2]"
+                    className={`${gi === 0 ? "pt-0" : "pt-2"} pb-0.5 text-[10px] text-[#7c8ca2]`}
                   >
                     {g.label}
                   </td>
