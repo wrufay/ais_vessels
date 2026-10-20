@@ -210,6 +210,13 @@ function ThresholdGrid({
     ].join(", ");
   const available = (hg: string, it: string) =>
     pairMetrics(options.thresholds, hg, it).some((m) => metrics.includes(m));
+  // Grey cells only appear once a metric is unticked -- the key below only
+  // explains them then.
+  const anyGreyed = options.hearing_groups.some((hg) =>
+    impacts.some(
+      (it) => pairMetrics(options.thresholds, hg, it).length > 0 && !available(hg, it)
+    )
+  );
 
   // Pick every available cell in `cells`, or unpick them if all are picked.
   function toggleAll(cells: [string, string][]) {
@@ -241,7 +248,7 @@ function ThresholdGrid({
     if (defined.length === 0) {
       return (
         <span
-          title={`${it} is undefined for ${hg}${cite}.`}
+          title={`No ${it} threshold for ${hg}${cite}.`}
           className="inline-block w-5 text-xs text-slate-400 dark:text-slate-500 cursor-help"
         >
           –
@@ -251,7 +258,7 @@ function ThresholdGrid({
     if (!available(hg, it)) {
       return (
         <span
-          title={`${it} ${metrics.join(" and ")} is undefined for ${hg}${cite}.`}
+          title={`No ${it} ${metrics.join(" and ")} threshold for ${hg}${cite}.`}
           aria-disabled="true"
           className="inline-block align-middle w-5 h-5 rounded bg-slate-300 dark:bg-slate-600 cursor-not-allowed"
         />
@@ -282,7 +289,7 @@ function ThresholdGrid({
         </button>
         {missing.length > 0 && (
           <span
-            title={`${it} ${missing.join(" and ")} is undefined for ${hg}${cite}, so only ${only.join(" and ")} runs.`}
+            title={`No ${it} ${missing.join(" and ")} threshold for ${hg}${cite}, so only ${only.join(" and ")} runs.`}
             className="block whitespace-nowrap text-[9px] leading-tight text-slate-500 dark:text-slate-400 cursor-help"
           >
             {only.map((m) => m.split("_")[0]).join("/")} only
@@ -367,12 +374,14 @@ function ThresholdGrid({
         </tbody>
       </table>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-[10px] text-[#7c8ca2]">
-        <span>– undefined</span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-300 dark:bg-slate-600" />
-          undefined for the ticked metric
-        </span>
-        <span>Hover to see why</span>
+        <span>– No threshold</span>
+        {anyGreyed && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-300 dark:bg-slate-600" />
+            Not for this metric
+          </span>
+        )}
+        <span>Hover for details</span>
       </div>
     </div>
   );
