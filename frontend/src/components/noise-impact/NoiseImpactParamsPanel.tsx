@@ -484,7 +484,7 @@ function CustomThresholds({
             type="text"
             value={name}
             maxLength={CUSTOM_NAME_MAX_LEN}
-            placeholder="Right whale"
+            placeholder="e.g. whale"
             onChange={(e) => {
               setName(e.target.value);
               setError(null);
@@ -516,7 +516,7 @@ function CustomThresholds({
               type="number"
               value={db}
               step={0.1}
-              placeholder="162"
+              placeholder="e.g. 162.5"
               onChange={(e) => {
                 setDb(e.target.value);
                 setError(null);
