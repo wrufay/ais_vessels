@@ -306,7 +306,7 @@ function ThresholdGrid({
         )}
       </div>
       <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1">
-        Click a row or column name to pick all of it.
+        Click a row or column name to select all.
       </p>
       <table className="w-full table-fixed border-collapse">
         <colgroup>
@@ -444,8 +444,7 @@ function CustomThresholds({
         )}
       </div>
       <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
-        Compared with noise without any hearing adjustment. Include any
-        adjustment in the dB value. Not affected by the Metrics setting.
+        No hearing adjustment is applied. Not affected by the Metrics setting.
       </p>
       {customThresholds.length > 0 && (
         <ul className="flex flex-col gap-1 pb-2">
@@ -828,10 +827,6 @@ function NoiseImpactParamsPanel({
 
         {tab === "species" && (
           <div className="flex flex-col gap-2">
-            <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
-              Choose species to view.
-            </p>
-            
             <ThresholdGrid
               options={options}
               info={info}
@@ -870,8 +865,8 @@ function NoiseImpactParamsPanel({
               {advancedOpen && (
                 <>
                   <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1">
-                    By default, both metrics run and only the larger impact zone
-                    is shown per hearing group. Override this rule by selecting one or both.
+                    Both metrics run. The larger zone is shown, the smaller is
+                    hidden in the results. Untick one to run only the other.
                   </p>
                   <CheckboxList
                     label="Metrics"
