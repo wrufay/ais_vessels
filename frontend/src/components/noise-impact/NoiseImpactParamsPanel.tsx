@@ -284,7 +284,7 @@ function ThresholdGrid({
     const missing = metrics.filter((m) => !defined.includes(m));
     const only = defined.filter((m) => metrics.includes(m));
     return (
-      <>
+      <span className="relative inline-block align-middle">
         <button
           type="button"
           onClick={() => toggleOne(key)}
@@ -302,15 +302,17 @@ function ThresholdGrid({
             </svg>
           )}
         </button>
+        {/* Hangs below the box (absolute) so the box stays centred in the
+            row, level with the cells that have no label. */}
         {missing.length > 0 && (
           <span
             title={`No ${it} ${missing.join(" and ")} threshold for ${hg}${cite}, so only ${only.join(" and ")} runs.`}
-            className="block whitespace-nowrap text-[9px] leading-tight text-slate-500 dark:text-slate-400 cursor-help"
+            className="absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap text-[9px] leading-tight text-slate-500 dark:text-slate-400 cursor-help"
           >
             {only.map((m) => m.split("_")[0]).join("/")} only
           </span>
         )}
-      </>
+      </span>
     );
   }
 
@@ -377,18 +379,18 @@ function ThresholdGrid({
                 </tr>,
                 ...g.options.map((hg) => (
                   <tr key={hg} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <th className="py-1 pl-1 text-left font-normal">
+                    <th className="py-1.5 pl-1 text-left font-normal">
                       <button
                         type="button"
                         onClick={() => toggleAll(impacts.map((it) => [hg, it]))}
                         title={hoverText(info.hearing_groups[hg], pickAll)}
-                        className="block w-full text-left text-xs leading-tight break-words text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
+                        className="block w-full text-left text-xs leading-snug break-words text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
                       >
                         {hg.replace(/^Fish - /, "")}
                       </button>
                     </th>
                     {impacts.map((it) => (
-                      <td key={it} className="py-1 text-center align-middle">
+                      <td key={it} className="py-1.5 text-center align-middle">
                         {cell(hg, it)}
                       </td>
                     ))}
