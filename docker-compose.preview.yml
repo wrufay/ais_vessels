@@ -1,0 +1,44 @@
+# Preview copy of the site, shown on port 8888 next to the live site on
+# port 80, so new versions can be compared before they go live.
+#
+# Run it from its own clone, in a folder NOT named vessel-tracks (e.g.
+# /home/shared/vessel-tracks-preview) -- compose names the project after the
+# folder, and a second "vessel-tracks" project would replace the live
+# containers:
+#
+#   docker compose -f docker-compose.preview.yml up -d --build
+#
+# There is no db service here: the preview uses the live database. The
+# backend reaches it through the host's published port 5432 rather than by
+# joining the live compose network, because on that network the live
+# frontend's nginx would also see this container as "backend" and send some
+# live requests to it.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5432/ais
+
+      # password for the /feedback-inbox page -- set it in .env (gitignored)
+      - FEEDBACK_INBOX_PASSWORD=${FEEDBACK_INBOX_PASSWORD:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # the noise GeoTIFFs live only in the live folder (most are not in
+      # git), so read them from there rather than keeping a second copy
+      - /home/shared/vessel-tracks/pipeline/noise_data:/app/pipeline/noise_data:ro
+      # this clone's own copy of Wilfried's package (see docker-compose.yml)
+      - ./noise_impact_code:/app/noise_impact_code:ro
+      - /home/shared/pileDrivingSoundPropagation:/home/shared/pileDrivingSoundPropagation:ro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${PREVIEW_PORT:-8888}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
