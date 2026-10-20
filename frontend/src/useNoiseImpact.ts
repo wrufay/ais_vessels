@@ -113,6 +113,12 @@ export function runnablePairs(
 // a fixed source location (see analysis/noise_impact.py's module
 // docstring), so there's no map interaction here to coordinate with
 // measuring/drawing.
+// Negative metres below the surface (0 at the surface) -- matches the
+// underlying model's own depth coordinate convention, see main.py's
+// NoiseImpactRequest.depth_range. Exported for the panel's depth Reset.
+export const DEFAULT_DEPTH_MIN = -40;
+export const DEFAULT_DEPTH_MAX = -0.01;
+
 export function useNoiseImpact(apiBase: string) {
   const [showImpactsPanel, setShowImpactsPanel] = useState(false);
   const [showParamsPanel, setShowParamsPanel] = useState(false);
@@ -152,11 +158,6 @@ export function useNoiseImpact(apiBase: string) {
   const [pairs, setPairs] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<string[]>([]);
   const [customThresholds, setCustomThresholds] = useState<NoiseImpactCustomThreshold[]>([]);
-  // Negative metres below the surface (0 at the surface) -- matches the
-  // underlying model's own depth coordinate convention, see main.py's
-  // NoiseImpactRequest.depth_range.
-  const DEFAULT_DEPTH_MIN = -40;
-  const DEFAULT_DEPTH_MAX = -0.01;
   const DEFAULT_SPL_PEAK = 220;
   const DEFAULT_SEL_SINGLE_STRIKE = 200;
   const DEFAULT_N_STRIKES_PER_PILE = 5000;

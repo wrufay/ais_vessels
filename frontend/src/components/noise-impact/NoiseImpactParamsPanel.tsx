@@ -1,7 +1,13 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import ClosePanelBtn from "../ClosePanelBtn";
 import PanelHeader from "../PanelHeader";
-import { pairKey, pairMetrics, runnablePairs } from "../../useNoiseImpact";
+import {
+  DEFAULT_DEPTH_MAX,
+  DEFAULT_DEPTH_MIN,
+  pairKey,
+  pairMetrics,
+  runnablePairs,
+} from "../../useNoiseImpact";
 import type {
   NoiseImpactSite,
   NoiseImpactOptions,
@@ -35,6 +41,10 @@ const inputBaseClass =
 const inputClass = `text-sm ${inputBaseClass}`;
 // Custom thresholds form: same size as the labels around it.
 const smallInputClass = `text-xs ${inputBaseClass}`;
+// Small bubble for section actions (Clear, Reset) -- same look as the
+// Analyse / All traffic / Clear buttons in the icon bar.
+const pillButtonClass =
+  "px-2 py-0.5 rounded-full border border-slate-300 dark:border-slate-600 text-[10px] text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95";
 
 // "Something's still required" marker for the summary line at the bottom
 // -- individual fields/categories just carry a plain dot instead (see the
@@ -309,7 +319,7 @@ function ThresholdGrid({
           <button
             type="button"
             onClick={() => setPairs([])}
-            className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
+            className={pillButtonClass}
           >
             Clear
           </button>
@@ -492,7 +502,7 @@ function CustomThresholds({
           <button
             type="button"
             onClick={() => setCustomThresholds([])}
-            className="text-[10px] text-[#3d5a80] dark:text-[#98c1d9] hover:underline"
+            className={pillButtonClass}
           >
             Clear
           </button>
@@ -908,6 +918,18 @@ function NoiseImpactParamsPanel({
                 <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300 flex-1">
                   Exposure depth
                 </span>
+                {(depthMin !== DEFAULT_DEPTH_MIN || depthMax !== DEFAULT_DEPTH_MAX) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDepthMin(DEFAULT_DEPTH_MIN);
+                      setDepthMax(DEFAULT_DEPTH_MAX);
+                    }}
+                    className={pillButtonClass}
+                  >
+                    Reset
+                  </button>
+                )}
               </div>
               <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
                 Noise is averaged over this depth range.
