@@ -110,7 +110,7 @@ function CheckboxList({
             Unselect all
           </button>
         )}
-        <span className="text-[11px] text-slate-400 dark:text-slate-500">
+        <span className="text-[11px] text-[#7c8ca2]">
           {selected.length}/{options.length}
         </span>
       </div>
@@ -305,7 +305,7 @@ function ThresholdGrid({
           </button>
         )}
       </div>
-      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pb-1">
+      <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1">
         Click a row or column name to pick all of it.
       </p>
       <table className="w-full table-fixed border-collapse">
@@ -317,15 +317,13 @@ function ThresholdGrid({
             <th />
             {impacts.map((it) => (
               <th key={it} className="px-0.5 py-1 font-normal">
-                {/* Grey halfway between slate-500 and slate-400, so it sits
-                    between the row names and the group labels (both themes). */}
                 <button
                   type="button"
                   onClick={() =>
                     toggleAll(options.hearing_groups.map((hg) => [hg, it]))
                   }
                   title={hoverText(info.impact_types[it], pickAll)}
-                  className="text-[10px] text-[#7c8ca2] hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
+                  className="text-[10px] text-slate-500 dark:text-slate-400 hover:text-[#3d5a80] dark:hover:text-[#98c1d9]"
                 >
                   {it}
                 </button>
@@ -338,7 +336,7 @@ function ThresholdGrid({
             <tr key={g.label}>
               <td
                 colSpan={impacts.length + 1}
-                className="pt-2 pb-0.5 text-[10px] text-slate-400 dark:text-slate-500"
+                className="pt-2 pb-0.5 text-[10px] text-[#7c8ca2]"
               >
                 {g.label}
               </td>
@@ -365,7 +363,7 @@ function ThresholdGrid({
           ])}
         </tbody>
       </table>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-[10px] text-slate-400 dark:text-slate-500">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-[10px] text-[#7c8ca2]">
         <span>– undefined</span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-300 dark:bg-slate-600" />
@@ -445,7 +443,7 @@ function CustomThresholds({
           </button>
         )}
       </div>
-      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pb-1.5">
+      <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
         Compared with noise without any hearing adjustment. Include any
         adjustment in the dB value. Not affected by the Metrics setting.
       </p>
@@ -460,7 +458,7 @@ function CustomThresholds({
                 <span className="block break-words text-slate-700 dark:text-slate-200">
                   {t.name}
                 </span>
-                <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                <span className="block text-[11px] text-[#7c8ca2]">
                   {label(t.metric)} ({t.metric}) · {t.threshold_db} dB
                 </span>
               </span>
@@ -761,7 +759,7 @@ function NoiseImpactParamsPanel({
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
         {tab === "scenario" && (
           <div className="flex flex-col gap-3">
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
               Select the site.
             </p>
             <label className="flex flex-col gap-1">
@@ -784,7 +782,7 @@ function NoiseImpactParamsPanel({
               </select>
             </label>
             {siteMeta && (
-              <div className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
+              <div className="text-xs text-[#7c8ca2] leading-relaxed">
                 Source: {siteMeta.src_lat.toFixed(3)},{" "}
                 {siteMeta.src_lon.toFixed(3)}
                 <br />
@@ -799,7 +797,7 @@ function NoiseImpactParamsPanel({
 
         {tab === "source" && (
           <div className="flex flex-col gap-2.5">
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
               Define pile driving source properties.
             </p>
             <NumberField
@@ -830,7 +828,7 @@ function NoiseImpactParamsPanel({
 
         {tab === "species" && (
           <div className="flex flex-col gap-2">
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
               Choose species to view.
             </p>
             
@@ -871,7 +869,7 @@ function NoiseImpactParamsPanel({
               />
               {advancedOpen && (
                 <>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pb-1">
+                  <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1">
                     By default, both metrics run and only the larger impact zone
                     is shown per hearing group. Override this rule by selecting one or both.
                   </p>
