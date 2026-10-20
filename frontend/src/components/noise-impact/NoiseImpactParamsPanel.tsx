@@ -544,11 +544,14 @@ function NumberField({
   value,
   onChange,
   step,
+  small,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   step?: number;
+  // 12px text to match its label (see smallInputClass).
+  small?: boolean;
 }) {
   // The box keeps its own raw text so it can sit empty or half-typed (e.g.
   // "" or "-") mid-edit -- feeding Number(e.target.value) straight back as
@@ -590,7 +593,7 @@ function NumberField({
             onChange(valueBeforeEdit);
           }
         }}
-        className={inputClass}
+        className={small ? smallInputClass : inputClass}
       />
     </label>
   );
@@ -847,12 +850,14 @@ function NoiseImpactParamsPanel({
                 value={depthMin}
                 onChange={setDepthMin}
                 step={0.1}
+                small
               />
               <NumberField
                 label="Depth max (m)"
                 value={depthMax}
                 onChange={setDepthMax}
                 step={0.1}
+                small
               />
             </div>
 
