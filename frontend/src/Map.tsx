@@ -238,9 +238,12 @@ function ShipMap() {
     nStrikesPerPile: noiseImpactNStrikesPerPile, setNStrikesPerPile: setNoiseImpactNStrikesPerPile,
     nPiles: noiseImpactNPiles,
     assessmentPeriodHours: noiseImpactAssessmentPeriodHours,
+    mitigationSystem: noiseImpactMitigationSystem, setMitigationSystem: setNoiseImpactMitigationSystem,
+    mitigationLevel: noiseImpactMitigationLevel, setMitigationLevel: setNoiseImpactMitigationLevel,
     running: noiseImpactRunning, error: noiseImpactError, result: noiseImpactResult,
     resultSite: noiseImpactResultSite,
     visibleZoneKeys: noiseImpactVisibleZoneKeys, toggleZoneVisibility: toggleNoiseImpactZoneVisibility,
+    visibleWithoutKeys: noiseImpactVisibleWithoutKeys, toggleWithoutVisibility: toggleNoiseImpactWithoutVisibility,
     undefinedCombos: noiseImpactUndefinedCombos,
     handleRun: handleRunNoiseImpact,
     resetParams: resetNoiseImpactParams,
@@ -492,21 +495,29 @@ function ShipMap() {
     if (!noiseImpactResult) return;
     noiseImpactResult.zones.forEach((z) => {
       const key = zoneKey(z);
-      if (!z.geometry || !noiseImpactVisibleZoneKeys.has(key)) return;
-      const geom = fmt.readGeometry(z.geometry, {
-        dataProjection: "EPSG:4326",
-        featureProjection: "EPSG:3857",
-      }) as OLPolygon;
-      const f = new Feature({
-        geometry: geom,
-        hearingGroup: z.hearing_group,
-        impact: z.impact,
-        metric: z.metric,
-        customIndex: z.custom_index,
-        thresholdDb: z.threshold_db,
-        areaKm2: z.area_km2,
+      // The zone itself, and/or its "without mitigation" outline (thin, no
+      // fill -- see the layer's style callback), each toggled on its own.
+      const shapes = [
+        { geometry: noiseImpactVisibleZoneKeys.has(key) ? z.geometry : null, isWithout: false },
+        { geometry: noiseImpactVisibleWithoutKeys.has(key) ? z.without?.geometry : null, isWithout: true },
+      ];
+      shapes.forEach(({ geometry, isWithout }) => {
+        if (!geometry) return;
+        const geom = fmt.readGeometry(geometry, {
+          dataProjection: "EPSG:4326",
+          featureProjection: "EPSG:3857",
+        }) as OLPolygon;
+        const f = new Feature({
+          geometry: geom,
+          hearingGroup: z.hearing_group,
+          impact: z.impact,
+          metric: z.metric,
+          customIndex: z.custom_index,
+          thresholdDb: z.threshold_db,
+          isWithout,
+        });
+        noiseImpactSourceRef.current.addFeature(f);
       });
-      noiseImpactSourceRef.current.addFeature(f);
     });
 
     if (!mapObj.current) return;
@@ -550,7 +561,7 @@ function ShipMap() {
         new Feature({ geometry: weaGeom, isWeaOutline: true })
       );
     }
-  }, [noiseImpactResult, noiseImpactVisibleZoneKeys, noiseImpactResultSite]);
+  }, [noiseImpactResult, noiseImpactVisibleZoneKeys, noiseImpactVisibleWithoutKeys, noiseImpactResultSite]);
 
   // "Impact mode": while the Impacts panel is open, show its zone layer's
   // polygons (they stay populated in the source underneath, see above --
@@ -820,6 +831,14 @@ function ShipMap() {
                 feature.get("metric") as string,
                 feature.get("customIndex") as number | null
               );
+              if (feature.get("isWithout")) {
+                // "Without mitigation" outline: same colour and dash as
+                // its zone, but thin, faint and unfilled, under the zones.
+                return new Style({
+                  stroke: new Stroke({ color: `${color}99`, width: 1.25, lineDash: IMPACT_DASH[impact] }),
+                  zIndex: -0.5,
+                });
+              }
               return new Style({
                 stroke: new Stroke({ color, width: 2, lineDash: IMPACT_DASH[impact] }),
                 // 0x38 (~22%), not the old 0x22 (~13%) -- the lighter
@@ -1495,6 +1514,8 @@ function ShipMap() {
           result={noiseImpactResult}
           visibleZoneKeys={noiseImpactVisibleZoneKeys}
           onToggleZone={toggleNoiseImpactZoneVisibility}
+          visibleWithoutKeys={noiseImpactVisibleWithoutKeys}
+          onToggleWithout={toggleNoiseImpactWithoutVisibility}
           siteName={noiseImpactResultSite}
           siteMeta={noiseImpactSites[noiseImpactResultSite]}
           undefinedCombos={noiseImpactUndefinedCombos}
@@ -1580,6 +1601,10 @@ function ShipMap() {
           setNStrikesPerPile={setNoiseImpactNStrikesPerPile}
           nPiles={noiseImpactNPiles}
           assessmentPeriodHours={noiseImpactAssessmentPeriodHours}
+          mitigationSystem={noiseImpactMitigationSystem}
+          setMitigationSystem={setNoiseImpactMitigationSystem}
+          mitigationLevel={noiseImpactMitigationLevel}
+          setMitigationLevel={setNoiseImpactMitigationLevel}
           running={noiseImpactRunning}
           error={noiseImpactError}
           onRun={handleRunNoiseImpact}

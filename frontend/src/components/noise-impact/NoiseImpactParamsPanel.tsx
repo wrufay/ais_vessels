@@ -4,6 +4,7 @@ import PanelHeader from "../PanelHeader";
 import {
   DEFAULT_DEPTH_MAX,
   DEFAULT_DEPTH_MIN,
+  mitigationReductions,
   pairKey,
   pairMetrics,
   runnablePairs,
@@ -13,6 +14,7 @@ import type {
   NoiseImpactOptions,
   NoiseImpactInfo,
   NoiseImpactCustomThreshold,
+  NoiseImpactMitigationSystem,
 } from "../../useNoiseImpact";
 
 const runIcon = (
@@ -628,6 +630,97 @@ function CustomThresholds({
   );
 }
 
+// Noise mitigation (Source tab): pick a system, then a slider sets how well
+// it works, from the low end to the high end of its published ranges. The
+// dB it takes off and the source levels the model will get are shown as
+// the slider moves.
+function MitigationField({
+  systems,
+  system,
+  setSystem,
+  level,
+  setLevel,
+  splPeak,
+  selSingleStrike,
+}: {
+  systems: NoiseImpactMitigationSystem[];
+  system: string;
+  setSystem: (v: string) => void;
+  level: number;
+  setLevel: (v: number) => void;
+  splPeak: number;
+  selSingleStrike: number;
+}) {
+  const picked = systems.find((m) => m.key === system);
+  const cut = picked && mitigationReductions(picked, level);
+  return (
+    <div className="flex flex-col gap-2 mt-2 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          Noise mitigation
+        </span>
+        <select
+          value={system}
+          onChange={(e) => setSystem(e.target.value)}
+          className={`${inputClass} cursor-pointer`}
+        >
+          <option value="">None</option>
+          {systems.map((m) => (
+            <option key={m.key} value={m.key}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {picked && cut && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              Effectiveness
+            </span>
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+              −{cut.il_peak_db} dB peak · −{cut.il_sel_db} dB SEL
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(level * 100)}
+            onChange={(e) => setLevel(Number(e.target.value) / 100)}
+            aria-label="Effectiveness"
+            className="panel-slider w-full"
+          />
+          <div className="flex justify-between text-[11px] text-[#7c8ca2]">
+            <span>
+              Low (−{picked.il_peak_db[0]} / −{picked.il_sel_db[0]})
+            </span>
+            <span>
+              High (−{picked.il_peak_db[1]} / −{picked.il_sel_db[1]})
+            </span>
+          </div>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1.5 leading-relaxed">
+            Model runs with
+            <br />
+            Peak SPL {splPeak - cut.il_peak_db} dB · SEL / strike{" "}
+            {selSingleStrike - cut.il_sel_db} dB
+          </div>
+          {picked.current_sensitive && (
+            <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
+              Bubble curtains work less well in strong currents.
+            </p>
+          )}
+          <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
+            Ranges from published field tests. The slider sets how well the
+            system works at this site.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NumberField({
   label,
   value,
@@ -730,6 +823,10 @@ function NoiseImpactParamsPanel({
   setNStrikesPerPile,
   nPiles,
   assessmentPeriodHours,
+  mitigationSystem,
+  setMitigationSystem,
+  mitigationLevel,
+  setMitigationLevel,
   running,
   error,
   onRun,
@@ -759,6 +856,10 @@ function NoiseImpactParamsPanel({
   setNStrikesPerPile: (v: number) => void;
   nPiles: number;
   assessmentPeriodHours: number;
+  mitigationSystem: string;
+  setMitigationSystem: (v: string) => void;
+  mitigationLevel: number;
+  setMitigationLevel: (v: number) => void;
   running: boolean;
   error: string | null;
   onRun: () => void;
@@ -918,6 +1019,15 @@ function NoiseImpactParamsPanel({
               label="Strikes / pile"
               value={nStrikesPerPile}
               onChange={setNStrikesPerPile}
+            />
+            <MitigationField
+              systems={options.mitigation_systems}
+              system={mitigationSystem}
+              setSystem={setMitigationSystem}
+              level={mitigationLevel}
+              setLevel={setMitigationLevel}
+              splPeak={splPeak}
+              selSingleStrike={selSingleStrike}
             />
             {/* Not user-adjustable yet -- shown so the request's full
                 parameter set isn't hidden, just not editable right now. */}

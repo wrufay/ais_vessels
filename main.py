@@ -416,6 +416,14 @@ class NoiseImpactCustomThreshold(BaseModel):
     threshold_db: float
 
 
+class NoiseImpactMitigation(BaseModel):
+    # system is a key of analysis/noise_impact.py's MITIGATION_SYSTEMS; the
+    # reductions (dB) are checked against its ranges in _validate_mitigation.
+    system: str
+    il_peak_db: float
+    il_sel_db: float
+
+
 class NoiseImpactRequest(BaseModel):
     site: str
     hearing_groups: list[str]
@@ -437,6 +445,8 @@ class NoiseImpactRequest(BaseModel):
     # User-entered thresholds, run alongside the workbook ones (see
     # analysis/noise_impact.py's _run_custom).
     custom_thresholds: list[NoiseImpactCustomThreshold] = []
+    # Noise mitigation system, taken off the source levels; None = none.
+    mitigation: NoiseImpactMitigation | None = None
 
 
 # returns impact zones after running the pile-driving noise-impact model for one site.
@@ -457,6 +467,7 @@ def post_noise_impact_compute(req: NoiseImpactRequest):
             assessment_period_hours=req.assessment_period_hours,
             pairs=req.pairs,
             custom_thresholds=[c.model_dump() for c in req.custom_thresholds],
+            mitigation=req.mitigation.model_dump() if req.mitigation else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -487,6 +498,7 @@ def post_noise_impact_export(req: NoiseImpactExportRequest):
             assessment_period_hours=req.assessment_period_hours,
             pairs=req.pairs,
             custom_thresholds=[c.model_dump() for c in req.custom_thresholds],
+            mitigation=req.mitigation.model_dump() if req.mitigation else None,
             fmt=req.format,
         )
     except ValueError as e:

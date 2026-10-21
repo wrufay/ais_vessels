@@ -17,11 +17,24 @@ export interface NoiseImpactThreshold {
   reference: string;
 }
 
+// A pile-driving noise mitigation system and its published noise
+// reduction ranges in dB, [low, high] -- analysis/noise_impact.py's
+// MITIGATION_SYSTEMS.
+export interface NoiseImpactMitigationSystem {
+  key: string;
+  label: string;
+  il_peak_db: [number, number];
+  il_sel_db: [number, number];
+  // Works less well in strong currents (bubble curtains).
+  current_sensitive: boolean;
+}
+
 export interface NoiseImpactOptions {
   hearing_groups: string[];
   impact_types: string[];
   metrics: string[];
   thresholds: NoiseImpactThreshold[];
+  mitigation_systems: NoiseImpactMitigationSystem[];
 }
 
 // Hover-tooltip text, keyed by the same strings as NoiseImpactOptions --
@@ -32,11 +45,8 @@ export interface NoiseImpactInfo {
   impact_types: Record<string, string>;
 }
 
-export interface NoiseImpactZone {
-  hearing_group: string;
-  impact: string;
-  metric: string;
-  threshold_db: number;
+// A zone's size and outline.
+export interface NoiseImpactZoneShape {
   area_km2: number;
   // Mean/std of the zone boundary's raw per-azimuth distances, in km --
   // same "Radius = mean ± std" convention ns_pile_driving_noise_mapping's
@@ -44,10 +54,21 @@ export interface NoiseImpactZone {
   radius_km: number;
   radius_std_km: number;
   geometry: object | null; // GeoJSON Polygon, or null if the threshold was never exceeded
+}
+
+export interface NoiseImpactZone extends NoiseImpactZoneShape {
+  hearing_group: string;
+  impact: string;
+  metric: string;
+  threshold_db: number;
   // Custom thresholds only (impact "Custom", hearing_group = the user's
   // name): which distinct custom name this is, in order -- picks its colour
   // (see zoneColor). null for workbook thresholds.
   custom_index: number | null;
+  // The same zone with no mitigation, when the run had a mitigation
+  // system (the shape fields above are then the mitigated zone). null
+  // when no system was picked.
+  without: NoiseImpactZoneShape | null;
 }
 
 // A user-entered threshold (Species tab), sent with the run and compared
@@ -58,9 +79,29 @@ export interface NoiseImpactCustomThreshold {
   threshold_db: number;
 }
 
+// What a run's mitigation was (null for none) -- the system's label and
+// the dB taken off peak SPL and SEL / strike.
+export interface NoiseImpactMitigation {
+  system: string;
+  label: string;
+  il_peak_db: number;
+  il_sel_db: number;
+}
+
 export interface NoiseImpactResult {
   source: { lon: number; lat: number };
+  mitigation: NoiseImpactMitigation | null;
   zones: NoiseImpactZone[];
+}
+
+// The dB a mitigation system takes off peak SPL and SEL at a slider
+// level (0 = low end of both ranges, 1 = high end), rounded to 0.5 dB.
+export function mitigationReductions(
+  system: NoiseImpactMitigationSystem,
+  level: number
+): { il_peak_db: number; il_sel_db: number } {
+  const at = ([lo, hi]: [number, number]) => Math.round((lo + (hi - lo) * level) * 2) / 2;
+  return { il_peak_db: at(system.il_peak_db), il_sel_db: at(system.il_sel_db) };
 }
 
 // Download formats -- keys of analysis/noise_impact.py's EXPORT_FORMATS.
@@ -118,6 +159,8 @@ export function runnablePairs(
 // NoiseImpactRequest.depth_range. Exported for the panel's depth Reset.
 export const DEFAULT_DEPTH_MIN = -40;
 export const DEFAULT_DEPTH_MAX = -0.01;
+// Mitigation slider starts in the middle of the system's ranges.
+const DEFAULT_MITIGATION_LEVEL = 0.5;
 
 export function useNoiseImpact(apiBase: string) {
   const [showImpactsPanel, setShowImpactsPanel] = useState(false);
@@ -147,6 +190,7 @@ export function useNoiseImpact(apiBase: string) {
     impact_types: [],
     metrics: [],
     thresholds: [],
+    mitigation_systems: [],
   });
   const [info, setInfo] = useState<NoiseImpactInfo>({
     hearing_groups: {},
@@ -173,6 +217,10 @@ export function useNoiseImpact(apiBase: string) {
   const [nStrikesPerPile, setNStrikesPerPile] = useState(DEFAULT_N_STRIKES_PER_PILE);
   const [nPiles, setNPiles] = useState(DEFAULT_N_PILES);
   const [assessmentPeriodHours, setAssessmentPeriodHours] = useState(DEFAULT_ASSESSMENT_PERIOD_HOURS);
+  // Picked mitigation system's key ("" = none) and the slider's level,
+  // 0-1 (see mitigationReductions).
+  const [mitigationSystem, setMitigationSystem] = useState("");
+  const [mitigationLevel, setMitigationLevel] = useState(DEFAULT_MITIGATION_LEVEL);
 
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,6 +231,9 @@ export function useNoiseImpact(apiBase: string) {
   // changes nothing on screen until the next Run.
   const [resultSite, setResultSite] = useState("");
   const [visibleZoneKeys, setVisibleZoneKeys] = useState<Set<string>>(new Set());
+  // Zones whose "without mitigation" outline is shown too (zoneKey) --
+  // none by default, each turned on from its results row.
+  const [visibleWithoutKeys, setVisibleWithoutKeys] = useState<Set<string>>(new Set());
   // Picked hearing-group/impact-type/metric combos with no matching row
   // in Noise_Impact_Thresholds.xlsx at all -- see the diff in handleRun.
   const [undefinedCombos, setUndefinedCombos] = useState<string[]>([]);
@@ -230,13 +281,19 @@ export function useNoiseImpact(apiBase: string) {
   function toggleMetric(value: string) {
     setMetrics((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   }
-  function toggleZoneVisibility(key: string) {
-    setVisibleZoneKeys((prev) => {
+  function toggleInSet(setter: (f: (prev: Set<string>) => Set<string>) => void, key: string) {
+    setter((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+  }
+  function toggleZoneVisibility(key: string) {
+    toggleInSet(setVisibleZoneKeys, key);
+  }
+  function toggleWithoutVisibility(key: string) {
+    toggleInSet(setVisibleWithoutKeys, key);
   }
 
   // Puts every input field back to its just-loaded state -- site back to
@@ -248,6 +305,7 @@ export function useNoiseImpact(apiBase: string) {
     setResult(null);
     setResultSite("");
     setVisibleZoneKeys(new Set());
+    setVisibleWithoutKeys(new Set());
     setUndefinedCombos([]);
     setError(null);
     setLastRunRequest(null);
@@ -263,6 +321,8 @@ export function useNoiseImpact(apiBase: string) {
     setNStrikesPerPile(DEFAULT_N_STRIKES_PER_PILE);
     setNPiles(DEFAULT_N_PILES);
     setAssessmentPeriodHours(DEFAULT_ASSESSMENT_PERIOD_HOURS);
+    setMitigationSystem("");
+    setMitigationLevel(DEFAULT_MITIGATION_LEVEL);
   }
 
   async function handleRun() {
@@ -287,6 +347,7 @@ export function useNoiseImpact(apiBase: string) {
     // combination of them; `pairs` tells the backend which of those
     // combinations were actually picked (see main.py's NoiseImpactRequest).
     // An empty pairs list (only custom thresholds) skips the workbook run.
+    const mitigation = options.mitigation_systems.find((m) => m.key === mitigationSystem);
     const request = {
       site,
       hearing_groups: [...new Set(runPairs.map(([hg]) => hg))],
@@ -300,6 +361,9 @@ export function useNoiseImpact(apiBase: string) {
       n_piles: nPiles,
       assessment_period_hours: assessmentPeriodHours,
       custom_thresholds: customThresholds,
+      mitigation: mitigation
+        ? { system: mitigation.key, ...mitigationReductions(mitigation, mitigationLevel) }
+        : null,
     };
     try {
       const res = await fetch(`${apiBase}/api/noise-impact/compute`, {
@@ -337,6 +401,7 @@ export function useNoiseImpact(apiBase: string) {
         defaultVisible.add(zoneKey(largest));
       });
       setVisibleZoneKeys(defaultVisible);
+      setVisibleWithoutKeys(new Set());
 
       // A picked hearing-group/impact-type/metric combo with no matching
       // row in Noise_Impact_Thresholds.xlsx never appears in data.zones
@@ -422,9 +487,12 @@ export function useNoiseImpact(apiBase: string) {
     nStrikesPerPile, setNStrikesPerPile,
     nPiles, setNPiles,
     assessmentPeriodHours, setAssessmentPeriodHours,
+    mitigationSystem, setMitigationSystem,
+    mitigationLevel, setMitigationLevel,
     running, error, result, resultSite,
     resetParams,
     visibleZoneKeys, toggleZoneVisibility,
+    visibleWithoutKeys, toggleWithoutVisibility,
     undefinedCombos,
     handleRun,
     exporting, exportError, handleExport,

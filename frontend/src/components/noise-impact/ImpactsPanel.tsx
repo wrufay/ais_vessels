@@ -43,6 +43,8 @@ function ImpactsPanel({
   result,
   visibleZoneKeys,
   onToggleZone,
+  visibleWithoutKeys,
+  onToggleWithout,
   siteName,
   siteMeta,
   undefinedCombos,
@@ -63,6 +65,8 @@ function ImpactsPanel({
   result: NoiseImpactResult | null;
   visibleZoneKeys: Set<string>;
   onToggleZone: (key: string) => void;
+  visibleWithoutKeys: Set<string>;
+  onToggleWithout: (key: string) => void;
   siteName: string;
   siteMeta: NoiseImpactSite | undefined;
   undefinedCombos: string[];
@@ -159,6 +163,7 @@ function ImpactsPanel({
           <NoiseImpactLegend
             result={result}
             visibleZoneKeys={visibleZoneKeys}
+            visibleWithoutKeys={visibleWithoutKeys}
             siteName={siteName}
             siteMeta={siteMeta}
           />
@@ -166,6 +171,12 @@ function ImpactsPanel({
           <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
             Quantitative results
           </div>
+          {result.mitigation && (
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1">
+              {result.mitigation.label} · −{result.mitigation.il_peak_db} dB peak · −
+              {result.mitigation.il_sel_db} dB SEL
+            </div>
+          )}
           {result.zones.length === 0 ? (
             <div className="text-xs text-slate-400 dark:text-slate-500">
               No zones matched the selected hearing groups/impact types/metrics.
@@ -179,8 +190,12 @@ function ImpactsPanel({
               // not-exceeded collapses into one line with a plain
               // checkmark, expandable for the full list, since there's
               // nothing on the map for any of them to toggle anyway.
-              const exceededZones = result.zones.filter((z) => z.geometry);
-              const notExceededZones = result.zones.filter((z) => !z.geometry);
+              // With mitigation, a zone only exceeded without it still gets
+              // a row (faded, "Not exceeded with mitigation") so its
+              // "without" outline can be shown.
+              const exceededZones = result.zones.filter((z) => z.geometry || z.without?.geometry);
+              const notExceededZones = result.zones.filter((z) => !z.geometry && !z.without?.geometry);
+              const anyMitigated = exceededZones.some((z) => z.geometry);
               return (
                 <>
                   {exceededZones.length > 0 && (
@@ -188,16 +203,19 @@ function ImpactsPanel({
                       <ul className="flex flex-col gap-1.5">
                         {exceededZones.map((z) => {
                           const key = zoneKey(z);
-                          const on = visibleZoneKeys.has(key);
+                          const on = visibleZoneKeys.has(key) && !!z.geometry;
+                          const withoutOn = visibleWithoutKeys.has(key);
                           return (
-                            <li key={key}>
+                            <li
+                              key={key}
+                              className={`rounded-md transition ${on ? "bg-slate-50 dark:bg-slate-800" : ""}`}
+                            >
                               <button
                                 onClick={() => onToggleZone(key)}
-                                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition cursor-pointer ${
-                                  on
-                                    ? "bg-slate-50 dark:bg-slate-800"
-                                    : "opacity-50"
-                                }`}
+                                disabled={!z.geometry}
+                                className={`w-full flex items-center gap-2 px-2.5 pt-1.5 text-left transition ${
+                                  z.without ? "pb-0.5" : "pb-1.5"
+                                } ${z.geometry ? "cursor-pointer" : "cursor-default"} ${on ? "" : "opacity-50"}`}
                               >
                                 <span
                                   className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 self-start"
@@ -213,24 +231,68 @@ function ImpactsPanel({
                                     {z.metric} · {z.threshold_db} dB threshold
                                   </span>
                                   <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                                    {formatKmOrTiny(z.area_km2)} km² · Ø{" "}
-                                    {formatKmOrTiny(2 * z.radius_km)} km
-                                    {z.radius_std_km > 0.01 &&
-                                      ` (± ${(2 * z.radius_std_km).toFixed(
-                                        1
-                                      )})`}
+                                    {z.geometry ? (
+                                      <>
+                                        {formatKmOrTiny(z.area_km2)} km² · Ø{" "}
+                                        {formatKmOrTiny(2 * z.radius_km)} km
+                                        {z.radius_std_km > 0.01 &&
+                                          ` (± ${(2 * z.radius_std_km).toFixed(
+                                            1
+                                          )})`}
+                                      </>
+                                    ) : (
+                                      "Not exceeded with mitigation"
+                                    )}
                                   </span>
                                 </span>
                               </button>
+                              {z.without && (
+                                // Indented to line up with the text above
+                                // (px-2.5 + 10px dot + gap-2).
+                                <button
+                                  onClick={() => onToggleWithout(key)}
+                                  disabled={!z.without.geometry}
+                                  title="Show the zone without mitigation on the map"
+                                  className="w-full flex items-center gap-1.5 pl-7 pr-2.5 pb-1.5 text-left text-[11px] text-[#7c8ca2] enabled:hover:text-[#3d5a80] dark:enabled:hover:text-[#98c1d9] transition"
+                                >
+                                  <span
+                                    className={`flex items-center justify-center w-2.5 h-2.5 rounded-sm border shrink-0 ${
+                                      withoutOn
+                                        ? "bg-[#3d5a80] border-[#3d5a80] dark:bg-[#98c1d9] dark:border-[#98c1d9] text-white dark:text-slate-900"
+                                        : "border-slate-400 dark:border-slate-500"
+                                    }`}
+                                  >
+                                    {withoutOn && checkIcon}
+                                  </span>
+                                  <span>
+                                    Without:{" "}
+                                    {z.without.geometry
+                                      ? `${formatKmOrTiny(z.without.area_km2)} km² · Ø ${formatKmOrTiny(
+                                          2 * z.without.radius_km
+                                        )} km`
+                                      : "not exceeded"}
+                                    {z.geometry &&
+                                      z.without.area_km2 > 0 &&
+                                      ` (−${Math.round(
+                                        (1 - z.area_km2 / z.without.area_km2) * 100
+                                      )}%)`}
+                                  </span>
+                                </button>
+                              )}
                             </li>
                           );
                         })}
                       </ul>
                       <div className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pt-1">
                         Ø is mean diameter, ± is variation by direction.
+                        {result.mitigation &&
+                          " “Without” is the same run with no mitigation."}
                       </div>
                       {/* All exceeded zones from the last Run, whether or
-                          not they're toggled visible above. */}
+                          not they're toggled visible above. With
+                          mitigation, only the mitigated zones (see
+                          analysis/noise_impact.py's export_impact). */}
+                      {anyMitigated && (
                       <div className="flex flex-col gap-1.5 pt-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <select
@@ -256,6 +318,7 @@ function ImpactsPanel({
                         </div>
                         <div className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
                           Downloads a .zip with the zones and a README describing the scenario.
+                          {result.mitigation && " Zones with mitigation only."}
                         </div>
                         {exportError && (
                           <div className="px-3 py-2 rounded-md bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs text-red-600 dark:text-red-400">
@@ -263,6 +326,7 @@ function ImpactsPanel({
                           </div>
                         )}
                       </div>
+                      )}
                     </>
                   )}
 

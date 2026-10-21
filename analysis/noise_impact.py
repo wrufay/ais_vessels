@@ -137,6 +137,35 @@ _CUSTOM_STANDIN_ROW = {
 }
 
 
+# Pile-driving noise mitigation systems and how much each lowers the noise
+# (insertion loss, dB), as published ranges for peak SPL and for SEL --
+# from DFO's "Insertion Loss Estimation for Pile Driving Noise Mitigation
+# Systems" table (citing Nehls et al. 2016, Koschinski & Lüdemann 2013,
+# Bellmann et al. 2020, IHC Vremac 2019, BSH 2023, Diederichs et al. 2014,
+# Würsig et al. 2000). The user picks a value inside each range in the
+# app; it's taken off the source levels before the model runs (see
+# _validate_mitigation). current_sensitive: works less well in strong
+# currents (bubble curtains), shown as a note in the app.
+MITIGATION_SYSTEMS = {
+    "single_bubble_curtain": dict(
+        label="Single bubble curtain", il_peak_db=(5, 15), il_sel_db=(4, 12),
+        current_sensitive=True,
+    ),
+    "double_bubble_curtain": dict(
+        label="Double bubble curtain", il_peak_db=(10, 25), il_sel_db=(8, 20),
+        current_sensitive=True,
+    ),
+    "hsd": dict(
+        label="HSD resonator", il_peak_db=(5, 20), il_sel_db=(5, 15),
+        current_sensitive=False,
+    ),
+    "ihc_nms": dict(
+        label="IHC NMS shell-in-shell", il_peak_db=(10, 25), il_sel_db=(8, 20),
+        current_sensitive=False,
+    ),
+}
+
+
 def list_sites() -> dict:
     """Site metadata for the frontend dropdown — everything except the
     on-disk data_folder, which is a backend implementation detail."""
@@ -157,12 +186,16 @@ def list_options() -> dict:
     package's enums — so the frontend never hardcodes a list that could
     drift from Noise_Impact_Thresholds.xlsx. `thresholds` is every
     hearing group/impact/metric combination that actually has a threshold,
-    so the frontend can grey out the ones that don't."""
+    so the frontend can grey out the ones that don't. `mitigation_systems`
+    is MITIGATION_SYSTEMS as a list, for the Source tab's dropdown."""
     return {
         "hearing_groups": [g.value for g in HearingGroup],
         "impact_types": [i.value for i in Impact],
         "metrics": [m.value for m in Metric],
         "thresholds": _list_thresholds(),
+        "mitigation_systems": [
+            {"key": key, **cfg} for key, cfg in MITIGATION_SYSTEMS.items()
+        ],
     }
 
 
@@ -239,12 +272,14 @@ def compute_impact(
     assessment_period_hours: float,
     pairs: list[tuple[str, str]] | None = None,
     custom_thresholds: list[dict] | None = None,
+    mitigation: dict | None = None,
 ) -> dict:
     """Run the impact model for one site and return JSON-serializable zones:
 
         {"source": {"lon": ..., "lat": ...},
+         "mitigation": {"system", "label", "il_peak_db", "il_sel_db"} or None,
          "zones": [{"hearing_group", "impact", "metric", "threshold_db",
-                     "area_km2", "geometry", "custom_index"} , ...]}
+                     "area_km2", "geometry", "custom_index", "without"} , ...]}
 
     `geometry` is a GeoJSON Polygon, or None if the threshold was never
     exceeded anywhere. depth_range is negative metres below the surface,
@@ -255,44 +290,98 @@ def compute_impact(
     thresholds, after the workbook ones; their `custom_index` numbers the
     distinct custom names in order (for the frontend's colours) and is None
     for workbook zones.
+
+    `mitigation` ({"system", "il_peak_db", "il_sel_db"}, see
+    _validate_mitigation) lowers the source levels before the run. The
+    model then runs a second time without it, so each zone also carries
+    `without`: the same zone's shape (area_km2, radius_km, radius_std_km,
+    geometry) with no mitigation. `without` is None when no mitigation was
+    picked.
     """
-    result, tl_model_params, _ = _run_model(
-        site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
-        sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
-        pairs, custom_thresholds,
+    mit = _validate_mitigation(mitigation)
+    run_args = (
+        site, hearing_groups, impact_types, metrics, depth_range,
+        spl_peak, sel_single_strike, n_strikes_per_pile, n_piles,
+        assessment_period_hours, pairs, custom_thresholds, mit,
     )
+    result, tl_model_params, _ = _run_model(*run_args)
+    without_zones = [None] * len(result["zone_data"])
+    if mit:
+        without, _, _ = _run_model(*run_args[:-1], None)
+        same_rows = len(without["df_th"]) == len(result["df_th"]) and all(
+            (a.HearingGroup, a.Impact, a.Metric) == (b.HearingGroup, b.Impact, b.Metric)
+            for a, b in zip(without["df_th"].itertuples(), result["df_th"].itertuples())
+        )
+        if not same_rows:
+            raise RuntimeError(
+                "The runs with and without mitigation came back with different "
+                "thresholds, so they can't be compared. Nothing was shown.")
+        without_zones = [_zone_shape(zone) for zone in without["zone_data"]]
 
     custom_names: list[str] = []
     zones = []
-    for zone, th_row in zip(result["zone_data"], result["df_th"].itertuples()):
+    for zone, th_row, without_zone in zip(
+        result["zone_data"], result["df_th"].itertuples(), without_zones
+    ):
         custom_index = None
         if str(th_row.Impact) == CUSTOM_IMPACT:
             name = str(th_row.HearingGroup)
             if name not in custom_names:
                 custom_names.append(name)
             custom_index = custom_names.index(name)
-        geometry = None
-        if _zone_exceeded(zone):
-            coords = list(zip(zone["Longitude"].tolist(), zone["Latitude"].tolist()))
-            geometry = mapping(Polygon(coords))
         zones.append({
             "hearing_group": str(th_row.HearingGroup),
             "impact": str(th_row.Impact),
             "metric": str(th_row.Metric),
             "threshold_db": float(th_row.Threshold_dB),
-            "area_km2": float(zone["Area"]) / 1e6,
-            # Mean±std of raw Distance, not area-derived (matches the
-            # package's own create_map() legend, mapping.py:560-561).
-            "radius_km": float(zone["Distance"].mean()) / 1000,
-            "radius_std_km": float(zone["Distance"].std()) / 1000,
-            "geometry": geometry,
+            **_zone_shape(zone),
             "custom_index": custom_index,
+            "without": without_zone,
         })
 
     return {
         "source": {"lon": tl_model_params.src_lon, "lat": tl_model_params.src_lat},
+        "mitigation": mit,
         "zones": zones,
     }
+
+
+def _zone_shape(zone) -> dict:
+    """A zone's size and outline for the API: area, mean±std radius and a
+    GeoJSON Polygon (None if the threshold was never exceeded)."""
+    geometry = None
+    if _zone_exceeded(zone):
+        coords = list(zip(zone["Longitude"].tolist(), zone["Latitude"].tolist()))
+        geometry = mapping(Polygon(coords))
+    return {
+        "area_km2": float(zone["Area"]) / 1e6,
+        # Mean±std of raw Distance, not area-derived (matches the
+        # package's own create_map() legend, mapping.py:560-561).
+        "radius_km": float(zone["Distance"].mean()) / 1000,
+        "radius_std_km": float(zone["Distance"].std()) / 1000,
+        "geometry": geometry,
+    }
+
+
+def _validate_mitigation(mitigation: dict | None) -> dict | None:
+    """Checked copy of the picked mitigation, with its label added, or None
+    for no mitigation. Each reduction must lie inside the system's
+    published range in MITIGATION_SYSTEMS."""
+    if not mitigation:
+        return None
+    system = mitigation["system"]
+    if system not in MITIGATION_SYSTEMS:
+        raise ValueError(f"Unknown noise mitigation system: {system}")
+    cfg = MITIGATION_SYSTEMS[system]
+    cleaned = {"system": system, "label": cfg["label"]}
+    for key, what in (("il_peak_db", "peak"), ("il_sel_db", "SEL")):
+        value = float(mitigation[key])
+        lo, hi = cfg[key]
+        if not lo <= value <= hi:
+            raise ValueError(
+                f"{cfg['label']}: the {what} reduction must be between {lo:g} and {hi:g} dB.")
+        cleaned[key] = value
+    return cleaned
 
 
 # Download formats export_impact supports: key -> (README name, file
@@ -317,6 +406,7 @@ def export_impact(
     fmt: str,
     pairs: list[tuple[str, str]] | None = None,
     custom_thresholds: list[dict] | None = None,
+    mitigation: dict | None = None,
 ) -> tuple[str, bytes]:
     """Same run as compute_impact, saved with the package's own
     export_hazard_zones in one of EXPORT_FORMATS, returned as (zip
@@ -329,15 +419,20 @@ def export_impact(
     as zero-area polygons (every vertex at the source), which GIS tools
     flag as invalid -- and the app shows no shape for them either. The
     README lists them instead.
+
+    With mitigation, only the zones with mitigation are exported (not the
+    "without" ones the app also shows); the README names the system and
+    its reductions.
     """
     if fmt not in EXPORT_FORMATS:
         raise ValueError(f"Unknown export format: {fmt}")
     format_name, ext = EXPORT_FORMATS[fmt]
+    mit = _validate_mitigation(mitigation)
 
     result, _, noise_level_params = _run_model(
         site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
         sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
-        pairs, custom_thresholds,
+        pairs, custom_thresholds, mit,
     )
 
     keep = [i for i, zone in enumerate(result["zone_data"]) if _zone_exceeded(zone)]
@@ -359,7 +454,7 @@ def export_impact(
         columns = [c for c in gpd.read_file(out_path, rows=0).columns if c != "geometry"]
         readme = _export_readme(
             format_name, site, depth_range, noise_level_params, zone_data, df_th,
-            df_th_not_exceeded, columns,
+            df_th_not_exceeded, columns, mit,
         )
         with open(os.path.join(tmp, f"{name}_README.txt"), "w", encoding="utf-8") as f:
             f.write(readme)
@@ -374,7 +469,7 @@ def export_impact(
 def _run_model(
     site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
     sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
-    pairs=None, custom_thresholds=None,
+    pairs=None, custom_thresholds=None, mitigation=None,
 ):
     """Build the package's params from plain values and run
     calculate_noise_impact -- shared by compute_impact and
@@ -388,12 +483,20 @@ def _run_model(
 
     Custom thresholds run separately (_run_custom) and their zones and
     threshold rows are appended after the workbook ones -- returned as one
-    {"zone_data", "df_th"} result either way."""
+    {"zone_data", "df_th"} result either way.
+
+    `mitigation` (already checked by _validate_mitigation, or None) lowers
+    SPL_peak and SEL_single_strike by its reductions. SEL_cum is worked out
+    from SEL_single_strike, so it drops by the same amount. The returned
+    noise_level_params hold the lowered values."""
     if site not in SITES:
         raise ValueError(f"Unknown site: {site}")
     custom = _validate_custom(custom_thresholds or [])
 
     tl_model_params = TLModelParams(model_name=site, **SITES[site])
+    if mitigation:
+        spl_peak -= mitigation["il_peak_db"]
+        sel_single_strike -= mitigation["il_sel_db"]
     noise_level_params = NoiseLevelParams(
         SPL_peak=spl_peak,
         SEL_single_strike=sel_single_strike,
@@ -556,7 +659,7 @@ _EXPORT_COLUMN_DESCRIPTIONS = {
 
 def _export_readme(
     format_name, site, depth_range, noise_level_params, zone_data, df_th,
-    df_th_not_exceeded, columns,
+    df_th_not_exceeded, columns, mitigation=None,
 ) -> str:
     """Plain-text README for the download zip: the scenario that produced
     the zones (none of which is stored in the file itself), the zones in
@@ -606,6 +709,13 @@ def _export_readme(
             "hearing group, impact type and noise metric.", 78),
         "",
     ]
+    # noise_level_params already hold the levels after mitigation.
+    peak_note = sel_note = ""
+    if mitigation:
+        peak_note = (f" (after mitigation; "
+                     f"{noise_level_params.SPL_peak + mitigation['il_peak_db']:g} without)")
+        sel_note = (f" (after mitigation; "
+                    f"{noise_level_params.SEL_single_strike + mitigation['il_sel_db']:g} without)")
     lines += section("SCENARIO", [
         ("Pile location", f"{abs(lat):.4f}° {'N' if lat >= 0 else 'S'}, "
                           f"{abs(lon):.4f}° {'E' if lon >= 0 else 'W'}"),
@@ -613,8 +723,12 @@ def _export_readme(
         ("Sound frequency", f"{cfg['src_freq']:g} Hz"),
         ("Ocean conditions date", cfg["noise_date"].isoformat()),
         ("Water depths assessed", f"{shallow:g} to {deep:g} m below the surface"),
-        ("SPL peak", f"{noise_level_params.SPL_peak:g} dB re 1 µPa"),
-        ("SEL, single strike", f"{noise_level_params.SEL_single_strike:g} dB re 1 µPa²·s"),
+        ("Noise mitigation",
+         f"{mitigation['label']}, lowering SPL peak by {mitigation['il_peak_db']:g} dB "
+         f"and SEL by {mitigation['il_sel_db']:g} dB" if mitigation else "None"),
+        ("SPL peak", f"{noise_level_params.SPL_peak:g} dB re 1 µPa{peak_note}"),
+        ("SEL, single strike",
+         f"{noise_level_params.SEL_single_strike:g} dB re 1 µPa²·s{sel_note}"),
         ("Strikes per pile", f"{noise_level_params.n_strikes_per_pile:g}"),
         ("Number of piles", f"{noise_level_params.n_piles:g}"),
         ("SEL, all strikes", f"{noise_level_params.SEL_cum:.1f} dB re 1 µPa²·s"),

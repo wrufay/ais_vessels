@@ -9,13 +9,13 @@ const weaColor = regionColor("WEA").stroke;
 // ns_pile_driving_noise_mapping's own reference plots (see
 // visualization/mapping.py's create_map()), rendered here as a normal
 // block in the Impacts side panel instead of a floating map overlay.
-function LineSwatch({ color, dash }: { color: string; dash?: number[] }) {
+function LineSwatch({ color, dash, width = 2 }: { color: string; dash?: number[]; width?: number }) {
   return (
     <svg width="20" height="10" className="shrink-0 mt-0.5" aria-hidden="true">
       <line
         x1="0" y1="5" x2="20" y2="5"
         stroke={color}
-        strokeWidth="2"
+        strokeWidth={width}
         strokeDasharray={dash?.join(" ")}
       />
     </svg>
@@ -35,16 +35,22 @@ function LineSwatch({ color, dash }: { color: string; dash?: number[] }) {
 function NoiseImpactLegend({
   result,
   visibleZoneKeys,
+  visibleWithoutKeys,
   siteName,
   siteMeta,
 }: {
   result: NoiseImpactResult | null;
   visibleZoneKeys: Set<string>;
+  visibleWithoutKeys: Set<string>;
   siteName: string;
   siteMeta: NoiseImpactSite | undefined;
 }) {
   if (!result) return null;
   const visibleZones = result.zones.filter((z) => z.geometry && visibleZoneKeys.has(zoneKey(z)));
+  // "Without mitigation" outlines turned on in the results list.
+  const visibleWithout = result.zones.filter(
+    (z) => z.without?.geometry && visibleWithoutKeys.has(zoneKey(z))
+  );
 
   return (
     <div className="bg-[#3d5a80]/8 dark:bg-[#3d5a80]/20 border border-[#3d5a80]/20 dark:border-[#3d5a80]/30 rounded-md px-3 py-2.5 text-xs leading-snug">
@@ -63,7 +69,7 @@ function NoiseImpactLegend({
         <LineSwatch color={weaColor} />
         <span className="text-slate-700 dark:text-slate-200">Designated WEAs</span>
       </div>
-      {visibleZones.length > 0 ? (
+      {visibleZones.length + visibleWithout.length > 0 ? (
         <div className="flex flex-col gap-1.5 pt-1.5 border-t border-[#3d5a80]/20 dark:border-[#3d5a80]/30">
           {visibleZones.map((z) => (
             <div key={zoneKey(z)} className="flex items-start gap-2">
@@ -73,6 +79,26 @@ function NoiseImpactLegend({
                 <span className="block text-slate-500 dark:text-slate-400">
                   {z.threshold_db} dB · Area {formatKmOrTiny(z.area_km2)} km² · Radius {formatKmOrTiny(z.radius_km, 2)}
                   {z.radius_std_km > 0.01 && ` ± ${z.radius_std_km.toFixed(2)}`} km
+                </span>
+              </span>
+            </div>
+          ))}
+          {visibleWithout.map((z) => (
+            <div key={`without-${zoneKey(z)}`} className="flex items-start gap-2">
+              {/* Matches the map's thin, faint "without" outline. */}
+              <LineSwatch
+                color={`${zoneColor(z.hearing_group, z.metric, z.custom_index)}99`}
+                dash={IMPACT_DASH[z.impact]}
+                width={1.25}
+              />
+              <span>
+                <span className="block text-slate-700 dark:text-slate-200">
+                  {z.hearing_group} — {z.impact}, without mitigation
+                </span>
+                <span className="block text-slate-500 dark:text-slate-400">
+                  {z.threshold_db} dB · Area {formatKmOrTiny(z.without!.area_km2)} km² · Radius{" "}
+                  {formatKmOrTiny(z.without!.radius_km, 2)}
+                  {z.without!.radius_std_km > 0.01 && ` ± ${z.without!.radius_std_km.toFixed(2)}`} km
                 </span>
               </span>
             </div>
