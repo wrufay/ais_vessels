@@ -500,32 +500,45 @@ function ShipMap() {
     [...noiseImpactResult.zones]
       .sort((a, b) => b.area_km2 - a.area_km2)
       .forEach((z, i) => { sizeRank[zoneKey(z)] = i + 1; });
+    const readPolygon = (geometry: object) =>
+      fmt.readGeometry(geometry, {
+        dataProjection: "EPSG:4326",
+        featureProjection: "EPSG:3857",
+      }) as OLPolygon;
     noiseImpactResult.zones.forEach((z) => {
       const key = zoneKey(z);
-      // The zone itself, and/or its "without mitigation" outline (thin, no
-      // fill -- see the layer's style callback), each toggled on its own.
-      const shapes = [
-        { geometry: noiseImpactVisibleZoneKeys.has(key) ? z.geometry : null, isWithout: false },
-        { geometry: noiseImpactVisibleWithoutKeys.has(key) ? z.without?.geometry : null, isWithout: true },
-      ];
-      shapes.forEach(({ geometry, isWithout }) => {
-        if (!geometry) return;
-        const geom = fmt.readGeometry(geometry, {
-          dataProjection: "EPSG:4326",
-          featureProjection: "EPSG:3857",
-        }) as OLPolygon;
-        const f = new Feature({
-          geometry: geom,
-          hearingGroup: z.hearing_group,
-          impact: z.impact,
-          metric: z.metric,
-          customIndex: z.custom_index,
-          thresholdDb: z.threshold_db,
-          sizeRank: sizeRank[key],
-          isWithout,
-        });
-        noiseImpactSourceRef.current.addFeature(f);
-      });
+      const props = {
+        hearingGroup: z.hearing_group,
+        impact: z.impact,
+        metric: z.metric,
+        customIndex: z.custom_index,
+        thresholdDb: z.threshold_db,
+        sizeRank: sizeRank[key],
+      };
+      // The zone itself, and/or its "without mitigation" shape, each
+      // toggled on its own.
+      const zoneGeom =
+        z.geometry && noiseImpactVisibleZoneKeys.has(key) ? readPolygon(z.geometry) : null;
+      if (zoneGeom) {
+        noiseImpactSourceRef.current.addFeature(new Feature({ geometry: zoneGeom, ...props, isWithout: false }));
+      }
+      if (z.without?.geometry && noiseImpactVisibleWithoutKeys.has(key)) {
+        const withoutGeom = readPolygon(z.without.geometry);
+        // While the zone is shown, the "without" fill is only the ring
+        // between the two outlines (the zone cut out as a hole), so the
+        // zone's own fill isn't darkened by a second layer under it. The
+        // zone always lies inside its "without" shape (less noise in
+        // every direction). The outline still uses the full shape.
+        const fillGeometry = zoneGeom
+          ? new OLPolygon([
+              withoutGeom.getLinearRing(0)!.getCoordinates(),
+              zoneGeom.getLinearRing(0)!.getCoordinates(),
+            ])
+          : withoutGeom;
+        noiseImpactSourceRef.current.addFeature(
+          new Feature({ geometry: withoutGeom, ...props, isWithout: true, fillGeometry })
+        );
+      }
     });
 
     if (!mapObj.current) return;
@@ -846,12 +859,26 @@ function ShipMap() {
                 feature.get("customIndex") as number | null
               );
               if (feature.get("isWithout")) {
-                // "Without mitigation" outline: same colour and dash as
-                // its zone, but thin, faint and unfilled, under the zones.
-                return new Style({
-                  stroke: new Stroke({ color: `${color}99`, width: 1.25, lineDash: IMPACT_DASH[impact] }),
-                  zIndex: -0.5,
-                });
+                // "Without mitigation" shape: drawn like its zone (white
+                // edge, same dash) but lighter -- 80% line, 13% fill
+                // (0x21) -- and under every zone, so it never covers one.
+                // The fill uses fillGeometry (the ring outside the zone
+                // while the zone is shown, see where features are built).
+                return [
+                  new Style({
+                    geometry: (f) => f.get("fillGeometry") as OLPolygon,
+                    fill: new Fill({ color: `${color}21` }),
+                    zIndex: -0.5,
+                  }),
+                  new Style({
+                    stroke: new Stroke({ color: "rgba(255,255,255,0.75)", width: 3, lineDash: IMPACT_DASH[impact] }),
+                    zIndex: -0.5,
+                  }),
+                  new Style({
+                    stroke: new Stroke({ color: `${color}cc`, width: 2, lineDash: IMPACT_DASH[impact] }),
+                    zIndex: -0.5,
+                  }),
+                ];
               }
               // Smaller zones on top of bigger ones (sizeRank, set when
               // the features are built), whatever their impact type.

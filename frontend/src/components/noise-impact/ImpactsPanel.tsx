@@ -285,9 +285,9 @@ function ImpactsPanel({
                                       >
                                         {withoutOn && checkIcon}
                                       </span>
-                                      {/* Matches the map's thin, faint
-                                          "without" outline. */}
-                                      <LineSwatch color={`${color}99`} dash={dash} width={1.25} />
+                                      {/* Matches the map's lighter (80%)
+                                          "without" line. */}
+                                      <LineSwatch color={`${color}cc`} dash={dash} />
                                       <span>
                                         Without:{" "}
                                         {z.without.geometry
