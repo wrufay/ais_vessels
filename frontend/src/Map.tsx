@@ -839,14 +839,23 @@ function ShipMap() {
                   zIndex: -0.5,
                 });
               }
-              return new Style({
-                stroke: new Stroke({ color, width: 2, lineDash: IMPACT_DASH[impact] }),
-                // 0x38 (~22%), not the old 0x22 (~13%) -- the lighter
-                // fill nearly disappeared against the bathymetry WMS
-                // layer's own busy coloring underneath it.
-                fill: new Fill({ color: `${color}38` }),
-                zIndex: IMPACT_ZINDEX[impact] ?? 0,
-              });
+              const zIndex = IMPACT_ZINDEX[impact] ?? 0;
+              return [
+                // Thin white edge under the line (0.5 px each side), so it
+                // stands out on the busy bathymetry layer.
+                new Style({
+                  stroke: new Stroke({ color: "#ffffff", width: 3, lineDash: IMPACT_DASH[impact] }),
+                  // 0x38 (~22%), not the old 0x22 (~13%) -- the lighter
+                  // fill nearly disappeared against the bathymetry WMS
+                  // layer's own busy coloring underneath it.
+                  fill: new Fill({ color: `${color}38` }),
+                  zIndex,
+                }),
+                new Style({
+                  stroke: new Stroke({ color, width: 2, lineDash: IMPACT_DASH[impact] }),
+                  zIndex,
+                }),
+              ];
             },
           });
           noiseImpactLayerRef.current = layer;
