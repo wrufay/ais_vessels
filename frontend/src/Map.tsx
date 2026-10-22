@@ -841,11 +841,10 @@ function ShipMap() {
               }
               const zIndex = IMPACT_ZINDEX[impact] ?? 0;
               return [
-                // Thin, half see-through white edge under the line (0.5 px
-                // each side), so it stands out on the busy bathymetry
-                // layer without hiding the line's colour.
+                // Thin white edge under the line (0.5 px each side), so it
+                // stands out on the busy bathymetry layer.
                 new Style({
-                  stroke: new Stroke({ color: "rgba(255,255,255,0.5)", width: 3, lineDash: IMPACT_DASH[impact] }),
+                  stroke: new Stroke({ color: "#ffffff", width: 3, lineDash: IMPACT_DASH[impact] }),
                   // 0x38 (~22%), not the old 0x22 (~13%) -- the lighter
                   // fill nearly disappeared against the bathymetry WMS
                   // layer's own busy coloring underneath it.
