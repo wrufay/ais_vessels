@@ -828,7 +828,7 @@ function ShipMap() {
               const impact = feature.get("impact") as string;
               const color = zoneColor(
                 feature.get("hearingGroup") as string,
-                feature.get("metric") as string,
+                impact,
                 feature.get("customIndex") as number | null
               );
               if (feature.get("isWithout")) {

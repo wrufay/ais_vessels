@@ -73,9 +73,9 @@ function NoiseImpactLegend({
         <div className="flex flex-col gap-1.5 pt-1.5 border-t border-[#3d5a80]/20 dark:border-[#3d5a80]/30">
           {visibleZones.map((z) => (
             <div key={zoneKey(z)} className="flex items-start gap-2">
-              <LineSwatch color={zoneColor(z.hearing_group, z.metric, z.custom_index)} dash={IMPACT_DASH[z.impact]} />
+              <LineSwatch color={zoneColor(z.hearing_group, z.impact, z.custom_index)} dash={IMPACT_DASH[z.impact]} />
               <span>
-                <span className="block text-slate-700 dark:text-slate-200">{z.hearing_group} — {z.impact}</span>
+                <span className="block text-slate-700 dark:text-slate-200">{z.hearing_group} — {z.impact} ({z.metric})</span>
                 <span className="block text-slate-500 dark:text-slate-400">
                   {z.threshold_db} dB · Area {formatKmOrTiny(z.area_km2)} km² · Radius {formatKmOrTiny(z.radius_km, 2)}
                   {z.radius_std_km > 0.01 && ` ± ${z.radius_std_km.toFixed(2)}`} km
@@ -87,13 +87,13 @@ function NoiseImpactLegend({
             <div key={`without-${zoneKey(z)}`} className="flex items-start gap-2">
               {/* Matches the map's thin, faint "without" outline. */}
               <LineSwatch
-                color={`${zoneColor(z.hearing_group, z.metric, z.custom_index)}99`}
+                color={`${zoneColor(z.hearing_group, z.impact, z.custom_index)}99`}
                 dash={IMPACT_DASH[z.impact]}
                 width={1.25}
               />
               <span>
                 <span className="block text-slate-700 dark:text-slate-200">
-                  {z.hearing_group} — {z.impact}, without mitigation
+                  {z.hearing_group} — {z.impact} ({z.metric}), without mitigation
                 </span>
                 <span className="block text-slate-500 dark:text-slate-400">
                   {z.threshold_db} dB · Area {formatKmOrTiny(z.without!.area_km2)} km² · Radius{" "}

@@ -3,72 +3,54 @@
 // (NoiseImpactLegend.tsx) -- kept in one place so all three always agree
 // on what each colour/linestyle/shade means. Colour (zoneColor) encodes
 // hearing group -- matching the supervisor's own reference-plot
-// convention of a distinct palette per hearing group, not per impact
-// type -- shade within that colour encodes metric, and dash pattern
-// (IMPACT_DASH) still encodes impact type, mirroring the matplotlib
-// linestyles ns_pile_driving_noise_mapping's own Impact enum assigns per
-// member (TTS dotted -> Mortality solid, see enums.py) so a zone drawn
-// here reads the same way it would in that package's own reference
-// plots.
+// convention of a distinct palette per hearing group -- shade within that
+// colour encodes how serious the impact is (light TTS -> dark Mortality),
+// and dash pattern (IMPACT_DASH) also encodes impact type, mirroring the
+// matplotlib linestyles ns_pile_driving_noise_mapping's own Impact enum
+// assigns per member (TTS dotted -> Mortality solid, see enums.py). Metric
+// (SEL_cum vs SPL_peak) has no look of its own on the map; it is named in
+// the legend text instead.
 //
-// Nine hearing groups sit past the point a categorical palette can stay
-// safely distinguishable if every zone were shown at once under color
-// vision deficiency (this app's own default behaviour only shows one
-// zone per hearing-group/impact-type pair at a time -- see handleRun in
-// useNoiseImpact.ts -- which keeps the realistic on-screen count well
-// under nine). Hue alone is never the only identifier: every place a
-// zone's colour appears (results list, legend, this map layer) sits next
-// to its hearing-group/impact/metric name as text.
-//
-// ~20% darker than a plain-canvas-picked palette would be (each RGB
-// channel x0.8) -- the bathymetry WMS layer is a busy, mid-toned
-// basemap, and undarkened colors washed out against it (same finding
-// that originally motivated darkening the old impact-keyed palette).
-export const HEARING_GROUP_COLORS: Record<string, string> = {
-  "LF Cetaceans": "#2260ab",
-  "HF Cetaceans": "#bc532a",
-  "VHF Cetaceans": "#168c62",
-  "Phocids Underwater": "#be8100",
-  "Fish - No Swim Bladder": "#ba6283",
-  "Fish - Non-Auditory Swim Bladder": "#006900",
-  "Fish - Auditory Swim Bladder": "#3b2e86",
-  "Fish - Eggs and Larvae": "#b63a3a",
-  "Sea Turtles": "#563f80",
+// Nine hearing groups is more than any palette can keep apart for every
+// reader with colour vision deficiency, so hue is never the only
+// identifier: every place a zone's colour appears (results list, legend,
+// this map layer) sits next to its hearing-group/impact/metric name as
+// text. The hues below were picked with an OKLab colour-difference check
+// so each stays clearly apart from the others in its own family
+// (cetaceans, fish) for normal and red-green colour-blind vision, with no
+// blues (the bathymetry basemap is blue). Shades are the middle colour
+// moved +0.10 / -0.12 in OKLab lightness.
+type Shades = { tts: string; injury: string; mortality: string };
+export const HEARING_GROUP_COLORS: Record<string, Shades> = {
+  "LF Cetaceans": { tts: "#ea4e47", injury: "#c62828", mortality: "#9c0000" }, // red
+  "HF Cetaceans": { tts: "#d252ba", injury: "#b0309a", mortality: "#880075" }, // magenta
+  "VHF Cetaceans": { tts: "#eab73e", injury: "#c99700", mortality: "#a37200" }, // gold
+  "Phocids Underwater": { tts: "#3aa899", injury: "#00897b", mortality: "#006559" }, // teal
+  "Fish - No Swim Bladder": { tts: "#986ae6", injury: "#7b4bc4", mortality: "#5a239c" }, // violet
+  "Fish - Non-Auditory Swim Bladder": { tts: "#ac7749", injury: "#8d5a2b", mortality: "#693800" }, // brown
+  "Fish - Auditory Swim Bladder": { tts: "#88c03a", injury: "#6aa000", mortality: "#487b00" }, // lime
+  "Fish - Eggs and Larvae": { tts: "#8c498c", injury: "#6d2c6e", mortality: "#4a054b" }, // plum
+  "Sea Turtles": { tts: "#585858", injury: "#3d3d3d", mortality: "#1f1f1f" }, // dark grey
 };
 
-// SEL_cum (cumulative exposure) renders as a further-darkened shade of
-// its hearing group's colour; SPL_peak (instantaneous) renders at the
-// base HEARING_GROUP_COLORS tone. Only visibly matters when both metrics
-// are shown for the same hearing group at once, which requires
-// overriding the "Advanced parameters" default of one metric per group
-// (see useNoiseImpact.ts's handleRun).
-const SEL_CUM_SHADE_FACTOR = 0.7;
-
-function darken(hex: string, factor: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const channel = (shift: number) =>
-    Math.max(0, Math.min(255, Math.round(((n >> shift) & 0xff) * factor)));
-  return `#${((channel(16) << 16) | (channel(8) << 8) | channel(0))
-    .toString(16)
-    .padStart(6, "0")}`;
-}
-
 // Custom (user-entered) thresholds, one colour per distinct custom name
-// (the zone's custom_index), cycling if there are more -- hues kept clear
-// of HEARING_GROUP_COLORS so a custom zone never looks like a workbook one.
-// Same metric shading as above.
-const CUSTOM_COLORS = ["#0e8f9e", "#a3289a", "#8a5a2b", "#6b7a12", "#4f5d6e", "#2b2b2b"];
+// (the zone's custom_index), cycling if there are more -- picked as the
+// colours furthest from every HEARING_GROUP_COLORS shade, so a custom zone
+// never looks like a workbook one. Custom impacts have no seriousness, so
+// they don't shade.
+const CUSTOM_COLORS = ["#000000", "#2f5bd3", "#f48fb1", "#5fd3a0", "#1e3a8a", "#b0b0b0"];
 
 export function zoneColor(
   hearingGroup: string,
-  metric: string,
+  impact: string,
   customIndex: number | null = null
 ): string {
-  const base =
-    customIndex !== null
-      ? CUSTOM_COLORS[customIndex % CUSTOM_COLORS.length]
-      : HEARING_GROUP_COLORS[hearingGroup] ?? "#888888";
-  return metric === "SEL_cum" ? darken(base, SEL_CUM_SHADE_FACTOR) : base;
+  if (customIndex !== null) return CUSTOM_COLORS[customIndex % CUSTOM_COLORS.length];
+  const shades = HEARING_GROUP_COLORS[hearingGroup];
+  if (!shades) return "#888888";
+  if (impact === "TTS") return shades.tts;
+  if (impact === "Mortality") return shades.mortality;
+  return shades.injury; // AUD INJ / REC INJ (a group never has both)
 }
 
 export const IMPACT_DASH: Record<string, number[] | undefined> = {
