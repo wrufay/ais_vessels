@@ -1,5 +1,5 @@
 import { zoneKey, type NoiseImpactResult, type NoiseImpactSite } from "../../useNoiseImpact";
-import { zoneColor, IMPACT_DASH, formatKmOrTiny } from "../../utils/noiseImpactStyles";
+import { zoneColor, IMPACT_DASH, formatKmOrTiny, WEA_EDGE_COLOR } from "../../utils/noiseImpactStyles";
 import { regionColor } from "../../utils/mapStyles";
 
 const weaColor = regionColor("WEA").stroke;
@@ -9,9 +9,18 @@ const weaColor = regionColor("WEA").stroke;
 // ns_pile_driving_noise_mapping's own reference plots (see
 // visualization/mapping.py's create_map()), rendered here as a normal
 // block in the Impacts side panel instead of a floating map overlay.
-function LineSwatch({ color, dash, width = 2 }: { color: string; dash?: number[]; width?: number }) {
+// `edge` draws a 1 px wider line underneath, like the map's line edges.
+function LineSwatch({ color, dash, width = 2, edge }: { color: string; dash?: number[]; width?: number; edge?: string }) {
   return (
     <svg width="20" height="10" className="shrink-0 mt-0.5" aria-hidden="true">
+      {edge && (
+        <line
+          x1="0" y1="5" x2="20" y2="5"
+          stroke={edge}
+          strokeWidth={width + 1}
+          strokeDasharray={dash?.join(" ")}
+        />
+      )}
       <line
         x1="0" y1="5" x2="20" y2="5"
         stroke={color}
@@ -66,7 +75,7 @@ function NoiseImpactLegend({
         </span>
       </div>
       <div className="flex items-center gap-2 mb-2">
-        <LineSwatch color={weaColor} />
+        <LineSwatch color={weaColor} width={1.5} edge={WEA_EDGE_COLOR} />
         <span className="text-slate-700 dark:text-slate-200">Designated WEAs</span>
       </div>
       {visibleZones.length + visibleWithout.length > 0 ? (

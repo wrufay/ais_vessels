@@ -53,6 +53,11 @@ export function zoneColor(
   return shades.injury; // AUD INJ / REC INJ (a group never has both)
 }
 
+// Thin black edge under the Designated WEA outline drawn with the
+// noise-impact results (0.5 px each side), so the orange line stands
+// apart from the zone lines, which sit on a white edge instead.
+export const WEA_EDGE_COLOR = "#000000";
+
 export const IMPACT_DASH: Record<string, number[] | undefined> = {
   TTS: [2, 4],
   "AUD INJ": [8, 4],

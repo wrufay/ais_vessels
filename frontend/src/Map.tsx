@@ -58,7 +58,7 @@ import ImpactsPanel from "./components/noise-impact/ImpactsPanel";
 import FeedbackPanel from "./components/FeedbackPanel";
 import NoiseImpactParamsPanel from "./components/noise-impact/NoiseImpactParamsPanel";
 import { useNoiseImpact, zoneKey } from "./useNoiseImpact";
-import { zoneColor, IMPACT_DASH, IMPACT_ZINDEX } from "./utils/noiseImpactStyles";
+import { zoneColor, IMPACT_DASH, IMPACT_ZINDEX, WEA_EDGE_COLOR } from "./utils/noiseImpactStyles";
 import { useTheme } from "./useTheme";
 import { useDragResize } from "./useDragResize";
 import { useStateRef } from "./useStateRef";
@@ -813,17 +813,22 @@ function ShipMap() {
               }
               if (feature.get("isWeaOutline")) {
                 const weaColor = regionColor("WEA").stroke;
-                return new Style({
-                  // Solid line, no dash -- matches the "Designated WEAs"
-                  // legend swatch (NoiseImpactLegend.tsx), which is also
-                  // a plain solid weaColor line with no dash pattern.
-                  stroke: new Stroke({ color: weaColor, width: 1.5 }),
-                  fill: new Fill({ color: `${weaColor}0d` }),
-                  // Below every zone's zIndex (0-4) -- it's background
-                  // context for the zones, not something competing with
-                  // them for attention.
-                  zIndex: -1,
-                });
+                // Solid weaColor line on a thin black edge (0.5 px each
+                // side), no dash -- matches the "Designated WEAs" legend
+                // swatch (NoiseImpactLegend.tsx). Below every zone's zIndex
+                // (0-4) -- it's background context for the zones, not
+                // something competing with them for attention.
+                return [
+                  new Style({
+                    stroke: new Stroke({ color: WEA_EDGE_COLOR, width: 2.5 }),
+                    fill: new Fill({ color: `${weaColor}0d` }),
+                    zIndex: -1,
+                  }),
+                  new Style({
+                    stroke: new Stroke({ color: weaColor, width: 1.5 }),
+                    zIndex: -1,
+                  }),
+                ];
               }
               const impact = feature.get("impact") as string;
               const color = zoneColor(
