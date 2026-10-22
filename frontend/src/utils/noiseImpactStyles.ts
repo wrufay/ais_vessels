@@ -65,15 +65,6 @@ export const IMPACT_DASH: Record<string, number[] | undefined> = {
   Mortality: undefined,
 };
 
-// Draw more severe (typically smaller, nested) zones on top of less severe
-// (larger) ones regardless of feature add order.
-export const IMPACT_ZINDEX: Record<string, number> = {
-  TTS: 1,
-  "AUD INJ": 2,
-  "REC INJ": 3,
-  Mortality: 4,
-};
-
 // A zone that's genuinely just a few metres across rounds to "0.0" at
 // normal decimal precision -- reads as "no zone" (nothing here) even
 // though one really does exist, just a tiny one. Shown as "<1" instead so

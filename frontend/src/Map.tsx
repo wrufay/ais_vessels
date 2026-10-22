@@ -58,7 +58,7 @@ import ImpactsPanel from "./components/noise-impact/ImpactsPanel";
 import FeedbackPanel from "./components/FeedbackPanel";
 import NoiseImpactParamsPanel from "./components/noise-impact/NoiseImpactParamsPanel";
 import { useNoiseImpact, zoneKey } from "./useNoiseImpact";
-import { zoneColor, IMPACT_DASH, IMPACT_ZINDEX, WEA_EDGE_COLOR } from "./utils/noiseImpactStyles";
+import { zoneColor, IMPACT_DASH, WEA_EDGE_COLOR } from "./utils/noiseImpactStyles";
 import { useTheme } from "./useTheme";
 import { useDragResize } from "./useDragResize";
 import { useStateRef } from "./useStateRef";
@@ -493,6 +493,13 @@ function ShipMap() {
     const fmt = new GeoJSON();
     noiseImpactSourceRef.current.clear();
     if (!noiseImpactResult) return;
+    // Smaller zones draw on top of bigger ones (see the layer's style
+    // callback), so every zone keeps a visible, clickable part: rank 1 is
+    // the biggest. Equal sizes keep the results order (sort is stable).
+    const sizeRank: Record<string, number> = {};
+    [...noiseImpactResult.zones]
+      .sort((a, b) => b.area_km2 - a.area_km2)
+      .forEach((z, i) => { sizeRank[zoneKey(z)] = i + 1; });
     noiseImpactResult.zones.forEach((z) => {
       const key = zoneKey(z);
       // The zone itself, and/or its "without mitigation" outline (thin, no
@@ -514,6 +521,7 @@ function ShipMap() {
           metric: z.metric,
           customIndex: z.custom_index,
           thresholdDb: z.threshold_db,
+          sizeRank: sizeRank[key],
           isWithout,
         });
         noiseImpactSourceRef.current.addFeature(f);
@@ -808,7 +816,8 @@ function ShipMap() {
                     font: `${starSizeRef.current}px sans-serif`,
                     fill: new Fill({ color: `rgba(${starColor},${starOpacityRef.current})` }),
                   }),
-                  zIndex: 10,
+                  // Above every zone's size rank (1 and up).
+                  zIndex: 1000,
                 });
               }
               if (feature.get("isWeaOutline")) {
@@ -816,8 +825,8 @@ function ShipMap() {
                 // Solid weaColor line on a thin black edge (0.5 px each
                 // side), no dash -- matches the "Designated WEAs" legend
                 // swatch (NoiseImpactLegend.tsx). Below every zone's zIndex
-                // (0-4) -- it's background context for the zones, not
-                // something competing with them for attention.
+                // (size rank, 1 and up) -- it's background context for the
+                // zones, not something competing with them for attention.
                 return [
                   new Style({
                     stroke: new Stroke({ color: WEA_EDGE_COLOR, width: 2.5 }),
@@ -844,7 +853,9 @@ function ShipMap() {
                   zIndex: -0.5,
                 });
               }
-              const zIndex = IMPACT_ZINDEX[impact] ?? 0;
+              // Smaller zones on top of bigger ones (sizeRank, set when
+              // the features are built), whatever their impact type.
+              const zIndex = feature.get("sizeRank") as number;
               return [
                 // Thin, 75% white edge under the line (0.5 px each side), so
                 // it stands out on the busy bathymetry layer.
