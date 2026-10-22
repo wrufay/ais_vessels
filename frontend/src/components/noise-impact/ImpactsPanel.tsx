@@ -2,7 +2,7 @@ import { useState } from "react";
 import PanelHeader from "../PanelHeader";
 import CollapsibleHeader from "../CollapsibleHeader";
 import SizeOpacityPanel from "../SizeOpacityPanel";
-import NoiseImpactLegend from "./NoiseImpactLegend";
+import NoiseImpactLegend, { LineSwatch } from "./NoiseImpactLegend";
 import {
   zoneKey,
   EXPORT_FORMATS,
@@ -10,7 +10,10 @@ import {
   type NoiseImpactResult,
   type NoiseImpactSite,
 } from "../../useNoiseImpact";
-import { zoneColor, formatKmOrTiny } from "../../utils/noiseImpactStyles";
+import { zoneColor, IMPACT_DASH, formatKmOrTiny } from "../../utils/noiseImpactStyles";
+
+// "SEL_cum" -> "SEL", "SPL_peak" -> "SPL", for the zone row titles.
+const metricShort = (metric: string) => (metric.startsWith("SEL") ? "SEL" : "SPL");
 
 const checkIcon = (
   <svg
@@ -29,12 +32,12 @@ const checkIcon = (
 // The Impacts side-panel's content (everything inside <SidePanel>, which
 // Map.tsx still renders directly since its open/width/registerTarget props
 // are shared across all 5 side panels now). Entry point into the
-// parameter-input modal, plus -- once a run has completed -- a legend
-// (source marker / WEA outline / one entry per visible zone, mirroring
-// the reference plot's own legend box) and the results list: one row per
-// zone with a colour swatch, area, and a visibility toggle that
-// adds/removes its polygon from the map (see the noiseImpactSourceRef
-// effect in Map.tsx).
+// parameter-input modal, plus -- once a run has completed -- a small map
+// key (source marker / WEA outline) and the zone list: one row per zone
+// with its map line swatch (so the list is also the zones' legend), name,
+// metric, area, and a visibility toggle that adds/removes its polygon
+// from the map (see the noiseImpactSourceRef effect in Map.tsx). The
+// other numbers sit in a per-row fold.
 function ImpactsPanel({
   paramsOpen,
   onToggleParams,
@@ -80,10 +83,19 @@ function ImpactsPanel({
   exporting: boolean;
   exportError: string | null;
 }) {
-  // Not-exceeded zones default to expanded -- the collapsed-by-default
-  // version made a "the run just came back clean" result look like there
-  // was nothing here at all until you noticed the caret.
-  const [notExceededOpen, setNotExceededOpen] = useState(true);
+  // Not-exceeded zones default to folded, to keep the panel short. A run
+  // where nothing was exceeded at all doesn't use this fold -- it gets its
+  // own "None of the selected thresholds were exceeded" line instead.
+  const [notExceededOpen, setNotExceededOpen] = useState(false);
+  // Zone rows whose details fold is open (zoneKey).
+  const [openDetailKeys, setOpenDetailKeys] = useState<Set<string>>(new Set());
+  const toggleDetails = (key: string) =>
+    setOpenDetailKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const [undefinedOpen, setUndefinedOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("shp");
 
@@ -134,22 +146,19 @@ function ImpactsPanel({
             Open Parameters, fill in the three tabs, then hit Run.
           </p>
 
-          {/* Same section shape the real results use (Legend/Quantitative
-              results), muted, so there's a preview of what's about to
+          {/* Same section shape the real results use (map key, then
+              Zones), muted, so there's a preview of what's about to
               appear here instead of nothing at all. */}
           <div className="flex flex-col gap-2 opacity-40 pointer-events-none">
-            <div className="pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Legend
-            </div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">
-              Source marker/coordinates, WEA outline, and zone lines appear here
+            <div className="pt-1 text-xs text-slate-400 dark:text-slate-500">
+              Source marker/coordinates and WEA outline appear here
             </div>
 
             <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Quantitative results
+              Zones
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500">
-              Zone area/radius stats appear here, one row per exceeded threshold
+              One row per exceeded threshold, with its map line and area
             </div>
           </div>
         </div>
@@ -157,19 +166,10 @@ function ImpactsPanel({
 
       {result && (
         <div className="px-5 pb-6 flex flex-col gap-2">
-          <div className="pt-1 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            Legend
-          </div>
-          <NoiseImpactLegend
-            result={result}
-            visibleZoneKeys={visibleZoneKeys}
-            visibleWithoutKeys={visibleWithoutKeys}
-            siteName={siteName}
-            siteMeta={siteMeta}
-          />
+          <NoiseImpactLegend result={result} siteName={siteName} siteMeta={siteMeta} />
 
           <div className="pt-3 pb-1 text-[11px] font-semibold font-geologica text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            Quantitative results
+            Zones
           </div>
           {result.mitigation && (
             <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1">
@@ -200,91 +200,117 @@ function ImpactsPanel({
                 <>
                   {exceededZones.length > 0 && (
                     <>
-                      <ul className="flex flex-col gap-1.5">
+                      <div className="text-[11px] text-[#7c8ca2] leading-relaxed">
+                        Click a zone to show or hide it. Click ▶ for details.
+                      </div>
+                      <ul className="flex flex-col gap-0.5">
                         {exceededZones.map((z) => {
                           const key = zoneKey(z);
                           const on = visibleZoneKeys.has(key) && !!z.geometry;
                           const withoutOn = visibleWithoutKeys.has(key);
+                          const detailsOpen = openDetailKeys.has(key);
+                          const color = zoneColor(z.hearing_group, z.impact, z.custom_index);
+                          const dash = IMPACT_DASH[z.impact];
                           return (
                             <li
                               key={key}
-                              className={`rounded-md transition ${on ? "bg-slate-50 dark:bg-slate-800" : ""}`}
+                              className={`rounded-md transition ${
+                                on || detailsOpen ? "bg-slate-50 dark:bg-slate-800" : ""
+                              }`}
                             >
-                              <button
-                                onClick={() => onToggleZone(key)}
-                                disabled={!z.geometry}
-                                className={`w-full flex items-center gap-2 px-2.5 pt-1.5 text-left transition ${
-                                  z.without ? "pb-0.5" : "pb-1.5"
-                                } ${z.geometry ? "cursor-pointer" : "cursor-default"} ${on ? "" : "opacity-50"}`}
-                              >
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 self-start"
-                                  style={{
-                                    backgroundColor: zoneColor(z.hearing_group, z.impact, z.custom_index),
-                                  }}
-                                />
-                                <span className="flex-1 min-w-0">
-                                  <span className="block text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
-                                    {z.hearing_group} — {z.impact}
+                              <div className={`flex items-start ${on ? "" : "opacity-50"}`}>
+                                <button
+                                  onClick={() => onToggleZone(key)}
+                                  disabled={!z.geometry}
+                                  className={`flex-1 min-w-0 flex items-start gap-2 pl-2.5 py-1.5 text-left ${
+                                    z.geometry ? "cursor-pointer" : "cursor-default"
+                                  }`}
+                                >
+                                  {/* Same line as on the map, so this row
+                                      is also the zone's legend entry. */}
+                                  <LineSwatch color={color} dash={dash} />
+                                  <span className="flex-1 min-w-0">
+                                    <span className="block text-xs font-medium leading-snug text-slate-700 dark:text-slate-200">
+                                      {z.hearing_group} — {z.impact} ({metricShort(z.metric)})
+                                    </span>
+                                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                                      {z.geometry ? formatKmOrTiny(z.area_km2) : 0} km²
+                                    </span>
                                   </span>
-                                  <span className="block text-[11px] text-slate-400 dark:text-slate-500">
-                                    {z.metric} · {z.threshold_db} dB threshold
+                                </button>
+                                <button
+                                  onClick={() => toggleDetails(key)}
+                                  aria-expanded={detailsOpen}
+                                  title={detailsOpen ? "Hide details" : "Show details"}
+                                  className="shrink-0 px-2 pt-2 pb-1.5 text-[9px] leading-none text-[#7c8ca2] hover:text-[#3d5a80] dark:hover:text-[#98c1d9] transition"
+                                >
+                                  <span
+                                    className={`inline-block transition-transform duration-150 ${
+                                      detailsOpen ? "rotate-90" : ""
+                                    }`}
+                                  >
+                                    ▶
                                   </span>
-                                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                                </button>
+                              </div>
+                              {detailsOpen && (
+                                // Indented to line up with the title above
+                                // (pl-2.5 + 20px swatch + gap-2 = 38px).
+                                <div className="pl-[38px] pr-2.5 pb-1.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                                  <div>{z.threshold_db} dB threshold</div>
+                                  <div>
                                     {z.geometry ? (
                                       <>
-                                        {formatKmOrTiny(z.area_km2)} km² · Ø{" "}
-                                        {formatKmOrTiny(2 * z.radius_km)} km
+                                        Radius {formatKmOrTiny(z.radius_km)} km
                                         {z.radius_std_km > 0.01 &&
-                                          ` (± ${(2 * z.radius_std_km).toFixed(
-                                            1
-                                          )})`}
+                                          ` (± ${z.radius_std_km.toFixed(1)})`}
                                       </>
                                     ) : (
                                       "Not exceeded with mitigation"
                                     )}
-                                  </span>
-                                </span>
-                              </button>
-                              {z.without && (
-                                // Indented to line up with the text above
-                                // (px-2.5 + 10px dot + gap-2).
-                                <button
-                                  onClick={() => onToggleWithout(key)}
-                                  disabled={!z.without.geometry}
-                                  title="Show the zone without mitigation on the map"
-                                  className="w-full flex items-center gap-1.5 pl-7 pr-2.5 pb-1.5 text-left text-[11px] text-[#7c8ca2] enabled:hover:text-[#3d5a80] dark:enabled:hover:text-[#98c1d9] transition"
-                                >
-                                  <span
-                                    className={`flex items-center justify-center w-2.5 h-2.5 rounded-sm border shrink-0 ${
-                                      withoutOn
-                                        ? "bg-[#3d5a80] border-[#3d5a80] dark:bg-[#98c1d9] dark:border-[#98c1d9] text-white dark:text-slate-900"
-                                        : "border-slate-400 dark:border-slate-500"
-                                    }`}
-                                  >
-                                    {withoutOn && checkIcon}
-                                  </span>
-                                  <span>
-                                    Without:{" "}
-                                    {z.without.geometry
-                                      ? `${formatKmOrTiny(z.without.area_km2)} km² · Ø ${formatKmOrTiny(
-                                          2 * z.without.radius_km
-                                        )} km`
-                                      : "not exceeded"}
-                                    {z.geometry &&
-                                      z.without.area_km2 > 0 &&
-                                      ` (−${Math.round(
-                                        (1 - z.area_km2 / z.without.area_km2) * 100
-                                      )}%)`}
-                                  </span>
-                                </button>
+                                  </div>
+                                  {z.without && (
+                                    <button
+                                      onClick={() => onToggleWithout(key)}
+                                      disabled={!z.without.geometry}
+                                      title="Show the zone without mitigation on the map"
+                                      className="w-full flex items-center gap-1.5 pt-0.5 text-left text-[#7c8ca2] enabled:hover:text-[#3d5a80] dark:enabled:hover:text-[#98c1d9] transition"
+                                    >
+                                      <span
+                                        className={`flex items-center justify-center w-2.5 h-2.5 rounded-sm border shrink-0 ${
+                                          withoutOn
+                                            ? "bg-[#3d5a80] border-[#3d5a80] dark:bg-[#98c1d9] dark:border-[#98c1d9] text-white dark:text-slate-900"
+                                            : "border-slate-400 dark:border-slate-500"
+                                        }`}
+                                      >
+                                        {withoutOn && checkIcon}
+                                      </span>
+                                      {/* Matches the map's thin, faint
+                                          "without" outline. */}
+                                      <LineSwatch color={`${color}99`} dash={dash} width={1.25} />
+                                      <span>
+                                        Without:{" "}
+                                        {z.without.geometry
+                                          ? `${formatKmOrTiny(z.without.area_km2)} km² · radius ${formatKmOrTiny(
+                                              z.without.radius_km
+                                            )} km`
+                                          : "not exceeded"}
+                                        {z.geometry &&
+                                          z.without.area_km2 > 0 &&
+                                          ` (−${Math.round(
+                                            (1 - z.area_km2 / z.without.area_km2) * 100
+                                          )}%)`}
+                                      </span>
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </li>
                           );
                         })}
                       </ul>
                       <div className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pt-1">
-                        Ø is mean diameter, ± is variation by direction.
+                        Radius is the mean distance from the source, ± is variation by direction.
                         {result.mitigation &&
                           " “Without” is the same run with no mitigation."}
                       </div>
