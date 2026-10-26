@@ -116,9 +116,10 @@ function IconBar({
   setMeasuring,
   drawnPolygon,
   regionLoading,
-  viewVesselsMode,
+  trafficShown,
   onAnalyse,
   onAllTraffic,
+  onHeatMap,
   onClearTraffic,
   onStartTour,
   registerTarget,
@@ -134,7 +135,7 @@ function IconBar({
   measuring: boolean;
   drawnPolygon: object | null;
   regionLoading: boolean;
-  viewVesselsMode: boolean;
+  trafficShown: boolean;
   setShowVesselPanel: Dispatch<SetStateAction<boolean>>;
   setShowRegionPanel: Dispatch<SetStateAction<boolean>>;
   setShowMooringPanel: Dispatch<SetStateAction<boolean>>;
@@ -144,6 +145,7 @@ function IconBar({
   setShowFeedbackPanel: Dispatch<SetStateAction<boolean>>;
   onAnalyse: () => void;
   onAllTraffic: () => void;
+  onHeatMap: () => void;
   onClearTraffic: () => void;
   onStartTour: () => void;
   registerTarget: (key: string) => (el: HTMLElement | null) => void;
@@ -266,8 +268,16 @@ function IconBar({
             All traffic
           </button>
           <button
-            title="Clear region traffic dots"
-            disabled={!viewVesselsMode}
+            title="See vessel traffic density in selected region as a heat map"
+            disabled={!drawnPolygon || regionLoading}
+            onClick={onHeatMap}
+            className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Heat map
+          </button>
+          <button
+            title="Clear region traffic dots or heat map"
+            disabled={!trafficShown}
             onClick={onClearTraffic}
             className="w-full font-inter text-slate-600 dark:text-slate-300 text-[9px] px-1 py-0.5 border border-slate-400 dark:border-slate-600 rounded-full bg-white/80 dark:bg-slate-900/80 disabled:opacity-30 disabled:cursor-not-allowed"
           >

@@ -137,6 +137,7 @@ function ShipMap() {
   const chaLayerRef = useRef<VectorLayer | null>(null);
   const regionTrackSourceRef = useRef(new VectorSource());
   const regionTrackLayerRef = useRef<WebGLVectorLayer<VectorSource> | null>(null);
+  const heatMapLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
   const noiseImpactSourceRef = useRef(new VectorSource());
   const noiseImpactLayerRef = useRef<VectorLayer | null>(null);
   interface Popup {
@@ -306,6 +307,7 @@ function ShipMap() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [ccgLastPositionAt, setCcgLastPositionAt] = useState<string | null>(null);
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
+  const [heatMapShown, setHeatMapShown] = useState(false);
   const [regionDisplayMode, setRegionDisplayMode] = useStateRef<
     "grey" | "type" | "speed" | "vessel"
   >("grey", (mode) => {
@@ -772,6 +774,10 @@ function ShipMap() {
     noiseLayer.getSource()!.on("imageloadstart", () => setNoiseLoading(true));
     noiseLayer.getSource()!.on(["imageloadend", "imageloaderror"], () => setNoiseLoading(false));
 
+    // region traffic heat map -- the Heat map button gives it a new source
+    const heatMapLayer = new ImageLayer<ImageStatic>({ opacity: 0.8, visible: false });
+    heatMapLayerRef.current = heatMapLayer;
+
     const map = new Map({
       target: mapRef.current,
       layers: [
@@ -789,6 +795,7 @@ function ShipMap() {
         })(),
         bathyLayer,
         noiseLayer,
+        heatMapLayer,
         chaLayer,
         mooringLayer,
         regionTrackLayer,
@@ -1102,8 +1109,7 @@ function ShipMap() {
     if (regionName === name) {
       setDrawnPolygon(null);
       setRegionName(null);
-      regionTrackSourceRef.current.clear();
-      setViewVesselsMode(false);
+      clearRegionTraffic();
     }
   }
 
@@ -1295,7 +1301,7 @@ function ShipMap() {
   function viewVesselsInRegion(polygon: object) {
     if (regionLoading) return;
     setRegionLoading(true);
-    regionTrackSourceRef.current.clear();
+    clearRegionTraffic();
     fetch(`${API}/api/region/vessels`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1308,6 +1314,39 @@ function ShipMap() {
       })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
+  }
+
+  // The heat map replaces the traffic dots, and the dots replace the heat map.
+  function showHeatMapInRegion(polygon: object) {
+    if (regionLoading) return;
+    setRegionLoading(true);
+    clearRegionTraffic();
+    fetch(`${API}/api/region/heatmap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ polygon, start, end }),
+    })
+      .then((r) => r.json())
+      .then((d: { image: string | null; extent: [number, number, number, number] | null; error: string | null }) => {
+        if (!d.image || !d.extent) {
+          window.alert(d.error ?? "No heat map for this region.");
+          return;
+        }
+        heatMapLayerRef.current?.setSource(
+          new ImageStatic({ url: `data:image/png;base64,${d.image}`, imageExtent: d.extent, projection: "EPSG:4326" })
+        );
+        heatMapLayerRef.current?.setVisible(true);
+        setHeatMapShown(true);
+      })
+      .catch(console.error)
+      .finally(() => setRegionLoading(false));
+  }
+
+  function clearRegionTraffic() {
+    regionTrackSourceRef.current.clear();
+    setViewVesselsMode(false);
+    heatMapLayerRef.current?.setVisible(false);
+    setHeatMapShown(false);
   }
 
   const filtered = useMemo(() => {
@@ -1402,13 +1441,11 @@ function ShipMap() {
         setMeasuring={setMeasuring}
         drawnPolygon={drawnPolygon}
         regionLoading={regionLoading}
-        viewVesselsMode={viewVesselsMode}
+        trafficShown={viewVesselsMode || heatMapShown}
         onAnalyse={loadRegionStats}
         onAllTraffic={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
-        onClearTraffic={() => {
-          regionTrackSourceRef.current.clear();
-          setViewVesselsMode(false);
-        }}
+        onHeatMap={() => drawnPolygon && showHeatMapInRegion(drawnPolygon)}
+        onClearTraffic={clearRegionTraffic}
         onStartTour={() => setTourActive(true)}
         registerTarget={registerTarget}
         isDark={isDark}
@@ -1491,8 +1528,7 @@ function ShipMap() {
           setDrawnPolygon={setDrawnPolygon}
           setRegionName={setRegionName}
           drawSourceRef={drawSourceRef}
-          regionTrackSourceRef={regionTrackSourceRef}
-          setViewVesselsMode={setViewVesselsMode}
+          clearRegionTraffic={clearRegionTraffic}
           setRegionStats={setRegionStats}
           onRegionListResizeMouseDown={onRegionListResizeMouseDown}
           regionDotOpen={regionDotOpen}

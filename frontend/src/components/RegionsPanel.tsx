@@ -37,8 +37,7 @@ function RegionsPanel({
   setDrawnPolygon,
   setRegionName,
   drawSourceRef,
-  regionTrackSourceRef,
-  setViewVesselsMode,
+  clearRegionTraffic,
   setRegionStats,
   onRegionListResizeMouseDown,
   regionDotOpen,
@@ -67,8 +66,7 @@ function RegionsPanel({
   setDrawnPolygon: (v: object | null) => void;
   setRegionName: (v: string | null) => void;
   drawSourceRef: RefObject<VectorSource>;
-  regionTrackSourceRef: RefObject<VectorSource>;
-  setViewVesselsMode: (v: boolean) => void;
+  clearRegionTraffic: () => void;
   setRegionStats: (v: null) => void;
   onRegionListResizeMouseDown: (e: React.MouseEvent) => void;
   regionDotOpen: boolean;
@@ -206,8 +204,7 @@ function RegionsPanel({
                     setDrawnPolygon(null);
                     setRegionName(null);
                     drawSourceRef.current.clear();
-                    regionTrackSourceRef.current.clear();
-                    setViewVesselsMode(false);
+                    clearRegionTraffic();
                     setRegionStats(null);
                   }
                 }}

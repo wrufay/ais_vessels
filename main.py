@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
-from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
+from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, render_vessel_density_overlay, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
 from noise import render_noise_overlay, noise_range, NOISE_DATA_DIR, combo_dirname, parse_combo_dirname  # noqa: E402 # type: ignore
 from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, list_parameter_info as list_noise_impact_info, compute_impact as compute_noise_impact, export_impact as export_noise_impact  # noqa: E402 # type: ignore
 
@@ -229,6 +229,33 @@ def get_region_vessels(req: RegionRequest):
             for r in inside
         ],
     }
+
+
+# vessel traffic density of a drawn region as a see-through PNG, shown on the map by the Heat map button
+@app.post("/api/region/heatmap")
+def get_region_heatmap(req: RegionRequest):
+    try:
+        polygon = shape(req.polygon)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid GeoJSON polygon")
+
+    minx, miny, maxx, maxy = polygon.bounds
+    rows = query("""
+        SELECT p.latitude, p.longitude
+        FROM ais_positions p
+        WHERE p.received_at >= %s AND p.received_at < %s
+          AND p.latitude  BETWEEN %s AND %s
+          AND p.longitude BETWEEN %s AND %s
+          AND p.mmsi BETWEEN 200000000 AND 799999999
+    """, [req.start, req.end, miny, maxy, minx, maxx])
+
+    inside = [r for r in rows if polygon.contains(Point(r["longitude"], r["latitude"]))]
+    if not inside:
+        return {"image": None, "extent": None, "error": "No vessel activity found in this region for the selected dates."}
+    try:
+        return {**render_vessel_density_overlay(pd.DataFrame(inside), polygon), "error": None}
+    except ValueError as e:
+        return {"image": None, "extent": None, "error": str(e)}
 
 
 # runs a FULL analysis on a drawn region (daily vessel counts by type, speed distribution, density plot)

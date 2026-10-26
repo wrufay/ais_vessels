@@ -8,6 +8,7 @@ Functions:
     plot_vessel_types(daily_counts) — stacked bar chart of daily vessel counts by type
     plot_speed_overall(df)          — line chart of mean daily speed across all vessels
     plot_vessel_density(df, lon_min, lon_max, lat_min, lat_max) — density map of vessel positions
+    render_vessel_density_overlay(df, polygon) — the same density as a see-through PNG to lay on the map
 """
 
 
@@ -118,6 +119,34 @@ def plot_speed_overall(df: pd.DataFrame) -> str:
     return _to_b64(fig)
 
 
+def _density_grid_res(lon_span: float, lat_span: float) -> float:
+    """Grid cell size in degrees. Finer grid for small regions, coarser for
+    large ones — targets ~150 cells across."""
+    return max(0.01, min(0.05, min(lon_span, lat_span) / 150))
+
+
+def _density_counts(df: pd.DataFrame, lon_bins: np.ndarray, lat_bins: np.ndarray) -> np.ndarray:
+    """AIS pings per grid cell, smoothed. Rows are latitude (south first),
+    columns longitude. Near-zero cells are NaN."""
+    from scipy.ndimage import gaussian_filter
+
+    counts, _, _ = np.histogram2d(
+        df["longitude"], df["latitude"], bins=[lon_bins, lat_bins]
+    )
+    counts = counts.T
+    counts = gaussian_filter(counts, sigma=1.5)  # smooth between cells
+    counts[counts < 0.5] = np.nan  # hide near-zero cells after smoothing
+    return counts
+
+
+def _density_color_range(counts: np.ndarray) -> tuple[float, float]:
+    """Colour scale limits for the density map (log scale)."""
+    vmin = np.nanpercentile(counts, 5)
+    vmax = np.nanpercentile(counts, 99)
+    vmin = max(vmin, 0.5)  # LogNorm requires positive values
+    return vmin, vmax
+
+
 def plot_vessel_density(
     df: pd.DataFrame,
     lon_min: float, lon_max: float,
@@ -145,21 +174,14 @@ def plot_vessel_density(
     ext_lat_min = lat_min - pad_lat
     ext_lat_max = lat_max + pad_lat
 
-    # Finer grid for small regions, coarser for large ones — targets ~150 cells across
-    GRID_RES = max(0.01, min(0.05, min(lon_span, lat_span) / 150))
+    GRID_RES = _density_grid_res(lon_span, lat_span)
 
     lon_bins = np.arange(ext_lon_min, ext_lon_max + GRID_RES, GRID_RES)
     lat_bins = np.arange(ext_lat_min, ext_lat_max + GRID_RES, GRID_RES)
 
-    from scipy.ndimage import gaussian_filter
     from matplotlib.colors import LogNorm
 
-    counts, _, _ = np.histogram2d(
-        df["longitude"], df["latitude"], bins=[lon_bins, lat_bins]
-    )
-    counts = counts.T
-    counts = gaussian_filter(counts, sigma=1.5)  # smooth between cells
-    counts[counts < 0.5] = np.nan  # hide near-zero cells after smoothing
+    counts = _density_counts(df, lon_bins, lat_bins)
 
     proj = ccrs.PlateCarree()
     fig, ax = plt.subplots(figsize=(12, 8), subplot_kw={"projection": proj})
@@ -173,9 +195,7 @@ def plot_vessel_density(
     ax.add_feature(cfeature.BORDERS, linewidth=0.4, zorder=2)
     ax.gridlines(draw_labels=True, linewidth=0.4, color="gray", alpha=0.5, zorder=3)
 
-    vmin = np.nanpercentile(counts, 5)
-    vmax = np.nanpercentile(counts, 99)
-    vmin = max(vmin, 0.5)  # LogNorm requires positive values
+    vmin, vmax = _density_color_range(counts)
 
     mesh = ax.pcolormesh(
         lon_bins, lat_bins, counts,
@@ -186,3 +206,47 @@ def plot_vessel_density(
     ax.set_title("Vessel Traffic Density", fontsize=14, pad=10)
     plt.tight_layout()
     return _to_b64(fig, dpi=180)
+
+
+def render_vessel_density_overlay(df: pd.DataFrame, polygon) -> dict:
+    """Returns the vessel traffic density of a region as a see-through PNG to
+    lay on the map.
+
+    df: DataFrame with columns "longitude" and "latitude".
+    polygon: the region (shapely geometry, lon/lat).
+
+    Same grid, smoothing and colours as plot_vessel_density, but with nothing
+    around it. Cells outside the region or with almost no traffic are
+    transparent. Returns {"image": base64 PNG, "extent": [lon_min, lat_min,
+    lon_max, lat_max] of the image}. Raises ValueError if there is too little
+    data.
+    """
+    import shapely
+    from matplotlib.colors import LogNorm
+    from PIL import Image
+
+    lon_min, lat_min, lon_max, lat_max = polygon.bounds
+    res = _density_grid_res(lon_max - lon_min, lat_max - lat_min)
+    lon_bins = np.arange(lon_min, lon_max + res, res)
+    lat_bins = np.arange(lat_min, lat_max + res, res)
+
+    counts = _density_counts(df, lon_bins, lat_bins)
+    # Keep only cells whose centre is inside the region
+    lon_c = (lon_bins[:-1] + lon_bins[1:]) / 2
+    lat_c = (lat_bins[:-1] + lat_bins[1:]) / 2
+    lon_grid, lat_grid = np.meshgrid(lon_c, lat_c)
+    counts[~shapely.contains_xy(polygon, lon_grid, lat_grid)] = np.nan
+    if np.isnan(counts).all():
+        raise ValueError("Not enough position data for a density map.")
+
+    vmin, vmax = _density_color_range(counts)
+    rgba = matplotlib.colormaps["YlOrRd"](LogNorm(vmin=vmin, vmax=vmax)(counts), bytes=True)
+    rgba[np.isnan(counts)] = 0  # transparent
+    # Image rows go north to south, the grid rows go south to north
+    img = Image.fromarray(np.flipud(rgba))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return {
+        "image": base64.b64encode(buf.getvalue()).decode(),
+        "extent": [float(lon_bins[0]), float(lat_bins[0]), float(lon_bins[-1]), float(lat_bins[-1])],
+    }
