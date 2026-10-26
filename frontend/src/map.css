@@ -2,6 +2,12 @@
   background: linear-gradient(to right, #4575b4, #91bfdb, #e0f3f8, #ffffbf, #fee090, #fc8d59, #d73027);
 }
 
+/* matplotlib's YlOrRd, the colour map of the region traffic heat map
+   (analysis/plots.py) */
+.heat-gradient-bar {
+  background: linear-gradient(to right, #ffffcc, #ffe793, #febf5a, #fd8c3c, #f43d25, #c90823, #800026);
+}
+
 /* OL's default zoom control sits at its own left: .5em, which is inside
    IconBar's permanent full-height sidebar. --map-controls-offset (set on
    Map.tsx's root element) is IconBar's measured width, plus the params

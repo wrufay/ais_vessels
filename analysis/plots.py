@@ -218,8 +218,9 @@ def render_vessel_density_overlay(df: pd.DataFrame, polygon) -> dict:
     Same grid, smoothing and colours as plot_vessel_density, but with nothing
     around it. Cells outside the region or with almost no traffic are
     transparent. Returns {"image": base64 PNG, "extent": [lon_min, lat_min,
-    lon_max, lat_max] of the image}. Raises ValueError if there is too little
-    data.
+    lon_max, lat_max] of the image, "vmin"/"vmax": ends of the colour scale
+    in AIS pings per cell (log scale)}. Raises ValueError if there is too
+    little data.
     """
     import shapely
     from matplotlib.colors import LogNorm
@@ -249,4 +250,6 @@ def render_vessel_density_overlay(df: pd.DataFrame, polygon) -> dict:
     return {
         "image": base64.b64encode(buf.getvalue()).decode(),
         "extent": [float(lon_bins[0]), float(lat_bins[0]), float(lon_bins[-1]), float(lat_bins[-1])],
+        "vmin": float(vmin),
+        "vmax": float(vmax),
     }

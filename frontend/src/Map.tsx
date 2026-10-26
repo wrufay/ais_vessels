@@ -44,6 +44,7 @@ import {
 } from "./utils/mapStyles";
 import SidePanel, { PANEL_DEFAULT_WIDTH } from "./components/SidePanel";
 import IconBar from "./components/IconBar";
+import HeatMapLegend from "./components/HeatMapLegend";
 import CursorCoordinates from "./components/CursorCoordinates";
 import ClosePanelBtn from "./components/ClosePanelBtn";
 import MapPopup from "./components/MapPopup";
@@ -308,7 +309,8 @@ function ShipMap() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [ccgLastPositionAt, setCcgLastPositionAt] = useState<string | null>(null);
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
-  const [heatMapShown, setHeatMapShown] = useState(false);
+  // Colour scale ends of the heat map on the map; null while none is shown
+  const [heatMapScale, setHeatMapScale] = useState<{ vmin: number; vmax: number } | null>(null);
   const [regionDisplayMode, setRegionDisplayMode] = useStateRef<
     "grey" | "type" | "speed" | "vessel"
   >("grey", (mode) => {
@@ -1333,8 +1335,8 @@ function ShipMap() {
       body: JSON.stringify({ polygon, start, end }),
     })
       .then((r) => r.json())
-      .then((d: { image: string | null; extent: [number, number, number, number] | null; error: string | null }) => {
-        if (!d.image || !d.extent) {
+      .then((d: { image: string | null; extent: [number, number, number, number] | null; vmin?: number; vmax?: number; error: string | null }) => {
+        if (!d.image || !d.extent || d.vmin === undefined || d.vmax === undefined) {
           window.alert(d.error ?? "No heat map for this region.");
           return;
         }
@@ -1342,7 +1344,7 @@ function ShipMap() {
           new ImageStatic({ url: `data:image/png;base64,${d.image}`, imageExtent: d.extent, projection: "EPSG:4326" })
         );
         heatMapLayerRef.current?.setVisible(true);
-        setHeatMapShown(true);
+        setHeatMapScale({ vmin: d.vmin, vmax: d.vmax });
       })
       .catch(console.error)
       .finally(() => setRegionLoading(false));
@@ -1352,7 +1354,7 @@ function ShipMap() {
     regionTrackSourceRef.current.clear();
     setViewVesselsMode(false);
     heatMapLayerRef.current?.setVisible(false);
-    setHeatMapShown(false);
+    setHeatMapScale(null);
   }
 
   const filtered = useMemo(() => {
@@ -1405,6 +1407,15 @@ function ShipMap() {
         leftOffset={iconBarWidth + (showParamsPanel ? paramsPanelWidth : 0)}
       />
 
+      {heatMapScale && (
+        <HeatMapLegend
+          vmin={heatMapScale.vmin}
+          vmax={heatMapScale.vmax}
+          rightOffset={anyPanelOpen ? panelWidth + 8 : 40}
+          bottomOffset={showImpactsPanel ? 28 : 8}
+        />
+      )}
+
       {/* Upload modal */}
       {showUploadModal && (
         <UploadModal
@@ -1447,7 +1458,7 @@ function ShipMap() {
         setMeasuring={setMeasuring}
         drawnPolygon={drawnPolygon}
         regionLoading={regionLoading}
-        trafficShown={viewVesselsMode || heatMapShown}
+        trafficShown={viewVesselsMode || heatMapScale !== null}
         onAnalyse={loadRegionStats}
         onAllTraffic={() => drawnPolygon && viewVesselsInRegion(drawnPolygon)}
         onHeatMap={() => drawnPolygon && showHeatMapInRegion(drawnPolygon)}
