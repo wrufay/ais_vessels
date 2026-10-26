@@ -62,8 +62,9 @@ export interface NoiseImpactZone extends NoiseImpactZoneShape {
   metric: string;
   threshold_db: number;
   // Custom thresholds only (impact "Custom", hearing_group = the user's
-  // name): which distinct custom name this is, in order -- picks its colour
-  // (see zoneColor). null for workbook thresholds.
+  // name): picks its colour (see zoneColor). The backend numbers the
+  // distinct names in order; handleRun swaps that for the name's own
+  // color_index. null for workbook thresholds.
   custom_index: number | null;
   // The same zone with no mitigation, when the run had a mitigation
   // system (the shape fields above are then the mitigated zone). null
@@ -77,6 +78,11 @@ export interface NoiseImpactCustomThreshold {
   name: string;
   metric: string;
   threshold_db: number;
+  // Which custom colour this name uses (see zoneColor), given when the
+  // name is first added and kept until it is removed, so removing another
+  // name doesn't change it. Thresholds with the same name share it. Sent
+  // with the run but not used by the backend.
+  color_index: number;
 }
 
 // What a run's mitigation was (null for none) -- the system's label and
@@ -376,6 +382,10 @@ export function useNoiseImpact(apiBase: string) {
         throw new Error(body?.detail || `Request failed (${res.status})`);
       }
       const data: NoiseImpactResult = await res.json();
+      const colorByName = new Map(customThresholds.map((t) => [t.name, t.color_index]));
+      data.zones.forEach((z) => {
+        if (z.custom_index !== null) z.custom_index = colorByName.get(z.hearing_group) ?? z.custom_index;
+      });
       setResult(data);
       setResultSite(site);
       setLastRunRequest(request);

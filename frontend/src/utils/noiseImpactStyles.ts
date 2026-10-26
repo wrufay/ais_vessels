@@ -34,10 +34,11 @@ export const HEARING_GROUP_COLORS: Record<string, Shades> = {
 };
 
 // Custom (user-entered) thresholds, one colour per distinct custom name
-// (the zone's custom_index), cycling if there are more -- picked as the
-// colours furthest from every HEARING_GROUP_COLORS shade, so a custom zone
-// never looks like a workbook one. Custom impacts have no seriousness, so
-// they don't shade.
+// (the zone's custom_index, which a name keeps while it is listed -- see
+// NoiseImpactCustomThreshold's color_index), cycling if there are more
+// than six -- picked as the colours furthest from every
+// HEARING_GROUP_COLORS shade, so a custom zone never looks like a workbook
+// one. Custom impacts have no seriousness, so they don't shade.
 const CUSTOM_COLORS = ["#000000", "#2f5bd3", "#f48fb1", "#5fd3a0", "#1e3a8a", "#b0b0b0"];
 
 export function zoneColor(

@@ -499,9 +499,17 @@ function CustomThresholds({
       return setError(`Enter a threshold between ${CUSTOM_DB_MIN} and ${CUSTOM_DB_MAX} dB.`);
     if (customThresholds.some((t) => t.name === trimmed && t.metric === chosenMetric))
       return setError(`${trimmed} already has a ${label(chosenMetric).toLowerCase()} threshold.`);
+    // A new name takes the lowest colour no other name is using; a second
+    // threshold for a name already listed shares its colour.
+    let colorIndex = customThresholds.find((t) => t.name === trimmed)?.color_index;
+    if (colorIndex === undefined) {
+      const used = new Set(customThresholds.map((t) => t.color_index));
+      colorIndex = 0;
+      while (used.has(colorIndex)) colorIndex++;
+    }
     setCustomThresholds([
       ...customThresholds,
-      { name: trimmed, metric: chosenMetric, threshold_db: value },
+      { name: trimmed, metric: chosenMetric, threshold_db: value, color_index: colorIndex },
     ]);
     setName("");
     setDb("");
