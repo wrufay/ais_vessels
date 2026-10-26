@@ -245,7 +245,20 @@ export function setClickedChaNames(names: Set<string>) {
   _clickedChaNames = names;
 }
 
-export function chaStyle(feature: FeatureLike): Style {
+// Region fill and outline are drawn by two layers, so the region traffic
+// heat map can sit between them (on top of the fill, under the outline).
+export function chaFillStyle(feature: FeatureLike): Style {
+  const c = regionColor(feature.get("regionType") as string);
+  const name = feature.get("name") as string;
+  const selected = name === _selectedChaName;
+  const clicked = _clickedChaNames.has(name);
+  if (!selected && !clicked) return new Style();
+  return new Style({
+    fill: new Fill({ color: selected ? c.selectedFill : c.fill }),
+  });
+}
+
+export function chaOutlineStyle(feature: FeatureLike): Style {
   const c = regionColor(feature.get("regionType") as string);
   const name = feature.get("name") as string;
   const selected = name === _selectedChaName;
@@ -253,7 +266,6 @@ export function chaStyle(feature: FeatureLike): Style {
   if (!selected && !clicked) return new Style();
   return new Style({
     stroke: new Stroke({ color: c.stroke, width: selected ? 2.5 : 2 }),
-    fill: new Fill({ color: selected ? c.selectedFill : c.fill }),
   });
 }
 

@@ -34,7 +34,8 @@ import {
   ROUTE_WEBGL_VARIABLES,
   TYPE_NUM,
   makeMooringCanvas,
-  chaStyle,
+  chaFillStyle,
+  chaOutlineStyle,
   downloadPlot,
   setSelectedChaName,
   getSelectedChaName,
@@ -668,9 +669,13 @@ function ShipMap() {
   useEffect(() => {
     if (!mapRef.current) return;
 
+    const chaFillLayer = new VectorLayer({
+      source: chaSourceRef.current,
+      style: chaFillStyle,
+    });
     const chaLayer = new VectorLayer({
       source: chaSourceRef.current,
-      style: chaStyle,
+      style: chaOutlineStyle,
     });
     chaLayerRef.current = chaLayer;
 
@@ -795,6 +800,7 @@ function ShipMap() {
         })(),
         bathyLayer,
         noiseLayer,
+        chaFillLayer,
         heatMapLayer,
         chaLayer,
         mooringLayer,
