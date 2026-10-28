@@ -238,8 +238,9 @@ function TracksPanel({
           }
           size={vesselSize}
           onSizeChange={setVesselSize}
-          sizeMin={2}
+          sizeMin={1}
           sizeMax={14}
+          sizeStep={0.5}
           opacity={vesselOpacity}
           onOpacityChange={setVesselOpacity}
         />
