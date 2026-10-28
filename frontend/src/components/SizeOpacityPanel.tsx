@@ -11,6 +11,7 @@ function SizingSlider({
   value,
   min,
   max,
+  step = 1,
   unit,
   onChange,
 }: {
@@ -18,6 +19,7 @@ function SizingSlider({
   value: number;
   min: number;
   max: number;
+  step?: number;
   unit: string;
   onChange: (value: number) => void;
 }) {
@@ -28,6 +30,7 @@ function SizingSlider({
         type="range"
         min={min}
         max={max}
+        step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="panel-slider w-24"
@@ -37,9 +40,10 @@ function SizingSlider({
           type="number"
           min={min}
           max={max}
+          step={step}
           value={value}
           onChange={(e) => onChange(Math.min(max, Math.max(min, Number(e.target.value))))}
-          className="w-7 text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums"
+          className={`${step < 1 ? "w-9" : "w-7"} text-[11px] text-slate-400 dark:text-slate-500 text-right bg-transparent border-b border-slate-200 dark:border-slate-700 outline-none tabular-nums`}
         />
         <span className="text-[11px] text-slate-400 dark:text-slate-500">{unit}</span>
       </div>
@@ -60,6 +64,7 @@ function SizeOpacityPanel({
   onSizeChange,
   sizeMin,
   sizeMax,
+  sizeStep,
   opacity,
   onOpacityChange,
 }: {
@@ -70,6 +75,8 @@ function SizeOpacityPanel({
   onSizeChange: (value: number) => void;
   sizeMin: number;
   sizeMax: number;
+  // Defaults to 1 (whole pixels); pass e.g. 0.5 to allow half-pixel sizes.
+  sizeStep?: number;
   opacity: number;
   onOpacityChange: (value: number) => void;
 }) {
@@ -78,7 +85,7 @@ function SizeOpacityPanel({
       <CollapsibleHeader open={open} onToggle={onToggle} label="Change size" trailing={preview} />
       {open && (
         <div className="pl-4 pr-1 flex flex-col gap-2 pb-1">
-          <SizingSlider label="Size" value={size} min={sizeMin} max={sizeMax} unit="px" onChange={onSizeChange} />
+          <SizingSlider label="Size" value={size} min={sizeMin} max={sizeMax} step={sizeStep} unit="px" onChange={onSizeChange} />
           <SizingSlider label="Opacity" value={Math.round(opacity * 100)} min={0} max={100} unit="%" onChange={(v) => onOpacityChange(v / 100)} />
         </div>
       )}

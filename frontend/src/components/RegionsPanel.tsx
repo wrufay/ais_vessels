@@ -227,8 +227,9 @@ function RegionsPanel({
           }
           size={regionDotSize}
           onSizeChange={setRegionDotSize}
-          sizeMin={2}
+          sizeMin={0.5}
           sizeMax={14}
+          sizeStep={0.5}
           opacity={regionDotOpacity}
           onOpacityChange={setRegionDotOpacity}
         />
