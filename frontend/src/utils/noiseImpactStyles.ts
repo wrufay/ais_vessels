@@ -66,6 +66,37 @@ export const IMPACT_DASH: Record<string, number[] | undefined> = {
   Mortality: undefined,
 };
 
+// Short hearing-group names for the zone name shown above the cursor
+// lat/lon on the map, which has room for one short line per zone. "Fish"
+// is dropped from the swim bladder groups (only fish have one).
+const SHORT_HEARING_GROUP: Record<string, string> = {
+  "LF Cetaceans": "LF cetaceans",
+  "HF Cetaceans": "HF cetaceans",
+  "VHF Cetaceans": "VHF cetaceans",
+  "Phocids Underwater": "Phocids",
+  "Fish - No Swim Bladder": "No swim bladder",
+  "Fish - Non-Auditory Swim Bladder": "Non-aud. swim bladder",
+  "Fish - Auditory Swim Bladder": "Aud. swim bladder",
+  "Fish - Eggs and Larvae": "Fish eggs & larvae",
+  "Sea Turtles": "Sea turtles",
+};
+
+// e.g. "REC INJ — Non-aud. swim bladder (SEL) · without". A custom
+// threshold shows only the name the user typed (its impact is "Custom").
+export function zoneShortLabel(
+  hearingGroup: string,
+  impact: string,
+  metric: string,
+  isCustom: boolean,
+  isWithout: boolean
+): string {
+  const m = metric.startsWith("SEL") ? "SEL" : "SPL";
+  const name = isCustom
+    ? `${hearingGroup} (${m})`
+    : `${impact} — ${SHORT_HEARING_GROUP[hearingGroup] ?? hearingGroup} (${m})`;
+  return isWithout ? `${name} · without` : name;
+}
+
 // A zone that's genuinely just a few metres across rounds to "0.0" at
 // normal decimal precision -- reads as "no zone" (nothing here) even
 // though one really does exist, just a tiny one. Shown as "<1" instead so

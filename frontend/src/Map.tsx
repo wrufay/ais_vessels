@@ -60,7 +60,7 @@ import ImpactsPanel from "./components/noise-impact/ImpactsPanel";
 import FeedbackPanel from "./components/FeedbackPanel";
 import NoiseImpactParamsPanel from "./components/noise-impact/NoiseImpactParamsPanel";
 import { useNoiseImpact, zoneKey } from "./useNoiseImpact";
-import { zoneColor, IMPACT_DASH, WEA_EDGE_COLOR } from "./utils/noiseImpactStyles";
+import { zoneColor, zoneShortLabel, IMPACT_DASH, WEA_EDGE_COLOR } from "./utils/noiseImpactStyles";
 import { useTheme } from "./useTheme";
 import { useDragResize } from "./useDragResize";
 import { useStateRef } from "./useStateRef";
@@ -219,6 +219,9 @@ function ShipMap() {
     lat: number;
     lon: number;
   } | null>(null);
+  // Name(s) of the noise-impact zone under the cursor, shown above the
+  // lat/lon readout (see zoneLabelsAt).
+  const [hoverZoneLabels, setHoverZoneLabels] = useState<string[]>([]);
   const [showVesselPanel, setShowVesselPanel] = useState(false);
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
@@ -497,6 +500,7 @@ function ShipMap() {
   useEffect(() => {
     const fmt = new GeoJSON();
     noiseImpactSourceRef.current.clear();
+    setHoverZoneLabels([]);
     if (!noiseImpactResult) return;
     // Smaller zones draw on top of bigger ones (see the layer's style
     // callback), so every zone keeps a visible, clickable part: rank 1 is
@@ -989,10 +993,47 @@ function ShipMap() {
       }) ?? (setPopup(null), setMooringPopup(null));
     });
 
+    // Name(s) of the noise-impact zone under the cursor: the smallest
+    // shape there wins, "without mitigation" shapes included (by their own
+    // size, hit only on their ring while the zone is shown), so a
+    // "without" ring isn't hidden by a bigger zone drawn over it. Zones
+    // with exactly the same shape all count, so none is hidden.
+    function zoneLabelsAt(coordinate: number[]): string[] {
+      if (!noiseImpactLayerRef.current?.getVisible()) return [];
+      const hits: { area: number; feature: Feature }[] = [];
+      for (const feature of noiseImpactSourceRef.current.getFeatures()) {
+        if (feature.get("isSource") || feature.get("isWeaOutline")) continue;
+        const geom = feature.getGeometry() as OLPolygon;
+        const hitGeom = (feature.get("fillGeometry") as OLPolygon | undefined) ?? geom;
+        if (hitGeom.intersectsCoordinate(coordinate)) {
+          hits.push({ area: geom.getArea(), feature });
+        }
+      }
+      if (hits.length === 0) return [];
+      const smallest = hits.reduce((a, b) => (b.area < a.area ? b : a));
+      const extent = smallest.feature.getGeometry()!.getExtent().join();
+      return hits
+        .filter(
+          (h) =>
+            Math.abs(h.area - smallest.area) <= smallest.area * 1e-6 &&
+            h.feature.getGeometry()!.getExtent().join() === extent
+        )
+        .map(({ feature }) =>
+          zoneShortLabel(
+            feature.get("hearingGroup"),
+            feature.get("impact"),
+            feature.get("metric"),
+            feature.get("customIndex") !== null,
+            feature.get("isWithout")
+          )
+        );
+    }
+
     // hover cursor on moorings and CHA polygons
     map.on("pointermove", (e) => {
       const [lon, lat] = toLonLat(e.coordinate);
       setCursorCoord({ lat, lon });
+      setHoverZoneLabels(zoneLabelsAt(e.coordinate));
 
       if (measuringRef.current) {
         handleMeasurePointerMove(e.coordinate);
@@ -1405,6 +1446,7 @@ function ShipMap() {
         lat={cursorCoord?.lat ?? null}
         lon={cursorCoord?.lon ?? null}
         leftOffset={iconBarWidth + (showParamsPanel ? paramsPanelWidth : 0)}
+        zoneLabels={hoverZoneLabels}
       />
 
       {heatMapScale && (
