@@ -314,6 +314,8 @@ function ShipMap() {
   const [viewVesselsMode, setViewVesselsMode] = useState(false);
   // Colour scale ends of the heat map on the map; null while none is shown
   const [heatMapScale, setHeatMapScale] = useState<{ vmin: number; vmax: number } | null>(null);
+  // Stays hidden for later heat maps too, until the page is reloaded
+  const [heatMapLegendHidden, setHeatMapLegendHidden] = useState(false);
   const [regionDisplayMode, setRegionDisplayMode] = useStateRef<
     "grey" | "type" | "speed" | "vessel"
   >("grey", (mode) => {
@@ -1455,6 +1457,9 @@ function ShipMap() {
           vmax={heatMapScale.vmax}
           rightOffset={anyPanelOpen ? panelWidth + 8 : 40}
           bottomOffset={showImpactsPanel ? 28 : 8}
+          hidden={heatMapLegendHidden}
+          onHide={() => setHeatMapLegendHidden(true)}
+          onShow={() => setHeatMapLegendHidden(false)}
         />
       )}
 

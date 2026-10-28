@@ -5,6 +5,9 @@ function HeatMapLegend({
   vmax,
   rightOffset,
   bottomOffset,
+  hidden,
+  onHide,
+  onShow,
 }: {
   vmin: number;
   vmax: number;
@@ -13,17 +16,48 @@ function HeatMapLegend({
   rightOffset: number;
   // Lifts the legend above the scale bar, which shows with the Impacts panel.
   bottomOffset: number;
+  // Hidden by the user with the "−" button; a small chip is left in its place.
+  hidden: boolean;
+  onHide: () => void;
+  onShow: () => void;
 }) {
   // Log scale: the middle of the bar is the geometric mean, not the average
   const mid = Math.sqrt(vmin * vmax);
   const fmt = (v: number) => (v < 10 ? v.toFixed(1) : Math.round(v).toString());
+
+  if (hidden) {
+    return (
+      <button
+        type="button"
+        onClick={onShow}
+        title="Show legend"
+        aria-label="Show heat map legend"
+        style={{ right: rightOffset, bottom: bottomOffset }}
+        className="absolute z-10 flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-900/85 px-1.5 py-[3px] shadow-sm transition-[right] duration-300 ease-in-out"
+      >
+        <span className="heat-gradient-bar block w-[22px] h-[5px] rounded-full" />
+        <span className="text-[12px] leading-[10px] text-slate-400 dark:text-slate-500">+</span>
+      </button>
+    );
+  }
 
   return (
     <div
       style={{ right: rightOffset, bottom: bottomOffset }}
       className="absolute z-10 w-[108px] rounded-md border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-900/85 px-[7px] py-[3px] shadow-sm font-inter transition-[right] duration-300 ease-in-out"
     >
-      <div className="text-[9px] font-medium text-slate-600 dark:text-slate-300 mb-0.5">AIS pings per cell</div>
+      <div className="flex items-center justify-between mb-0.5">
+        <div className="text-[9px] font-medium text-slate-600 dark:text-slate-300">AIS pings per cell</div>
+        <button
+          type="button"
+          onClick={onHide}
+          title="Hide legend"
+          aria-label="Hide heat map legend"
+          className="ml-1 w-3 h-3 text-[12px] leading-[10px] text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+        >
+          −
+        </button>
+      </div>
       <div className="heat-gradient-bar h-[5px] rounded-full w-full" />
       <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 tabular-nums">
         <span>{fmt(vmin)}</span>
