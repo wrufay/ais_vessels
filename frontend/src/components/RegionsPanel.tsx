@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import type VectorSource from "ol/source/Vector";
 import { type PresetRegion, CHA_REGIONS, WEA_REGIONS } from "../data/regions";
 import { drawnRegionLabel, TRACK_DEFAULT_COLOR } from "../utils/mapStyles";
+import DateRangePicker from "./DateRangePicker";
 import PanelHeader from "./PanelHeader";
 import RegionListItem from "./RegionListItem";
 import SizeOpacityPanel from "./SizeOpacityPanel";
@@ -14,11 +15,16 @@ interface UserRegion {
 
 // The Regions side-panel's content (everything inside <SidePanel>, which
 // Map.tsx still renders directly since its open/width/registerTarget props
-// are shared across all 4 side panels). Draw/upload controls, the
-// CHA/WEA/Uploaded/Your-regions lists, and size/opacity controls for drawn
-// region dots.
+// are shared across all 4 side panels). The date range (the same one the
+// Tracks and Moorings panels show, so changing it here changes it there),
+// draw/upload controls, the CHA/WEA/Uploaded/Your-regions lists, and
+// size/opacity controls for drawn region dots.
 function RegionsPanel({
   registerTarget,
+  start,
+  end,
+  setStart,
+  setEnd,
   drawing,
   startDrawing,
   cancelDrawing,
@@ -48,6 +54,10 @@ function RegionsPanel({
   setRegionDotOpacity,
 }: {
   registerTarget: (key: string) => (el: HTMLElement | null) => void;
+  start: string;
+  end: string;
+  setStart: (v: string) => void;
+  setEnd: (v: string) => void;
   drawing: boolean;
   startDrawing: () => void;
   cancelDrawing: () => void;
@@ -82,7 +92,9 @@ function RegionsPanel({
         <PanelHeader
           name="Regions"
           description="Select one or more regions to display them on the map."
+          className="mb-4"
         />
+        <DateRangePicker start={start} end={end} onStartChange={setStart} onEndChange={setEnd} />
 
         <div ref={registerTarget("regionCustomize")} className="mt-4 mb-4 flex flex-col gap-2.5">
           <div className="flex items-center justify-between">

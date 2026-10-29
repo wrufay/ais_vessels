@@ -1572,6 +1572,10 @@ function ShipMap() {
       <SidePanel open={showRegionPanel} width={panelWidth} onWidthChange={setPanelWidth} innerRef={registerTarget("regionPanel")}>
         <RegionsPanel
           registerTarget={registerTarget}
+          start={start}
+          end={end}
+          setStart={handleStartChange}
+          setEnd={setEnd}
           drawing={drawing}
           startDrawing={startDrawing}
           cancelDrawing={cancelDrawing}
