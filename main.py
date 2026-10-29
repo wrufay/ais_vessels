@@ -216,7 +216,7 @@ def get_vessel_route(
 class RegionRequest(BaseModel):
     polygon: dict  # GeoJSON polygon
     start: str
-    end: str
+    end: str  # a day (YYYY-MM-DD), included in full: queries use < end + 1 day
 
 
 @app.post("/api/region/vessels")
@@ -233,7 +233,7 @@ def get_region_vessels(req: RegionRequest):
                p.source, floor(extract(epoch FROM p.received_at) / 120)::bigint AS slot
         FROM ais_positions p
         LEFT JOIN vessels v USING (mmsi)
-        WHERE p.received_at >= %s AND p.received_at < %s
+        WHERE p.received_at >= %s AND p.received_at < %s::date + 1
           AND p.latitude  BETWEEN %s AND %s
           AND p.longitude BETWEEN %s AND %s
           AND p.mmsi BETWEEN 200000000 AND 799999999
@@ -274,7 +274,7 @@ def get_region_heatmap(req: RegionRequest):
     rows = query("""
         SELECT p.latitude, p.longitude
         FROM ais_positions p
-        WHERE p.received_at >= %s AND p.received_at < %s
+        WHERE p.received_at >= %s AND p.received_at < %s::date + 1
           AND p.latitude  BETWEEN %s AND %s
           AND p.longitude BETWEEN %s AND %s
           AND p.mmsi BETWEEN 200000000 AND 799999999
@@ -305,7 +305,7 @@ def analyse_region(req: RegionRequest):
                p.latitude, p.longitude, p.speed, v.ship_type
         FROM ais_positions p
         LEFT JOIN vessels v USING (mmsi)
-        WHERE p.received_at >= %s AND p.received_at < %s
+        WHERE p.received_at >= %s AND p.received_at < %s::date + 1
           AND p.latitude  BETWEEN %s AND %s
           AND p.longitude BETWEEN %s AND %s
           AND p.mmsi BETWEEN 200000000 AND 799999999
