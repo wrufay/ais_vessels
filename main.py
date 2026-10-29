@@ -227,7 +227,8 @@ def get_region_vessels(req: RegionRequest):
 
     minx, miny, maxx, maxy = polygon.bounds
     df = query_df("""
-        SELECT p.mmsi, p.latitude AS lat, p.longitude AS lon, p.speed AS sog, v.ship_type
+        SELECT p.mmsi, p.latitude AS lat, p.longitude AS lon, p.speed AS sog, v.ship_type,
+               floor(extract(epoch FROM p.received_at) / 120)::bigint AS slot
         FROM ais_positions p
         LEFT JOIN vessels v USING (mmsi)
         WHERE p.received_at >= %s AND p.received_at < %s
@@ -240,6 +241,12 @@ def get_region_vessels(req: RegionRequest):
     # Filter to exact polygon, checking all points in one go
     shapely.prepare(polygon)
     df = df[shapely.contains_xy(polygon, df["lon"].to_numpy(), df["lat"].to_numpy())]
+
+    # Keep only each vessel's first position in every 2-minute slot. The live
+    # CCG feed (2026 on) has a position every few seconds, so most dots sat on
+    # top of each other and the map lagged drawing them. This also thins the
+    # older satellite data (2025), whose positions sometimes come seconds apart.
+    df = df.drop_duplicates(["mmsi", "slot"]).drop(columns="slot")
     df["ship_type"] = df["ship_type"].astype("Int64")  # whole numbers in the JSON (81, not 81.0)
 
     # The reply is written out by pandas rather than returned as one dict per
