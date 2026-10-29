@@ -23,6 +23,7 @@ Note: This requires `docker compose up db` running for Postgres.
 
 import hmac
 import io
+import json
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -225,8 +226,8 @@ def get_region_vessels(req: RegionRequest):
         raise HTTPException(status_code=400, detail="Invalid GeoJSON polygon")
 
     minx, miny, maxx, maxy = polygon.bounds
-    rows = query("""
-        SELECT p.mmsi, p.latitude, p.longitude, p.speed AS sog, v.ship_type
+    df = query_df("""
+        SELECT p.mmsi, p.latitude AS lat, p.longitude AS lon, p.speed AS sog, v.ship_type
         FROM ais_positions p
         LEFT JOIN vessels v USING (mmsi)
         WHERE p.received_at >= %s AND p.received_at < %s
@@ -236,14 +237,17 @@ def get_region_vessels(req: RegionRequest):
         ORDER BY p.mmsi, p.received_at
     """, [req.start, req.end, miny, maxy, minx, maxx])
 
-    inside = [r for r in rows if polygon.contains(Point(r["longitude"], r["latitude"]))]
-    return {
-        "vessel_mmsis": sorted({r["mmsi"] for r in inside}),
-        "positions": [
-            {"mmsi": r["mmsi"], "lat": r["latitude"], "lon": r["longitude"], "sog": r["sog"], "ship_type": r["ship_type"]}
-            for r in inside
-        ],
-    }
+    # Filter to exact polygon, checking all points in one go
+    shapely.prepare(polygon)
+    df = df[shapely.contains_xy(polygon, df["lon"].to_numpy(), df["lat"].to_numpy())]
+    df["ship_type"] = df["ship_type"].astype("Int64")  # whole numbers in the JSON (81, not 81.0)
+
+    # The reply is written out by pandas rather than returned as one dict per
+    # point: FastAPI's own JSON conversion of a dict per point is very slow
+    # when there are hundreds of thousands of points.
+    mmsis = json.dumps(sorted(df["mmsi"].unique().tolist()))
+    positions = df.to_json(orient="records")
+    return Response(content=f'{{"vessel_mmsis": {mmsis}, "positions": {positions}}}', media_type="application/json")
 
 
 # vessel traffic density of a drawn region as a see-through PNG, shown on the map by the Heat map button
