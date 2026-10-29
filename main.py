@@ -22,6 +22,7 @@ Note: This requires `docker compose up db` running for Postgres.
 """
 
 import hmac
+import io
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -33,6 +34,7 @@ import psycopg2.extras # type: ignore
 from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StringConstraints
+import shapely # type: ignore
 from shapely.geometry import Point, shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
@@ -49,6 +51,19 @@ def query(sql: str, params=None) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params or [])
             return [dict(r) for r in cur.fetchall()]
+
+
+# Same as query(), but for results with millions of rows: streams them out of
+# Postgres as CSV straight into a DataFrame, instead of building one Python
+# dict per row (which is slow and can run the server out of memory).
+def query_df(sql: str, params=None) -> pd.DataFrame:
+    buf = io.BytesIO()
+    with psycopg2.connect(DATABASE_URL) as conn:
+        with conn.cursor() as cur:
+            copy_sql = cur.mogrify(f"COPY ({sql}) TO STDOUT WITH CSV HEADER", params or []).decode()
+            cur.copy_expert(copy_sql, buf)
+    buf.seek(0)
+    return pd.read_csv(buf)
 
 
 # Same statement as docker/init.sql's -- also run on every startup because
@@ -269,8 +284,9 @@ def analyse_region(req: RegionRequest):
 
     minx, miny, maxx, maxy = polygon.bounds
 
-    rows = query("""
-        SELECT p.mmsi, p.received_at, p.latitude, p.longitude, p.speed, v.ship_type
+    df = query_df("""
+        SELECT p.mmsi, to_char(p.received_at, 'YYYY-MM-DD') AS day,
+               p.latitude, p.longitude, p.speed, v.ship_type
         FROM ais_positions p
         LEFT JOIN vessels v USING (mmsi)
         WHERE p.received_at >= %s AND p.received_at < %s
@@ -279,15 +295,16 @@ def analyse_region(req: RegionRequest):
           AND p.mmsi BETWEEN 200000000 AND 799999999
     """, [req.start, req.end, miny, maxy, minx, maxx])
 
-    # Filter to exact polygon
-    inside = [r for r in rows if polygon.contains(Point(r["longitude"], r["latitude"]))]
+    # Filter to exact polygon, checking all points in one go
+    shapely.prepare(polygon)
+    df = df[shapely.contains_xy(polygon, df["longitude"].to_numpy(), df["latitude"].to_numpy())]
 
-    if not inside:
+    if df.empty:
         return {"days": [], "total_positions": 0, "unique_vessels": 0, "plots": {}}
 
-    df = pd.DataFrame(inside)
-    df["day"] = df["received_at"].astype(str).str[:10]
-    df["type_label"] = df["ship_type"].apply(classify_ship_type)
+    # classify each ship-type code once, not once per position
+    labels = {code: classify_ship_type(code) for code in df["ship_type"].unique()}
+    df["type_label"] = df["ship_type"].map(labels).fillna("unknown")
 
     # Daily unique vessel counts by type
     daily_counts = (
@@ -296,22 +313,15 @@ def analyse_region(req: RegionRequest):
         .unstack(fill_value=0)
         .reindex(columns=ORDERED_TYPES, fill_value=0)
     )
+
+    # Daily stats for JSON response (only the types seen that day)
+    days = [
+        {"date": day, "vessel_counts": {t: int(n) for t, n in counts.items() if n > 0}}
+        for day, counts in daily_counts.iterrows()
+    ]
     daily_counts.index = pd.to_datetime(daily_counts.index)
 
-    # Daily stats for JSON response
-    from collections import defaultdict
-    daily: dict = defaultdict(lambda: defaultdict(set))
-    for r in inside:
-        day = str(r["received_at"])[:10]
-        label = classify_ship_type(r["ship_type"])
-        daily[day][label].add(r["mmsi"])
-
-    days = []
-    for day in sorted(daily):
-        counts = {t: len(daily[day][t]) for t in daily[day]}
-        days.append({"date": day, "vessel_counts": counts})
-
-    unique_vessels = len({r["mmsi"] for r in inside})
+    unique_vessels = int(df["mmsi"].nunique())
 
     plots = {
         "vessel_types":  plot_vessel_types(daily_counts),
@@ -324,13 +334,8 @@ def analyse_region(req: RegionRequest):
 
     return {
         "days": days,
-        "total_positions": len(inside),
+        "total_positions": len(df),
         "unique_vessels": unique_vessels,
-        "vessel_mmsis": sorted({r["mmsi"] for r in inside}),
-        "positions": [
-            {"mmsi": r["mmsi"], "lat": r["latitude"], "lon": r["longitude"], "sog": r["speed"], "ship_type": r["ship_type"]}
-            for r in inside
-        ],
         "plots": plots,
     }
 

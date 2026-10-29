@@ -102,8 +102,6 @@ interface RegionPosition {
 export interface RegionStats {
   total_positions: number;
   unique_vessels: number;
-  vessel_mmsis: number[];
-  positions: RegionPosition[];
   days: { date: string; vessel_counts: Record<string, number> }[];
   plots: {
     vessel_types?: string;
