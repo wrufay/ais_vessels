@@ -1,5 +1,5 @@
 const dateInputClass =
-  "bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark] border border-transparent rounded-sm px-3 py-2 text-sm focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition";
+  "bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark] border border-transparent rounded-sm px-2 py-2 text-xs focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition";
 
 function DateRangePicker({
   start,
