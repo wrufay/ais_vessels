@@ -56,7 +56,9 @@ def query(sql: str, params=None) -> list[dict]:
 
 # Same as query(), but for results with millions of rows: streams them out of
 # Postgres as CSV straight into a DataFrame, instead of building one Python
-# dict per row (which is slow and can run the server out of memory).
+# dict per row (which is slow and can run the server out of memory). With no
+# rows, pandas can't tell the column types, so callers ask for numbers explicitly
+# (e.g. .to_numpy(float)) where they need them.
 def query_df(sql: str, params=None) -> pd.DataFrame:
     buf = io.BytesIO()
     with psycopg2.connect(DATABASE_URL) as conn:
@@ -228,7 +230,7 @@ def get_region_vessels(req: RegionRequest):
     minx, miny, maxx, maxy = polygon.bounds
     df = query_df("""
         SELECT p.mmsi, p.latitude AS lat, p.longitude AS lon, p.speed AS sog, v.ship_type,
-               floor(extract(epoch FROM p.received_at) / 120)::bigint AS slot
+               p.source, floor(extract(epoch FROM p.received_at) / 120)::bigint AS slot
         FROM ais_positions p
         LEFT JOIN vessels v USING (mmsi)
         WHERE p.received_at >= %s AND p.received_at < %s
@@ -240,13 +242,16 @@ def get_region_vessels(req: RegionRequest):
 
     # Filter to exact polygon, checking all points in one go
     shapely.prepare(polygon)
-    df = df[shapely.contains_xy(polygon, df["lon"].to_numpy(), df["lat"].to_numpy())]
+    df = df[shapely.contains_xy(polygon, df["lon"].to_numpy(float), df["lat"].to_numpy(float))]
 
-    # Keep only each vessel's first position in every 2-minute slot. The live
-    # CCG feed (2026 on) has a position every few seconds, so most dots sat on
-    # top of each other and the map lagged drawing them. This also thins the
-    # older satellite data (2025), whose positions sometimes come seconds apart.
-    df = df.drop_duplicates(["mmsi", "slot"]).drop(columns="slot")
+    # For the live CCG feed (2026 on, tagged by pipeline/ingest_ccg_streaming.py)
+    # keep only each vessel's first position in every 2-minute slot: it has a
+    # position every few seconds, so most dots sat on top of each other and
+    # the map lagged drawing them. Other sources (the older satellite data)
+    # are sparse already and are kept as they are.
+    live = df[df["source"] == "CCG_terrestrial"]
+    repeats = live.index[live.duplicated(["mmsi", "slot"])]
+    df = df.drop(index=repeats).drop(columns=["source", "slot"])
     df["ship_type"] = df["ship_type"].astype("Int64")  # whole numbers in the JSON (81, not 81.0)
 
     # The reply is written out by pandas rather than returned as one dict per
@@ -308,7 +313,7 @@ def analyse_region(req: RegionRequest):
 
     # Filter to exact polygon, checking all points in one go
     shapely.prepare(polygon)
-    df = df[shapely.contains_xy(polygon, df["longitude"].to_numpy(), df["latitude"].to_numpy())]
+    df = df[shapely.contains_xy(polygon, df["longitude"].to_numpy(float), df["latitude"].to_numpy(float))]
 
     if df.empty:
         return {"days": [], "total_positions": 0, "unique_vessels": 0, "plots": {}}
