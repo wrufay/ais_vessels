@@ -7,6 +7,11 @@ import PanelHeader from "./PanelHeader";
 import RegionListItem from "./RegionListItem";
 import SizeOpacityPanel from "./SizeOpacityPanel";
 
+// Analyse / All traffic / Heat map load every position in the period, and the
+// live CCG feed (2026 on) has a lot of them, so periods longer than this get
+// a warning under the date picker.
+const LONG_PERIOD_DAYS = 31;
+
 interface UserRegion {
   name: string;
   geojson: object;
@@ -86,6 +91,8 @@ function RegionsPanel({
   regionDotOpacity: number;
   setRegionDotOpacity: (v: number) => void;
 }) {
+  const longPeriod = (Date.parse(end) - Date.parse(start)) / 86_400_000 > LONG_PERIOD_DAYS;
+
   return (
     <>
       <div className="px-5 pt-8 shrink-0">
@@ -95,6 +102,11 @@ function RegionsPanel({
           className="mb-4"
         />
         <DateRangePicker start={start} end={end} onStartChange={setStart} onEndChange={setEnd} />
+        {longPeriod && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 rounded-md px-2.5 py-1.5 text-[11px] -mt-2 mb-4">
+            Period over 1 month: Analyse and other features may be slow or fail.
+          </div>
+        )}
 
         <div ref={registerTarget("regionCustomize")} className="mt-4 mb-4 flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
