@@ -472,6 +472,14 @@ class NoiseImpactMitigation(BaseModel):
     il_sel_db: float
 
 
+class NoiseImpactPeakSplFormula(BaseModel):
+    # reference is a key of analysis/noise_impact.py's PEAK_SPL_FORMULAS;
+    # checked in _validate_peak_spl_formula.
+    reference: str
+    energy_kj: float
+    diameter_m: float
+
+
 class NoiseImpactRequest(BaseModel):
     site: str
     hearing_groups: list[str]
@@ -495,6 +503,9 @@ class NoiseImpactRequest(BaseModel):
     custom_thresholds: list[NoiseImpactCustomThreshold] = []
     # Noise mitigation system, taken off the source levels; None = none.
     mitigation: NoiseImpactMitigation | None = None
+    # Works out spl_peak from hammer energy and pile diameter instead (the
+    # spl_peak sent is then ignored); None = use spl_peak as typed.
+    peak_spl_formula: NoiseImpactPeakSplFormula | None = None
 
 
 # returns impact zones after running the pile-driving noise-impact model for one site.
@@ -516,6 +527,7 @@ def post_noise_impact_compute(req: NoiseImpactRequest):
             pairs=req.pairs,
             custom_thresholds=[c.model_dump() for c in req.custom_thresholds],
             mitigation=req.mitigation.model_dump() if req.mitigation else None,
+            peak_spl_formula=req.peak_spl_formula.model_dump() if req.peak_spl_formula else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -547,6 +559,7 @@ def post_noise_impact_export(req: NoiseImpactExportRequest):
             pairs=req.pairs,
             custom_thresholds=[c.model_dump() for c in req.custom_thresholds],
             mitigation=req.mitigation.model_dump() if req.mitigation else None,
+            peak_spl_formula=req.peak_spl_formula.model_dump() if req.peak_spl_formula else None,
             fmt=req.format,
         )
     except ValueError as e:

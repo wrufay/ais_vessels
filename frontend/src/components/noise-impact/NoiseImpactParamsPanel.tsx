@@ -6,6 +6,7 @@ import {
   DEFAULT_DEPTH_MIN,
   mitigationReductions,
   pairKey,
+  peakSplFromFormula,
   pairMetrics,
   runnablePairs,
 } from "../../useNoiseImpact";
@@ -15,6 +16,8 @@ import type {
   NoiseImpactInfo,
   NoiseImpactCustomThreshold,
   NoiseImpactMitigationSystem,
+  NoiseImpactPeakSplFormula,
+  PeakSplMode,
 } from "../../useNoiseImpact";
 
 const runIcon = (
@@ -45,6 +48,9 @@ const inputClass = `text-sm ${inputBaseClass}`;
 const smallInputClass = `text-xs ${inputBaseClass}`;
 // Small bubble for section actions (Clear, Reset) -- same look as the
 // Analyse / All traffic / Clear buttons in the icon bar.
+// Bold heading for each Source-tab section (Peak SPL, SEL, Noise
+// mitigation) -- same text as SectionToggle's title.
+const sectionTitleClass = "text-[13px] font-semibold text-slate-600 dark:text-slate-300";
 const pillButtonClass =
   "px-2 py-0.5 rounded-full border border-slate-300 dark:border-slate-600 text-[10px] text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95";
 
@@ -656,17 +662,16 @@ function MitigationField({
   setSystem: (v: string) => void;
   level: number;
   setLevel: (v: number) => void;
-  splPeak: number;
+  // null while "Calculate" has no result yet.
+  splPeak: number | null;
   selSingleStrike: number;
 }) {
   const picked = systems.find((m) => m.key === system);
   const cut = picked && mitigationReductions(picked, level);
   return (
     <div className="flex flex-col gap-2 mt-2 pt-2.5 border-t border-slate-100 dark:border-slate-800">
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          Noise mitigation
-        </span>
+      <label className="flex flex-col gap-2">
+        <span className={sectionTitleClass}>Noise mitigation</span>
         <select
           value={system}
           onChange={(e) => setSystem(e.target.value)}
@@ -711,7 +716,7 @@ function MitigationField({
           <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1.5 leading-relaxed">
             Model runs with
             <br />
-            Peak SPL {splPeak - cut.il_peak_db} dB · SEL / strike{" "}
+            Peak SPL {splPeak === null ? "–" : Math.round((splPeak - cut.il_peak_db) * 10) / 10} dB · SEL / strike{" "}
             {selSingleStrike - cut.il_sel_db} dB
           </div>
           {picked.current_sensitive && (
@@ -724,6 +729,118 @@ function MitigationField({
             system works at this site.
           </p>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Peak SPL (Source tab): typed in ("Enter value"), or worked out from
+// hammer energy and pile diameter with a published formula ("Calculate"),
+// which shows its result, the formula with the numbers in it, and the
+// ranges the formula was fitted on (it still runs outside them).
+function PeakSplField({
+  formulas,
+  mode,
+  setMode,
+  splPeak,
+  setSplPeak,
+  reference,
+  setReference,
+  energyKj,
+  setEnergyKj,
+  diameterM,
+  setDiameterM,
+}: {
+  formulas: NoiseImpactPeakSplFormula[];
+  mode: PeakSplMode;
+  setMode: (v: PeakSplMode) => void;
+  splPeak: number;
+  setSplPeak: (v: number) => void;
+  reference: string;
+  setReference: (v: string) => void;
+  energyKj: number;
+  setEnergyKj: (v: number) => void;
+  diameterM: number;
+  setDiameterM: (v: number) => void;
+}) {
+  const picked = formulas.find((f) => f.key === reference);
+  const result = picked ? peakSplFromFormula(picked, energyKj, diameterM) : null;
+  const modes: { id: PeakSplMode; label: string }[] = [
+    { id: "value", label: "Enter value" },
+    { id: "formula", label: "Calculate" },
+  ];
+  return (
+    <div className="flex flex-col gap-2">
+      <span className={sectionTitleClass}>Peak SPL</span>
+      <div className="flex p-0.5 rounded-md bg-slate-100 dark:bg-slate-800">
+        {modes.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => setMode(m.id)}
+            aria-pressed={mode === m.id}
+            className={`flex-1 py-1 rounded text-[11px] transition active:scale-95 ${
+              mode === m.id
+                ? "bg-white dark:bg-slate-700 text-[#3d5a80] dark:text-[#98c1d9] font-semibold shadow-sm"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {mode === "value" ? (
+        <NumberField label="Peak SPL (dB)" value={splPeak} onChange={setSplPeak} />
+      ) : (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              Reference
+            </span>
+            <select
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              className={`${inputClass} cursor-pointer`}
+            >
+              {formulas.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <NumberField
+            label="Hammer energy (kJ)"
+            value={energyKj}
+            onChange={setEnergyKj}
+            step={100}
+          />
+          <NumberField
+            label="Pile diameter (m)"
+            value={diameterM}
+            onChange={setDiameterM}
+            step={0.1}
+          />
+          {picked && (
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1.5 leading-relaxed">
+              {result === null ? (
+                <span className="text-red-600 dark:text-red-400">
+                  Hammer energy and pile diameter must be more than 0.
+                </span>
+              ) : (
+                <>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Peak SPL {result.toFixed(1)} dB
+                  </span>
+                  <br />= {picked.a} + {picked.b_e}·log10({energyKj}) + {picked.c_d}·log10({diameterM})
+                </>
+              )}
+              <br />
+              Reference covers {picked.diameter_m[0]}–{picked.diameter_m[1]} m,{" "}
+              {picked.energy_kj[0]}–{picked.energy_kj[1]} kJ
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -825,6 +942,15 @@ function NoiseImpactParamsPanel({
   setDepthMax,
   splPeak,
   setSplPeak,
+  peakSplMode,
+  setPeakSplMode,
+  peakSplReference,
+  setPeakSplReference,
+  hammerEnergyKj,
+  setHammerEnergyKj,
+  pileDiameterM,
+  setPileDiameterM,
+  peakSplUsed,
   selSingleStrike,
   setSelSingleStrike,
   nStrikesPerPile,
@@ -858,6 +984,16 @@ function NoiseImpactParamsPanel({
   setDepthMax: (v: number) => void;
   splPeak: number;
   setSplPeak: (v: number) => void;
+  peakSplMode: PeakSplMode;
+  setPeakSplMode: (v: PeakSplMode) => void;
+  peakSplReference: string;
+  setPeakSplReference: (v: string) => void;
+  hammerEnergyKj: number;
+  setHammerEnergyKj: (v: number) => void;
+  pileDiameterM: number;
+  setPileDiameterM: (v: number) => void;
+  // What the model gets: splPeak, or the formula's result (null if none).
+  peakSplUsed: number | null;
   selSingleStrike: number;
   setSelSingleStrike: (v: number) => void;
   nStrikesPerPile: number;
@@ -910,7 +1046,7 @@ function NoiseImpactParamsPanel({
       : depthMin > depthMax
         ? "Depth min must be smaller than Depth max."
         : null;
-  const splPeakInvalid = !(splPeak > 0);
+  const splPeakInvalid = !(peakSplUsed !== null && peakSplUsed > 0);
   const selSingleStrikeInvalid = !(selSingleStrike > 0);
   const nStrikesPerPileInvalid = !(nStrikesPerPile > 0);
   const nPilesInvalid = !(nPiles > 0);
@@ -935,7 +1071,8 @@ function NoiseImpactParamsPanel({
   if (pairsInvalid) missing.push("a threshold");
   if (metricsInvalid) missing.push("a metric");
   if (depthError) missing.push("a valid depth range");
-  if (splPeakInvalid) missing.push("a peak SPL");
+  if (splPeakInvalid)
+    missing.push(peakSplMode === "value" ? "a peak SPL" : "a hammer energy and pile diameter");
   if (selSingleStrikeInvalid) missing.push("an SEL/strike");
   if (nStrikesPerPileInvalid) missing.push("strikes/pile");
 
@@ -1013,28 +1150,39 @@ function NoiseImpactParamsPanel({
             <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
               Define pile driving source properties.
             </p>
-            <NumberField
-              label="Peak SPL (dB)"
-              value={splPeak}
-              onChange={setSplPeak}
+            <PeakSplField
+              formulas={options.peak_spl_formulas}
+              mode={peakSplMode}
+              setMode={setPeakSplMode}
+              splPeak={splPeak}
+              setSplPeak={setSplPeak}
+              reference={peakSplReference}
+              setReference={setPeakSplReference}
+              energyKj={hammerEnergyKj}
+              setEnergyKj={setHammerEnergyKj}
+              diameterM={pileDiameterM}
+              setDiameterM={setPileDiameterM}
             />
-            <NumberField
-              label="SEL / strike (dB)"
-              value={selSingleStrike}
-              onChange={setSelSingleStrike}
-            />
-            <NumberField
-              label="Strikes / pile"
-              value={nStrikesPerPile}
-              onChange={setNStrikesPerPile}
-            />
+            <div className="flex flex-col gap-2 mt-2 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+              <span className={sectionTitleClass}>SEL</span>
+              <NumberField
+                label="SEL / strike (dB)"
+                value={selSingleStrike}
+                onChange={setSelSingleStrike}
+              />
+              <NumberField
+                label="Strikes / pile"
+                value={nStrikesPerPile}
+                onChange={setNStrikesPerPile}
+              />
+            </div>
             <MitigationField
               systems={options.mitigation_systems}
               system={mitigationSystem}
               setSystem={setMitigationSystem}
               level={mitigationLevel}
               setLevel={setMitigationLevel}
-              splPeak={splPeak}
+              splPeak={peakSplUsed}
               selSingleStrike={selSingleStrike}
             />
             {/* Not user-adjustable yet -- shown so the request's full

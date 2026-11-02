@@ -238,6 +238,11 @@ function ShipMap() {
     depthMin: noiseImpactDepthMin, setDepthMin: setNoiseImpactDepthMin,
     depthMax: noiseImpactDepthMax, setDepthMax: setNoiseImpactDepthMax,
     splPeak: noiseImpactSplPeak, setSplPeak: setNoiseImpactSplPeak,
+    peakSplMode: noiseImpactPeakSplMode, setPeakSplMode: setNoiseImpactPeakSplMode,
+    peakSplReference: noiseImpactPeakSplReference, setPeakSplReference: setNoiseImpactPeakSplReference,
+    hammerEnergyKj: noiseImpactHammerEnergyKj, setHammerEnergyKj: setNoiseImpactHammerEnergyKj,
+    pileDiameterM: noiseImpactPileDiameterM, setPileDiameterM: setNoiseImpactPileDiameterM,
+    peakSplUsed: noiseImpactPeakSplUsed,
     selSingleStrike: noiseImpactSelSingleStrike, setSelSingleStrike: setNoiseImpactSelSingleStrike,
     nStrikesPerPile: noiseImpactNStrikesPerPile, setNStrikesPerPile: setNoiseImpactNStrikesPerPile,
     nPiles: noiseImpactNPiles,
@@ -1749,6 +1754,15 @@ function ShipMap() {
           setDepthMax={setNoiseImpactDepthMax}
           splPeak={noiseImpactSplPeak}
           setSplPeak={setNoiseImpactSplPeak}
+          peakSplMode={noiseImpactPeakSplMode}
+          setPeakSplMode={setNoiseImpactPeakSplMode}
+          peakSplReference={noiseImpactPeakSplReference}
+          setPeakSplReference={setNoiseImpactPeakSplReference}
+          hammerEnergyKj={noiseImpactHammerEnergyKj}
+          setHammerEnergyKj={setNoiseImpactHammerEnergyKj}
+          pileDiameterM={noiseImpactPileDiameterM}
+          setPileDiameterM={setNoiseImpactPileDiameterM}
+          peakSplUsed={noiseImpactPeakSplUsed}
           selSingleStrike={noiseImpactSelSingleStrike}
           setSelSingleStrike={setNoiseImpactSelSingleStrike}
           nStrikesPerPile={noiseImpactNStrikesPerPile}

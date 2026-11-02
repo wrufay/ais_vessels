@@ -166,6 +166,42 @@ MITIGATION_SYSTEMS = {
 }
 
 
+# Empirical formulas for the pile's peak SPL (dB re 1 µPa @ 1 m) from
+# hammer energy E (kJ) and pile diameter D (m):
+#     SPL_peak = a + b_e * log10(E) + c_d * log10(D)
+# from DFO's "Marine Pile Driving Source Level Model" table. Each was fitted
+# on the pile diameter_m and hammer energy_kj ranges given (low, high); the
+# app shows them but still runs outside them. Nedwell's a is given as ~170.
+# The user can pick one in the app instead of typing the peak SPL (see
+# _validate_peak_spl_formula).
+PEAK_SPL_FORMULAS = {
+    "reinhall_dahl_2011": dict(
+        label="Reinhall & Dahl (2011)", a=186, b_e=10, c_d=10,
+        diameter_m=(0.5, 2.5), energy_kj=(100, 4000),
+    ),
+    "nedwell_2003": dict(
+        label="Nedwell et al. (2003)", a=170, b_e=10, c_d=20,
+        diameter_m=(0.5, 6), energy_kj=(50, 5000),
+    ),
+    "thomsen_2006": dict(
+        label="Thomsen et al. (2006)", a=182, b_e=10, c_d=10,
+        diameter_m=(1, 6), energy_kj=(200, 5000),
+    ),
+    "bahtiarian_2009": dict(
+        label="Bahtiarian (2009)", a=188, b_e=10, c_d=13,
+        diameter_m=(0.3, 2.5), energy_kj=(10, 2000),
+    ),
+    "erbe_mcpherson_2017": dict(
+        label="Erbe & McPherson (2017)", a=179.5, b_e=8.3, c_d=14.1,
+        diameter_m=(0.2, 6), energy_kj=(10, 5000),
+    ),
+    "pilz_2018": dict(
+        label="Pilz et al. (2018)", a=191, b_e=10, c_d=10,
+        diameter_m=(3, 8), energy_kj=(1000, 10000),
+    ),
+}
+
+
 def list_sites() -> dict:
     """Site metadata for the frontend dropdown — everything except the
     on-disk data_folder, which is a backend implementation detail."""
@@ -187,7 +223,8 @@ def list_options() -> dict:
     drift from Noise_Impact_Thresholds.xlsx. `thresholds` is every
     hearing group/impact/metric combination that actually has a threshold,
     so the frontend can grey out the ones that don't. `mitigation_systems`
-    is MITIGATION_SYSTEMS as a list, for the Source tab's dropdown."""
+    and `peak_spl_formulas` are MITIGATION_SYSTEMS and PEAK_SPL_FORMULAS as
+    lists, for the Source tab's dropdowns."""
     return {
         "hearing_groups": [g.value for g in HearingGroup],
         "impact_types": [i.value for i in Impact],
@@ -195,6 +232,9 @@ def list_options() -> dict:
         "thresholds": _list_thresholds(),
         "mitigation_systems": [
             {"key": key, **cfg} for key, cfg in MITIGATION_SYSTEMS.items()
+        ],
+        "peak_spl_formulas": [
+            {"key": key, **cfg} for key, cfg in PEAK_SPL_FORMULAS.items()
         ],
     }
 
@@ -273,6 +313,7 @@ def compute_impact(
     pairs: list[tuple[str, str]] | None = None,
     custom_thresholds: list[dict] | None = None,
     mitigation: dict | None = None,
+    peak_spl_formula: dict | None = None,
 ) -> dict:
     """Run the impact model for one site and return JSON-serializable zones:
 
@@ -297,8 +338,15 @@ def compute_impact(
     `without`: the same zone's shape (area_km2, radius_km, radius_std_km,
     geometry) with no mitigation. `without` is None when no mitigation was
     picked.
+
+    `peak_spl_formula` ({"reference", "energy_kj", "diameter_m"}, see
+    _validate_peak_spl_formula) works out spl_peak from the hammer and pile
+    instead; the spl_peak passed in is then ignored.
     """
     mit = _validate_mitigation(mitigation)
+    formula = _validate_peak_spl_formula(peak_spl_formula)
+    if formula:
+        spl_peak = formula["spl_peak"]
     run_args = (
         site, hearing_groups, impact_types, metrics, depth_range,
         spl_peak, sel_single_strike, n_strikes_per_pile, n_piles,
@@ -384,6 +432,30 @@ def _validate_mitigation(mitigation: dict | None) -> dict | None:
     return cleaned
 
 
+def _validate_peak_spl_formula(formula: dict | None) -> dict | None:
+    """Checked copy of the picked peak SPL formula (reference, energy_kj,
+    diameter_m) with its label and coefficients added, and `spl_peak`, the
+    peak SPL it gives, rounded to 0.1 dB like the app shows it. None when
+    the peak SPL was typed in. Energy and diameter outside the reference's
+    ranges are allowed (the app shows the ranges)."""
+    if not formula:
+        return None
+    reference = formula["reference"]
+    if reference not in PEAK_SPL_FORMULAS:
+        raise ValueError(f"Unknown peak SPL reference: {reference}")
+    cfg = PEAK_SPL_FORMULAS[reference]
+    energy_kj, diameter_m = float(formula["energy_kj"]), float(formula["diameter_m"])
+    if not (energy_kj > 0 and diameter_m > 0):
+        raise ValueError("Hammer energy and pile diameter must be more than 0.")
+    spl_peak = cfg["a"] + cfg["b_e"] * math.log10(energy_kj) + cfg["c_d"] * math.log10(diameter_m)
+    return {
+        "reference": reference, "label": cfg["label"],
+        "a": cfg["a"], "b_e": cfg["b_e"], "c_d": cfg["c_d"],
+        "energy_kj": energy_kj, "diameter_m": diameter_m,
+        "spl_peak": round(spl_peak, 1),
+    }
+
+
 # Download formats export_impact supports: key -> (README name, file
 # extension). export_hazard_zones picks the format from the extension.
 EXPORT_FORMATS = {
@@ -407,6 +479,7 @@ def export_impact(
     pairs: list[tuple[str, str]] | None = None,
     custom_thresholds: list[dict] | None = None,
     mitigation: dict | None = None,
+    peak_spl_formula: dict | None = None,
 ) -> tuple[str, bytes]:
     """Same run as compute_impact, saved with the package's own
     export_hazard_zones in one of EXPORT_FORMATS, returned as (zip
@@ -422,12 +495,16 @@ def export_impact(
 
     With mitigation, only the zones with mitigation are exported (not the
     "without" ones the app also shows); the README names the system and
-    its reductions.
+    its reductions. With peak_spl_formula, spl_peak is worked out as in
+    compute_impact and the README gives the formula.
     """
     if fmt not in EXPORT_FORMATS:
         raise ValueError(f"Unknown export format: {fmt}")
     format_name, ext = EXPORT_FORMATS[fmt]
     mit = _validate_mitigation(mitigation)
+    formula = _validate_peak_spl_formula(peak_spl_formula)
+    if formula:
+        spl_peak = formula["spl_peak"]
 
     result, _, noise_level_params = _run_model(
         site, hearing_groups, impact_types, metrics, depth_range, spl_peak,
@@ -454,7 +531,7 @@ def export_impact(
         columns = [c for c in gpd.read_file(out_path, rows=0).columns if c != "geometry"]
         readme = _export_readme(
             format_name, site, depth_range, noise_level_params, zone_data, df_th,
-            df_th_not_exceeded, columns, mit,
+            df_th_not_exceeded, columns, mit, formula,
         )
         with open(os.path.join(tmp, f"{name}_README.txt"), "w", encoding="utf-8") as f:
             f.write(readme)
@@ -659,7 +736,7 @@ _EXPORT_COLUMN_DESCRIPTIONS = {
 
 def _export_readme(
     format_name, site, depth_range, noise_level_params, zone_data, df_th,
-    df_th_not_exceeded, columns, mitigation=None,
+    df_th_not_exceeded, columns, mitigation=None, peak_spl_formula=None,
 ) -> str:
     """Plain-text README for the download zip: the scenario that produced
     the zones (none of which is stored in the file itself), the zones in
@@ -727,6 +804,12 @@ def _export_readme(
          f"{mitigation['label']}, lowering SPL peak by {mitigation['il_peak_db']:g} dB "
          f"and SEL by {mitigation['il_sel_db']:g} dB" if mitigation else "None"),
         ("SPL peak", f"{noise_level_params.SPL_peak:g} dB re 1 µPa{peak_note}"),
+        *([("SPL peak from",
+            f"{peak_spl_formula['label']}: {peak_spl_formula['a']:g} + "
+            f"{peak_spl_formula['b_e']:g}·log10({peak_spl_formula['energy_kj']:g} kJ) + "
+            f"{peak_spl_formula['c_d']:g}·log10({peak_spl_formula['diameter_m']:g} m) = "
+            f"{peak_spl_formula['spl_peak']:g} dB")]
+          if peak_spl_formula else []),
         ("SEL, single strike",
          f"{noise_level_params.SEL_single_strike:g} dB re 1 µPa²·s{sel_note}"),
         ("Strikes per pile", f"{noise_level_params.n_strikes_per_pile:g}"),
