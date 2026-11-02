@@ -48,7 +48,7 @@ const inputClass = `text-sm ${inputBaseClass}`;
 const smallInputClass = `text-xs ${inputBaseClass}`;
 // Small bubble for section actions (Clear, Reset) -- same look as the
 // Analyse / All traffic / Clear buttons in the icon bar.
-// Bold heading for each Source-tab section (Peak SPL, SEL, Noise
+// Bold heading for each Source-tab section (Peak SPL, Cumulative SEL, Noise
 // mitigation) -- same text as SectionToggle's title.
 const sectionTitleClass = "text-[13px] font-semibold text-slate-600 dark:text-slate-300";
 const pillButtonClass =
@@ -1292,7 +1292,7 @@ function NoiseImpactParamsPanel({
               setDiameterM={setPileDiameterM}
             />
             <div className="flex flex-col gap-2 mt-2 pt-2.5 border-t border-slate-100 dark:border-slate-800">
-              <span className={sectionTitleClass}>SEL</span>
+              <span className={sectionTitleClass}>Cumulative SEL</span>
               <NumberField
                 label="SEL / strike (dB)"
                 value={selSingleStrike}
