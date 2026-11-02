@@ -853,7 +853,11 @@ function PeakSplField({
             <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1.5 leading-relaxed">
               {result === null ? (
                 <span className="text-red-600 dark:text-red-400">
-                  Hammer energy and pile diameter must be more than 0.
+                  {!(energyKj > 0) && !(diameterM > 0)
+                    ? "Hammer energy and pile diameter must be greater than 0."
+                    : !(energyKj > 0)
+                      ? "Hammer energy must be greater than 0 kJ."
+                      : "Pile diameter must be greater than 0 m."}
                 </span>
               ) : (
                 // Label left, value right -- same look as the mitigation

@@ -445,8 +445,12 @@ def _validate_peak_spl_formula(formula: dict | None) -> dict | None:
         raise ValueError(f"Unknown peak SPL reference: {reference}")
     cfg = PEAK_SPL_FORMULAS[reference]
     energy_kj, diameter_m = float(formula["energy_kj"]), float(formula["diameter_m"])
-    if not (energy_kj > 0 and diameter_m > 0):
-        raise ValueError("Hammer energy and pile diameter must be more than 0.")
+    if not (energy_kj > 0 or diameter_m > 0):
+        raise ValueError("Hammer energy and pile diameter must be greater than 0.")
+    if not energy_kj > 0:
+        raise ValueError("Hammer energy must be greater than 0 kJ.")
+    if not diameter_m > 0:
+        raise ValueError("Pile diameter must be greater than 0 m.")
     spl_peak = cfg["a"] + cfg["b_e"] * math.log10(energy_kj) + cfg["c_d"] * math.log10(diameter_m)
     return {
         "reference": reference, "label": cfg["label"],
