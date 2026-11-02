@@ -738,6 +738,9 @@ function MitigationField({
 // hammer energy and pile diameter with a published formula ("Calculate"),
 // which shows its result, the formula with the numbers in it, and the
 // ranges the formula was fitted on (it still runs outside them).
+// "Compare references" (closed by default) lists every formula's result
+// for the same hammer and pile, to show how much they disagree; it is only
+// for looking -- the model runs with the picked reference alone.
 function PeakSplField({
   formulas,
   mode,
@@ -765,6 +768,18 @@ function PeakSplField({
 }) {
   const picked = formulas.find((f) => f.key === reference);
   const result = picked ? peakSplFromFormula(picked, energyKj, diameterM) : null;
+  const [compareOpen, setCompareOpen] = useState(false);
+  // Every formula's result, and whether energy and diameter lie inside
+  // the ranges it was fitted on (⚠ when not). Only used once result is
+  // set, so energy and diameter are above 0 and each value is a number.
+  const compared = formulas.map((f) => ({
+    formula: f,
+    db: peakSplFromFormula(f, energyKj, diameterM) ?? 0,
+    inRange:
+      f.energy_kj[0] <= energyKj && energyKj <= f.energy_kj[1] &&
+      f.diameter_m[0] <= diameterM && diameterM <= f.diameter_m[1],
+  }));
+  const comparedDbs = compared.map((c) => c.db);
   const modes: { id: PeakSplMode; label: string }[] = [
     { id: "value", label: "Enter value" },
     { id: "formula", label: "Calculate" },
@@ -840,6 +855,53 @@ function PeakSplField({
               <br />
               Reference covers {picked.diameter_m[0]}–{picked.diameter_m[1]} m,{" "}
               {picked.energy_kj[0]}–{picked.energy_kj[1]} kJ
+            </div>
+          )}
+          {result !== null && (
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => setCompareOpen((p) => !p)}
+                aria-expanded={compareOpen}
+                className="flex items-center gap-2 self-start text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${compareOpen ? "rotate-90" : ""}`}>▶</span>
+                Compare references
+              </button>
+              {compareOpen && (
+                <>
+                  <div className="flex flex-col text-[11px]">
+                    {compared.map(({ formula, db, inRange }) => (
+                      <div
+                        key={formula.key}
+                        className={`flex justify-between gap-2 px-1 py-0.5 rounded ${
+                          formula.key === reference
+                            ? "bg-[#e0ecf5] dark:bg-slate-700 font-semibold"
+                            : ""
+                        } ${
+                          inRange
+                            ? formula.key === reference
+                              ? "text-[#1e3a5f] dark:text-slate-100"
+                              : "text-slate-600 dark:text-slate-300"
+                            : "text-amber-700 dark:text-amber-400"
+                        }`}
+                      >
+                        <span>
+                          {formula.label}
+                          {!inRange && " ⚠"}
+                        </span>
+                        <span className="tabular-nums whitespace-nowrap">{db.toFixed(1)} dB</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
+                    Spread {Math.min(...comparedDbs).toFixed(1)}–
+                    {Math.max(...comparedDbs).toFixed(1)} dB.
+                    {compared.some((c) => !c.inRange) &&
+                      " ⚠ = outside that reference's pile or energy range."}
+                  </p>
+                </>
+              )}
             </div>
           )}
         </>
