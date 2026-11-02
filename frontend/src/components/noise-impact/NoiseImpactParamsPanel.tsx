@@ -724,10 +724,6 @@ function MitigationField({
               Bubble curtains work less well in strong currents.
             </p>
           )}
-          <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
-            Ranges from published field tests. The slider sets how well the
-            system works at this site.
-          </p>
         </div>
       )}
     </div>
