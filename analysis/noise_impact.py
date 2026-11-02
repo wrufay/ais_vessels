@@ -806,8 +806,8 @@ def _export_readme(
         ("SPL peak", f"{noise_level_params.SPL_peak:g} dB re 1 µPa{peak_note}"),
         *([("SPL peak from",
             f"{peak_spl_formula['label']}: {peak_spl_formula['a']:g} + "
-            f"{peak_spl_formula['b_e']:g}·log10({peak_spl_formula['energy_kj']:g} kJ) + "
-            f"{peak_spl_formula['c_d']:g}·log10({peak_spl_formula['diameter_m']:g} m) = "
+            f"{peak_spl_formula['b_e']:g}·log({peak_spl_formula['energy_kj']:g} kJ) + "
+            f"{peak_spl_formula['c_d']:g}·log({peak_spl_formula['diameter_m']:g} m) = "
             f"{peak_spl_formula['spl_peak']:g} dB")]
           if peak_spl_formula else []),
         ("SEL, single strike",

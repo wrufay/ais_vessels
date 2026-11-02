@@ -832,7 +832,7 @@ function PeakSplField({
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     Peak SPL {result.toFixed(1)} dB
                   </span>
-                  <br />= {picked.a} + {picked.b_e}·log10({energyKj}) + {picked.c_d}·log10({diameterM})
+                  <br />= {picked.a} + {picked.b_e}·log({energyKj}) + {picked.c_d}·log({diameterM})
                 </>
               )}
               <br />
