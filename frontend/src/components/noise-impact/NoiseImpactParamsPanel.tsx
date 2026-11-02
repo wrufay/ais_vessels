@@ -846,10 +846,15 @@ function PeakSplField({
                 </span>
               ) : (
                 <>
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    Peak SPL {result.toFixed(1)} dB
-                  </span>
-                  <br />= {picked.a} + {picked.b_e}·log({energyKj}) + {picked.c_d}·log({diameterM})
+                  {/* Label left, value right -- same look as the
+                      mitigation "Effectiveness" row. */}
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-xs">Peak SPL</span>
+                    <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">
+                      {result.toFixed(1)} dB
+                    </span>
+                  </div>
+                  = {picked.a} + {picked.b_e}·log({energyKj}) + {picked.c_d}·log({diameterM})
                 </>
               )}
               <br />
