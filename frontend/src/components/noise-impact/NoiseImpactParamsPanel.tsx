@@ -736,8 +736,9 @@ function MitigationField({
 
 // Peak SPL (Source tab): typed in ("Enter value"), or worked out from
 // hammer energy and pile diameter with a published formula ("Calculate"),
-// which shows its result, the formula with the numbers in it, and the
-// ranges the formula was fitted on (it still runs outside them).
+// which shows its result; clicking the result row (closed by default)
+// shows the formula with the numbers in it and the ranges the formula was
+// fitted on (it still runs outside them).
 // "Compare references" (closed by default) lists every formula's result
 // for the same hammer and pile, to show how much they disagree; it is only
 // for looking -- the model runs with the picked reference alone.
@@ -768,6 +769,7 @@ function PeakSplField({
 }) {
   const picked = formulas.find((f) => f.key === reference);
   const result = picked ? peakSplFromFormula(picked, energyKj, diameterM) : null;
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   // Every formula's result, and whether energy and diameter lie inside
   // the ranges it was fitted on (⚠ when not). Only used once result is
@@ -845,21 +847,35 @@ function PeakSplField({
                   Hammer energy and pile diameter must be more than 0.
                 </span>
               ) : (
-                <>
-                  {/* Label left, value right -- same look as the
-                      mitigation "Effectiveness" row. */}
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-xs">Peak SPL</span>
-                    <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">
-                      {result.toFixed(1)} dB
-                    </span>
-                  </div>
-                  = {picked.a} + {picked.b_e}·log({energyKj}) + {picked.c_d}·log({diameterM})
-                </>
+                // Label left, value right -- same look as the mitigation
+                // "Effectiveness" row.
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen((p) => !p)}
+                  aria-expanded={detailsOpen}
+                  className="w-full flex items-baseline justify-between gap-2 text-left hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  <span className="flex items-center gap-2 text-xs">
+                    <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${detailsOpen ? "rotate-90" : ""}`}>▶</span>
+                    Peak SPL
+                  </span>
+                  <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">
+                    {result.toFixed(1)} dB
+                  </span>
+                </button>
               )}
-              <br />
-              Reference covers {picked.diameter_m[0]}–{picked.diameter_m[1]} m,{" "}
-              {picked.energy_kj[0]}–{picked.energy_kj[1]} kJ
+              {(result === null || detailsOpen) && (
+                <div>
+                  {result !== null && (
+                    <>
+                      = {picked.a} + {picked.b_e}·log({energyKj}) + {picked.c_d}·log({diameterM})
+                      <br />
+                    </>
+                  )}
+                  Reference covers {picked.diameter_m[0]}–{picked.diameter_m[1]} m,{" "}
+                  {picked.energy_kj[0]}–{picked.energy_kj[1]} kJ
+                </div>
+              )}
             </div>
           )}
           {result !== null && (
