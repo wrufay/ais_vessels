@@ -740,8 +740,8 @@ function MitigationField({
 // shows the formula with the numbers in it and the ranges the formula was
 // fitted on (it still runs outside them).
 // "Compare references" (closed by default) lists every formula's result
-// for the same hammer and pile, to show how much they disagree; it is only
-// for looking -- the model runs with the picked reference alone. When
+// for the same hammer and pile, to show how much they disagree; clicking a
+// row picks that reference (the model runs with the picked one alone). When
 // energy or diameter is outside the picked reference's ranges, a warning
 // bar says which, and how many other references do cover them.
 function PeakSplField({
@@ -932,12 +932,16 @@ function PeakSplField({
                 <>
                   <div className="flex flex-col text-[11px]">
                     {compared.map(({ formula, db, inRange }) => (
-                      <div
+                      <button
                         key={formula.key}
-                        className={`flex justify-between gap-2 px-1 py-0.5 rounded ${
+                        type="button"
+                        onClick={() => setReference(formula.key)}
+                        aria-pressed={formula.key === reference}
+                        title={formula.key === reference ? undefined : "Use this reference"}
+                        className={`flex justify-between gap-2 px-1 py-0.5 rounded text-left transition ${
                           formula.key === reference
                             ? "bg-[#e0ecf5] dark:bg-slate-700 font-semibold"
-                            : ""
+                            : "hover:bg-slate-100 dark:hover:bg-slate-800"
                         } ${
                           inRange
                             ? formula.key === reference
@@ -951,7 +955,7 @@ function PeakSplField({
                           {!inRange && " ⚠"}
                         </span>
                         <span className="tabular-nums whitespace-nowrap">{db.toFixed(1)} dB</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
