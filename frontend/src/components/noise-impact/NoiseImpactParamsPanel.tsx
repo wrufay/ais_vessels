@@ -51,6 +51,10 @@ const smallInputClass = `text-xs ${inputBaseClass}`;
 // Bold heading for each Source-tab section (Peak SPL, Cumulative SEL, Noise
 // mitigation) -- same text as SectionToggle's title.
 const sectionTitleClass = "text-[13px] font-semibold text-slate-600 dark:text-slate-300";
+// Colour for worked-out values (calculated Peak SPL, mitigated levels), so
+// they read apart from the numbers typed in the boxes (slate-700 /
+// slate-200) -- a mid grey, one step lighter in each mode.
+const resultTextClass = "text-slate-500 dark:text-slate-400";
 const pillButtonClass =
   "px-2 py-0.5 rounded-full border border-slate-300 dark:border-slate-600 text-[10px] text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95";
 
@@ -716,7 +720,7 @@ function MitigationField({
           <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1.5 leading-relaxed">
             {/* The source levels the model gets: the inputs minus the cut. */}
             Mitigated:{" "}
-            <span className="font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+            <span className={`font-semibold whitespace-nowrap ${resultTextClass}`}>
               {splPeak === null ? "–" : Math.round((splPeak - cut.il_peak_db) * 10) / 10} dB peak ·{" "}
               {selSingleStrike - cut.il_sel_db} dB SEL
             </span>
@@ -870,7 +874,7 @@ function PeakSplField({
                     <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${detailsOpen ? "rotate-90" : ""}`}>▶</span>
                     Peak SPL
                   </span>
-                  <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">
+                  <span className={`text-[13px] font-medium ${resultTextClass}`}>
                     {result.toFixed(1)} dB
                   </span>
                 </button>
