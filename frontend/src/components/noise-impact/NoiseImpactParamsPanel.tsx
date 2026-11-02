@@ -675,7 +675,7 @@ function MitigationField({
         <select
           value={system}
           onChange={(e) => setSystem(e.target.value)}
-          className={`${inputClass} cursor-pointer`}
+          className={`${smallInputClass} cursor-pointer`}
         >
           <option value="">None</option>
           {systems.map((m) => (
@@ -790,7 +790,7 @@ function PeakSplField({
         ))}
       </div>
       {mode === "value" ? (
-        <NumberField label="Peak SPL (dB)" value={splPeak} onChange={setSplPeak} />
+        <NumberField label="Peak SPL (dB)" value={splPeak} onChange={setSplPeak} small />
       ) : (
         <>
           <label className="flex flex-col gap-1">
@@ -800,7 +800,7 @@ function PeakSplField({
             <select
               value={reference}
               onChange={(e) => setReference(e.target.value)}
-              className={`${inputClass} cursor-pointer`}
+              className={`${smallInputClass} cursor-pointer`}
             >
               {formulas.map((f) => (
                 <option key={f.key} value={f.key}>
@@ -814,12 +814,14 @@ function PeakSplField({
             value={energyKj}
             onChange={setEnergyKj}
             step={100}
+            small
           />
           <NumberField
             label="Pile diameter (m)"
             value={diameterM}
             onChange={setDiameterM}
             step={0.1}
+            small
           />
           {picked && (
             <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1.5 leading-relaxed">
@@ -1169,11 +1171,13 @@ function NoiseImpactParamsPanel({
                 label="SEL / strike (dB)"
                 value={selSingleStrike}
                 onChange={setSelSingleStrike}
+                small
               />
               <NumberField
                 label="Strikes / pile"
                 value={nStrikesPerPile}
                 onChange={setNStrikesPerPile}
+                small
               />
             </div>
             <MitigationField
