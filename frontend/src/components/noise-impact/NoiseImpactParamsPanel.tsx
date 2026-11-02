@@ -714,10 +714,12 @@ function MitigationField({
             </span>
           </div>
           <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 rounded-md px-2 py-1.5 leading-relaxed">
-            Model runs with
-            <br />
-            Peak SPL {splPeak === null ? "–" : Math.round((splPeak - cut.il_peak_db) * 10) / 10} dB · SEL / strike{" "}
-            {selSingleStrike - cut.il_sel_db} dB
+            {/* The source levels the model gets: the inputs minus the cut. */}
+            Mitigated:{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+              {splPeak === null ? "–" : Math.round((splPeak - cut.il_peak_db) * 10) / 10} dB peak ·{" "}
+              {selSingleStrike - cut.il_sel_db} dB SEL
+            </span>
           </div>
           {picked.current_sensitive && (
             <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
