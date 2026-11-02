@@ -741,7 +741,9 @@ function MitigationField({
 // fitted on (it still runs outside them).
 // "Compare references" (closed by default) lists every formula's result
 // for the same hammer and pile, to show how much they disagree; it is only
-// for looking -- the model runs with the picked reference alone.
+// for looking -- the model runs with the picked reference alone. When
+// energy or diameter is outside the picked reference's ranges, a warning
+// bar says which, and how many other references do cover them.
 function PeakSplField({
   formulas,
   mode,
@@ -782,6 +784,13 @@ function PeakSplField({
       f.diameter_m[0] <= diameterM && diameterM <= f.diameter_m[1],
   }));
   const comparedDbs = compared.map((c) => c.db);
+  // What the warning bar names: the picked reference's inputs that are
+  // outside its ranges, and how many other references cover both inputs.
+  const energyOut =
+    !!picked && (energyKj < picked.energy_kj[0] || energyKj > picked.energy_kj[1]);
+  const diameterOut =
+    !!picked && (diameterM < picked.diameter_m[0] || diameterM > picked.diameter_m[1]);
+  const othersCovering = compared.filter((c) => c.inRange && c.formula.key !== reference).length;
   const modes: { id: PeakSplMode; label: string }[] = [
     { id: "value", label: "Enter value" },
     { id: "formula", label: "Calculate" },
@@ -876,6 +885,32 @@ function PeakSplField({
                   {picked.energy_kj[0]}–{picked.energy_kj[1]} kJ
                 </div>
               )}
+            </div>
+          )}
+          {picked && result !== null && (energyOut || diameterOut) && (
+            <div className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-md px-2 py-1.5">
+              ⚠{" "}
+              {diameterOut && (
+                <>
+                  Pile diameter <span className="font-semibold">{diameterM} m</span>
+                </>
+              )}
+              {diameterOut && energyOut && " and hammer energy "}
+              {!diameterOut && energyOut && "Hammer energy "}
+              {energyOut && <span className="font-semibold">{energyKj} kJ</span>}{" "}
+              {diameterOut && energyOut ? "are" : "is"} outside this reference's range (
+              {[
+                diameterOut && `${picked.diameter_m[0]}–${picked.diameter_m[1]} m`,
+                energyOut && `${picked.energy_kj[0]}–${picked.energy_kj[1]} kJ`,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+              ).
+              <span className="block mt-0.5 text-amber-700 dark:text-amber-400">
+                {othersCovering === 0
+                  ? "No reference covers these inputs."
+                  : `${othersCovering} other reference${othersCovering === 1 ? " covers" : "s cover"} these inputs.`}
+              </span>
             </div>
           )}
           {result !== null && (
