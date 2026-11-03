@@ -36,7 +36,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StringConstraints
 import shapely # type: ignore
-from shapely.geometry import Point, shape # type: ignore
+from shapely.geometry import shape # type: ignore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, render_vessel_density_overlay, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
@@ -262,7 +262,7 @@ def get_region_vessels(req: RegionRequest):
     return Response(content=f'{{"vessel_mmsis": {mmsis}, "positions": {positions}}}', media_type="application/json")
 
 
-# vessel traffic density of a drawn region as a see-through PNG, shown on the map by the Heat map button
+# vessel traffic density (time ships spent per cell) of a drawn region as a see-through PNG, shown on the map by the Heat map button
 @app.post("/api/region/heatmap")
 def get_region_heatmap(req: RegionRequest):
     try:
@@ -271,20 +271,21 @@ def get_region_heatmap(req: RegionRequest):
         raise HTTPException(status_code=400, detail="Invalid GeoJSON polygon")
 
     minx, miny, maxx, maxy = polygon.bounds
-    rows = query("""
-        SELECT p.latitude, p.longitude
+    pad = 0.1  # degrees: pings just outside let ships be followed in across the edge
+    df = query_df("""
+        SELECT p.mmsi, extract(epoch FROM p.received_at) AS t, p.latitude, p.longitude
         FROM ais_positions p
         WHERE p.received_at >= %s AND p.received_at < %s::date + 1
           AND p.latitude  BETWEEN %s AND %s
           AND p.longitude BETWEEN %s AND %s
           AND p.mmsi BETWEEN 200000000 AND 799999999
-    """, [req.start, req.end, miny, maxy, minx, maxx])
+    """, [req.start, req.end, miny - pad, maxy + pad, minx - pad, maxx + pad])
 
-    inside = [r for r in rows if polygon.contains(Point(r["longitude"], r["latitude"]))]
-    if not inside:
+    if df.empty or not shapely.contains_xy(polygon, df["longitude"].to_numpy(float), df["latitude"].to_numpy(float)).any():
         return {"image": None, "extent": None, "error": "No vessel activity found in this region for the selected dates."}
+    n_days = (pd.Timestamp(req.end) - pd.Timestamp(req.start)).days + 1
     try:
-        return {**render_vessel_density_overlay(pd.DataFrame(inside), polygon), "error": None}
+        return {**render_vessel_density_overlay(df, polygon, max(1, n_days)), "error": None}
     except ValueError as e:
         return {"image": None, "extent": None, "error": str(e)}
 

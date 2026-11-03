@@ -1,5 +1,6 @@
-// Colour scale of the region traffic heat map. The scale is set per run from
-// the region's own traffic (analysis/plots.py), so the numbers change each time.
+// Colour scale of the region traffic heat map: time ships spent per area per
+// day. The scale is fixed (HEATMAP_VMIN/VMAX in analysis/plots.py), so colours
+// can be compared between regions and periods.
 function HeatMapLegend({
   vmin,
   vmax,
@@ -23,7 +24,7 @@ function HeatMapLegend({
 }) {
   // Log scale: the middle of the bar is the geometric mean, not the average
   const mid = Math.sqrt(vmin * vmax);
-  const fmt = (v: number) => (v < 10 ? v.toFixed(1) : Math.round(v).toString());
+  const fmt = (v: number) => String(Number(v.toPrecision(2)));
 
   if (hidden) {
     return (
@@ -44,10 +45,10 @@ function HeatMapLegend({
   return (
     <div
       style={{ right: rightOffset, bottom: bottomOffset }}
-      className="absolute z-10 w-[108px] rounded-md border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-900/85 px-[7px] py-[3px] shadow-sm font-inter transition-[right] duration-300 ease-in-out"
+      className="absolute z-10 w-[126px] rounded-md border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-900/85 px-[7px] py-[3px] shadow-sm font-inter transition-[right] duration-300 ease-in-out"
     >
       <div className="flex items-center justify-between mb-0.5">
-        <div className="text-[9px] font-medium text-slate-600 dark:text-slate-300">AIS pings per cell</div>
+        <div className="whitespace-nowrap text-[9px] font-medium text-slate-600 dark:text-slate-300">Vessel hours/km²/day</div>
         <button
           type="button"
           onClick={onHide}

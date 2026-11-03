@@ -8,7 +8,7 @@ Functions:
     plot_vessel_types(daily_counts) — stacked bar chart of daily vessel counts by type
     plot_speed_overall(df)          — line chart of mean daily speed across all vessels
     plot_vessel_density(df, lon_min, lon_max, lat_min, lat_max) — density map of vessel positions
-    render_vessel_density_overlay(df, polygon) — the same density as a see-through PNG to lay on the map
+    render_vessel_density_overlay(df, polygon, n_days) — time ships spent per cell, as a see-through PNG to lay on the map
 """
 
 
@@ -208,41 +208,110 @@ def plot_vessel_density(
     return _to_b64(fig, dpi=180)
 
 
-def render_vessel_density_overlay(df: pd.DataFrame, polygon) -> dict:
+# Fixed colour scale of the map heat map, in vessel-hours per km² per day, so
+# the same colour means the same amount of traffic in every region and period.
+HEATMAP_VMIN = 0.003
+HEATMAP_VMAX = 0.3
+
+# Two pings in a row from one ship are joined by a straight line when they are
+# at most this far apart in time. Longer gaps (AIS off, in port, out of range)
+# are left out, since where the ship was is unknown.
+MAX_GAP_S = 60 * 60
+STEP_S = 10  # the ship's position along each leg is taken every 10 s
+
+
+def _ship_time_seconds(df: pd.DataFrame, lon_bins: np.ndarray, lat_bins: np.ndarray) -> np.ndarray:
+    """Seconds ships spent in each grid cell. Rows are latitude (south
+    first), columns longitude.
+
+    Based on Xu's vessel density code (/home/shared/vesselDensityEstimation):
+    each ship's pings are joined in time order and the time of each leg is
+    shared out along the line between them. Unlike counting pings, this does
+    not depend on how often ships report, so data from different AIS
+    providers can be compared. Legs with an impossible speed are skipped:
+    over 90 kn for gaps up to 10 min (Xu's 60 kn x 1.5), over 30 kn for
+    longer gaps.
+    """
+    d = df.sort_values(["mmsi", "t"]).drop_duplicates(["mmsi", "t"])
+    mmsi = d["mmsi"].to_numpy()
+    t = d["t"].to_numpy(float)
+    lon = d["longitude"].to_numpy(float)
+    lat = d["latitude"].to_numpy(float)
+
+    dt = t[1:] - t[:-1]
+    metres = np.hypot((lon[1:] - lon[:-1]) * 111320 * np.cos(np.radians(lat[:-1])),
+                      (lat[1:] - lat[:-1]) * 110540)
+    knots = metres / np.where(dt > 0, dt, 1) / 0.5144
+    ok = ((mmsi[1:] == mmsi[:-1]) & (dt > 0) & (dt <= MAX_GAP_S)
+          & (knots <= np.where(dt <= 600, 90, 30)))
+    legs = np.nonzero(ok)[0]
+    steps = np.ceil(dt[legs] / STEP_S).astype(np.int64)
+
+    secs = np.zeros((len(lon_bins) - 1, len(lat_bins) - 1))
+    # Done in chunks of about 5 million positions to keep memory small
+    cuts = np.searchsorted(np.cumsum(steps), np.arange(0, steps.sum() + 5_000_000, 5_000_000))
+    for a, b in zip(cuts[:-1], cuts[1:]):
+        leg, n = legs[a:b], steps[a:b]
+        if len(leg) == 0:
+            continue
+        which = np.repeat(np.arange(len(leg)), n)  # leg of each position
+        step = np.arange(n.sum()) - np.repeat(np.cumsum(n) - n, n)
+        frac = (step + 0.5) / n[which]  # middle of each step along the leg
+        i = leg[which]
+        h, _, _ = np.histogram2d(
+            lon[i] + frac * (lon[i + 1] - lon[i]),
+            lat[i] + frac * (lat[i + 1] - lat[i]),
+            bins=[lon_bins, lat_bins],
+            weights=dt[i] / n[which],
+        )
+        secs += h
+    return secs.T
+
+
+def render_vessel_density_overlay(df: pd.DataFrame, polygon, n_days: int) -> dict:
     """Returns the vessel traffic density of a region as a see-through PNG to
     lay on the map.
 
-    df: DataFrame with columns "longitude" and "latitude".
+    df: DataFrame with columns "mmsi", "t" (seconds since 1970), "longitude"
+        and "latitude", covering the region plus a margin so ships are
+        followed in from outside.
     polygon: the region (shapely geometry, lon/lat).
+    n_days: number of days in the period.
 
-    Same grid, smoothing and colours as plot_vessel_density, but with nothing
-    around it. Cells outside the region or with almost no traffic are
-    transparent. Returns {"image": base64 PNG, "extent": [lon_min, lat_min,
-    lon_max, lat_max] of the image, "vmin"/"vmax": ends of the colour scale
-    in AIS pings per cell (log scale)}. Raises ValueError if there is too
-    little data.
+    Density is the time ships spent in each cell, in vessel-hours per km² per
+    day, coloured on the fixed HEATMAP_VMIN..HEATMAP_VMAX log scale (values
+    outside it get the end colours). Cells outside the region or with no
+    traffic are transparent. Returns {"image": base64 PNG, "extent":
+    [lon_min, lat_min, lon_max, lat_max] of the image, "vmin"/"vmax": ends of
+    the colour scale}. Raises ValueError if there is too little data.
     """
     import shapely
     from matplotlib.colors import LogNorm
     from PIL import Image
 
     lon_min, lat_min, lon_max, lat_max = polygon.bounds
-    res = _density_grid_res(lon_max - lon_min, lat_max - lat_min)
-    lon_bins = np.arange(lon_min, lon_max + res, res)
-    lat_bins = np.arange(lat_min, lat_max + res, res)
+    # Cells about square on the ground: 0.001° (~110 m) of latitude for small
+    # regions, up to 0.005° for big ones
+    res_lat = max(0.001, min(0.005, min(lon_max - lon_min, lat_max - lat_min) / 400))
+    res_lon = res_lat / np.cos(np.radians((lat_min + lat_max) / 2))
+    lon_bins = np.arange(lon_min, lon_max + res_lon, res_lon)
+    lat_bins = np.arange(lat_min, lat_max + res_lat, res_lat)
 
-    counts = _density_counts(df, lon_bins, lat_bins)
-    # Keep only cells whose centre is inside the region
+    secs = _ship_time_seconds(df, lon_bins, lat_bins)
     lon_c = (lon_bins[:-1] + lon_bins[1:]) / 2
     lat_c = (lat_bins[:-1] + lat_bins[1:]) / 2
+    cell_km2 = (res_lon * 111.32 * np.cos(np.radians(lat_c)) * res_lat * 110.54)[:, None]
+    density = secs / 3600 / cell_km2 / n_days
+    density[density <= 0] = np.nan
+    # Keep only cells whose centre is inside the region
     lon_grid, lat_grid = np.meshgrid(lon_c, lat_c)
-    counts[~shapely.contains_xy(polygon, lon_grid, lat_grid)] = np.nan
-    if np.isnan(counts).all():
+    density[~shapely.contains_xy(polygon, lon_grid, lat_grid)] = np.nan
+    if np.isnan(density).all():
         raise ValueError("Not enough position data for a density map.")
 
-    vmin, vmax = _density_color_range(counts)
-    rgba = matplotlib.colormaps["YlOrRd"](LogNorm(vmin=vmin, vmax=vmax)(counts), bytes=True)
-    rgba[np.isnan(counts)] = 0  # transparent
+    norm = LogNorm(vmin=HEATMAP_VMIN, vmax=HEATMAP_VMAX, clip=True)
+    rgba = matplotlib.colormaps["YlOrRd"](norm(density), bytes=True)
+    rgba[np.isnan(density)] = 0  # transparent
     # Image rows go north to south, the grid rows go south to north
     img = Image.fromarray(np.flipud(rgba))
     buf = io.BytesIO()
@@ -250,6 +319,6 @@ def render_vessel_density_overlay(df: pd.DataFrame, polygon) -> dict:
     return {
         "image": base64.b64encode(buf.getvalue()).decode(),
         "extent": [float(lon_bins[0]), float(lat_bins[0]), float(lon_bins[-1]), float(lat_bins[-1])],
-        "vmin": float(vmin),
-        "vmax": float(vmax),
+        "vmin": HEATMAP_VMIN,
+        "vmax": HEATMAP_VMAX,
     }
