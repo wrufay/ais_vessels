@@ -208,11 +208,6 @@ def plot_vessel_density(
     return _to_b64(fig, dpi=180)
 
 
-# Fixed colour scale of the map heat map, in vessel-hours per km² per day, so
-# the same colour means the same amount of traffic in every region and period.
-HEATMAP_VMIN = 0.003
-HEATMAP_VMAX = 0.3
-
 # Two pings in a row from one ship are joined by a straight line when they are
 # at most this far apart in time. Longer gaps (AIS off, in port, out of range)
 # are left out, since where the ship was is unknown.
@@ -279,8 +274,8 @@ def render_vessel_density_overlay(df: pd.DataFrame, polygon, n_days: int) -> dic
     n_days: number of days in the period.
 
     Density is the time ships spent in each cell, in vessel-hours per km² per
-    day, coloured on the fixed HEATMAP_VMIN..HEATMAP_VMAX log scale (values
-    outside it get the end colours). Cells outside the region or with no
+    day, coloured on a log scale stretched to this run's own traffic (5th to
+    99th percentile; values outside it get the end colours). Cells outside the region or with no
     traffic are transparent. Returns {"image": base64 PNG, "extent":
     [lon_min, lat_min, lon_max, lat_max] of the image, "vmin"/"vmax": ends of
     the colour scale}. Raises ValueError if there is too little data.
@@ -309,7 +304,11 @@ def render_vessel_density_overlay(df: pd.DataFrame, polygon, n_days: int) -> dic
     if np.isnan(density).all():
         raise ValueError("Not enough position data for a density map.")
 
-    norm = LogNorm(vmin=HEATMAP_VMIN, vmax=HEATMAP_VMAX, clip=True)
+    vmin = np.nanpercentile(density, 5)
+    vmax = np.nanpercentile(density, 99)
+    if vmax <= vmin:  # e.g. one ship in a straight line: every cell the same
+        vmax = vmin * 10
+    norm = LogNorm(vmin=vmin, vmax=vmax, clip=True)
     rgba = matplotlib.colormaps["YlOrRd"](norm(density), bytes=True)
     rgba[np.isnan(density)] = 0  # transparent
     # Image rows go north to south, the grid rows go south to north
@@ -319,6 +318,6 @@ def render_vessel_density_overlay(df: pd.DataFrame, polygon, n_days: int) -> dic
     return {
         "image": base64.b64encode(buf.getvalue()).decode(),
         "extent": [float(lon_bins[0]), float(lat_bins[0]), float(lon_bins[-1]), float(lat_bins[-1])],
-        "vmin": HEATMAP_VMIN,
-        "vmax": HEATMAP_VMAX,
+        "vmin": float(vmin),
+        "vmax": float(vmax),
     }

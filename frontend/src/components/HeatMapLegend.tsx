@@ -1,6 +1,6 @@
 // Colour scale of the region traffic heat map: time ships spent per area per
-// day. The scale is fixed (HEATMAP_VMIN/VMAX in analysis/plots.py), so colours
-// can be compared between regions and periods.
+// day. The scale is set per run from the region's own traffic
+// (analysis/plots.py), so the numbers change each time.
 function HeatMapLegend({
   vmin,
   vmax,
