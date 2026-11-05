@@ -300,9 +300,10 @@ def analyse_region(req: RegionRequest):
         raise HTTPException(status_code=400, detail="Invalid GeoJSON polygon")
 
     minx, miny, maxx, maxy = polygon.bounds
+    pad = 0.1  # degrees: as for the heat map, pings just outside let ships be followed in
 
     df = query_df("""
-        SELECT p.mmsi, to_char(p.received_at, 'YYYY-MM-DD') AS day,
+        SELECT p.mmsi, extract(epoch FROM p.received_at) AS t, to_char(p.received_at, 'YYYY-MM-DD') AS day,
                p.latitude, p.longitude, p.speed, v.ship_type
         FROM ais_positions p
         LEFT JOIN vessels v USING (mmsi)
@@ -310,14 +311,22 @@ def analyse_region(req: RegionRequest):
           AND p.latitude  BETWEEN %s AND %s
           AND p.longitude BETWEEN %s AND %s
           AND p.mmsi BETWEEN 200000000 AND 799999999
-    """, [req.start, req.end, miny, maxy, minx, maxx])
+    """, [req.start, req.end, miny - pad, maxy + pad, minx - pad, maxx + pad])
 
-    # Filter to exact polygon, checking all points in one go
+    # Exact polygon, checking all points in one go
     shapely.prepare(polygon)
-    df = df[shapely.contains_xy(polygon, df["longitude"].to_numpy(float), df["latitude"].to_numpy(float))]
-
-    if df.empty:
+    inside = shapely.contains_xy(polygon, df["longitude"].to_numpy(float), df["latitude"].to_numpy(float))
+    if not inside.any():
         return {"days": [], "total_positions": 0, "unique_vessels": 0, "plots": {}}
+
+    # The density map uses the pings around the region too, so it is made
+    # before the rest is cut down to the region itself
+    n_days = (pd.Timestamp(req.end) - pd.Timestamp(req.start)).days + 1
+    try:
+        density_plot = plot_vessel_density(df, polygon, max(1, n_days))
+    except ValueError:
+        density_plot = None
+    df = df[inside]
 
     # classify each ship-type code once, not once per position
     labels = {code: classify_ship_type(code) for code in df["ship_type"].unique()}
@@ -344,9 +353,9 @@ def analyse_region(req: RegionRequest):
         "vessel_types":  plot_vessel_types(daily_counts),
         "speed_overall": plot_speed_overall(df[["day", "speed"]].rename(columns={"speed": "speed"})),
     }
-    try:
-        plots["vessel_density"] = plot_vessel_density(df[["longitude", "latitude"]], minx, maxx, miny, maxy)
-    except ValueError:
+    if density_plot:
+        plots["vessel_density"] = density_plot
+    else:
         plots["vessel_density_error"] = "Not enough position data for a density map."
 
     return {
