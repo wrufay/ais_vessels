@@ -69,7 +69,7 @@ import { useBathymetry } from "./useBathymetry";
 import { useMeasureTool } from "./useMeasureTool";
 import { useBasemap, BASEMAPS } from "./useBasemap";
 import { useTour } from "./useTour";
-import { usePendingFeedback } from "./usePendingFeedback";
+import { useNewFeedback } from "./useNewFeedback";
 import Tour from "./tour/Tour";
 
 const API = import.meta.env.VITE_API_URL ?? "";
@@ -226,7 +226,7 @@ function ShipMap() {
   const [showMooringPanel, setShowMooringPanel] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
-  const hasPendingFeedback = usePendingFeedback(API, showFeedbackPanel);
+  const hasNewFeedback = useNewFeedback(API, showFeedbackPanel);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const {
     showImpactsPanel, setShowImpactsPanel,
@@ -1725,14 +1725,14 @@ function ShipMap() {
         <div className="ol-control admin-control">
           <button
             type="button"
-            title={hasPendingFeedback ? "Admin: pending feedback" : "Admin"}
-            aria-label={hasPendingFeedback ? "Admin: pending feedback" : "Admin"}
+            title={hasNewFeedback ? "Admin: new feedback" : "Admin"}
+            aria-label={hasNewFeedback ? "Admin: new feedback" : "Admin"}
             onClick={() => window.open("/admin", "_blank", "noopener")}
           >
             <svg className="w-3.5 h-3.5 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
-            {hasPendingFeedback && <span className="admin-dot" />}
+            {hasNewFeedback && <span className="admin-dot" />}
           </button>
         </div>
         </>

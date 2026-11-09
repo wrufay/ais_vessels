@@ -12,7 +12,7 @@ import { FEEDBACK_CATEGORIES } from "./components/FeedbackPanel";
 const API = import.meta.env.VITE_API_URL ?? "";
 const PASSWORD_KEY = "feedbackInboxPassword";
 
-type Status = "pending" | "in_progress" | "completed" | "rejected";
+type Status = "new" | "pending" | "in_progress" | "completed" | "rejected";
 
 interface FeedbackItem {
   id: number;
@@ -26,6 +26,13 @@ interface FeedbackItem {
 }
 
 const STATUSES: { value: Status; label: string; description: string; legendClass: string; selectClass: string }[] = [
+  {
+    value: "new",
+    label: "New",
+    description: "newly received",
+    legendClass: "text-amber-700",
+    selectClass: "bg-amber-100 text-amber-800 border-amber-300",
+  },
   {
     value: "pending",
     label: "Pending",
@@ -379,7 +386,15 @@ function FeedbackInbox({
                     selecting
                       ? "grid-cols-[1.25rem_minmax(0,1fr)_9rem] sm:grid-cols-[1.25rem_7rem_minmax(0,1fr)_9rem] cursor-pointer"
                       : "grid-cols-[minmax(0,1fr)_9rem] sm:grid-cols-[7rem_minmax(0,1fr)_9rem]"
-                  } ${isPicked ? "bg-red-50" : it.status === "in_progress" ? "bg-blue-50" : ""}`}
+                  } ${
+                    isPicked
+                      ? "bg-red-50"
+                      : it.status === "new"
+                        ? "bg-amber-50"
+                        : it.status === "in_progress"
+                          ? "bg-blue-50"
+                          : ""
+                  }`}
                 >
                   {selecting && (
                     <input

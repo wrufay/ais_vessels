@@ -86,7 +86,7 @@
   position: relative;
 }
 
-/* red dot for pending feedback (usePendingFeedback.ts) */
+/* red dot for new feedback (useNewFeedback.ts) */
 .admin-dot {
   position: absolute;
   top: -3px;

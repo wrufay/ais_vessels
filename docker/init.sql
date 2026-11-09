@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     message     TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 2000),
     email       TEXT,
     status      TEXT NOT NULL DEFAULT 'pending'
-                CHECK (status IN ('pending', 'in_progress', 'completed', 'rejected')),
+                CHECK (status IN ('new', 'pending', 'in_progress', 'completed', 'rejected')),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

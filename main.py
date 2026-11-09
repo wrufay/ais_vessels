@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     message     TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 2000),
     email       TEXT,
     status      TEXT NOT NULL DEFAULT 'pending'
-                CHECK (status IN ('pending', 'in_progress', 'completed', 'rejected')),
+                CHECK (status IN ('new', 'pending', 'in_progress', 'completed', 'rejected')),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
 """
@@ -94,6 +94,16 @@ ALTER TABLE feedback ADD COLUMN IF NOT EXISTS
 ALTER TABLE feedback ALTER COLUMN title DROP DEFAULT;
 """
 
+# Lets older feedback tables hold the "new" status (rebuilds the allowed-status
+# rule; existing rows keep theirs). The default stays 'pending' so a backend
+# still on older code never saves a status its inbox doesn't know; this code
+# saves 'new' itself.
+FEEDBACK_NEW_STATUS_SQL = """
+ALTER TABLE feedback DROP CONSTRAINT IF EXISTS feedback_status_check;
+ALTER TABLE feedback ADD CONSTRAINT feedback_status_check
+    CHECK (status IN ('new', 'pending', 'in_progress', 'completed', 'rejected'));
+"""
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -102,6 +112,7 @@ async def lifespan(app: FastAPI):
         with conn, conn.cursor() as cur:
             cur.execute(FEEDBACK_TABLE_SQL)
             cur.execute(FEEDBACK_TITLE_COLUMN_SQL)
+            cur.execute(FEEDBACK_NEW_STATUS_SQL)
     finally:
         conn.close()
     yield
@@ -604,7 +615,7 @@ class FeedbackRequest(BaseModel):
 
 
 class FeedbackStatusRequest(BaseModel):
-    status: Literal["pending", "in_progress", "completed", "rejected"]
+    status: Literal["new", "pending", "in_progress", "completed", "rejected"]
 
 
 class FeedbackDeleteRequest(BaseModel):
@@ -622,19 +633,19 @@ def check_inbox_password(password: str | None):
 @app.post("/api/feedback")
 def post_feedback(req: FeedbackRequest):
     rows = query(
-        """INSERT INTO feedback (category, title, message, email)
-           VALUES (%s, %s, %s, %s)
+        """INSERT INTO feedback (category, title, message, email, status)
+           VALUES (%s, %s, %s, %s, 'new')
            RETURNING id, created_at""",
         [req.category, req.title, req.message, req.email or None],
     )
     return rows[0]
 
 
-# whether anything is still Pending, for the red dot on the map's Admin button --
+# whether anything is still New, for the red dot on the map's Admin button --
 # open to everyone, since the dot is for all visitors, so it returns nothing else
-@app.get("/api/feedback/pending")
-def get_feedback_pending():
-    return query("SELECT EXISTS (SELECT 1 FROM feedback WHERE status = 'pending') AS pending")[0]
+@app.get("/api/feedback/new")
+def get_feedback_has_new():
+    return query("SELECT EXISTS (SELECT 1 FROM feedback WHERE status = 'new') AS has_new")[0]
 
 
 # lists every submission, newest first -- used by the /feedback-inbox page
