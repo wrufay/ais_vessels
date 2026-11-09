@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import ClosePanelBtn from "../ClosePanelBtn";
 import PanelHeader from "../PanelHeader";
 import {
@@ -435,6 +435,8 @@ function ThresholdGrid({
 const CUSTOM_DB_MIN = 100;
 const CUSTOM_DB_MAX = 300;
 const CUSTOM_NAME_MAX_LEN = 60;
+const customRowButtonClass =
+  "shrink-0 -my-0.5 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition";
 const METRIC_LABELS: Record<string, string> = {
   SEL_cum: "Cumulative",
   SPL_peak: "Peak",
@@ -475,7 +477,8 @@ function SectionToggle({
 // at the site's single frequency, so it can be folded into the value).
 // Run alongside the grid's picks -- see analysis/noise_impact.py's
 // _run_custom. A name can have one threshold per metric, like a hearing
-// group in the grid.
+// group in the grid. The form below the list both adds a threshold and,
+// after a row's pencil is clicked, edits that row.
 function CustomThresholds({
   metricOptions,
   customThresholds,
@@ -496,31 +499,69 @@ function CustomThresholds({
   const [metric, setMetric] = useState("");
   const [db, setDb] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // The row the form is editing; null = the form adds a new one.
+  const [editing, setEditing] = useState<NoiseImpactCustomThreshold | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const chosenMetric =
     metric || (metricOptions.includes("SEL_cum") ? "SEL_cum" : metricOptions[0] ?? "");
   const label = (m: string) => METRIC_LABELS[m] ?? m;
 
-  function add(e: FormEvent) {
+  function startEditing(t: NoiseImpactCustomThreshold) {
+    setEditing(t);
+    setName(t.name);
+    setMetric(t.metric);
+    setDb(String(t.threshold_db));
+    setError(null);
+    nameRef.current?.focus({ preventScroll: true });
+    formRef.current?.scrollIntoView({ block: "nearest" });
+  }
+
+  function stopEditing() {
+    setEditing(null);
+    setName("");
+    setMetric("");
+    setDb("");
+    setError(null);
+  }
+
+  // The row being edited went away (its x, Clear or Reset).
+  useEffect(() => {
+    if (editing && !customThresholds.includes(editing)) stopEditing();
+  }, [customThresholds, editing]);
+
+  function submit(e: FormEvent) {
     e.preventDefault();
+    // A row being edited doesn't count against its own new values.
+    const others = customThresholds.filter((t) => t !== editing);
     const trimmed = name.trim();
     const value = Number(db);
     if (!trimmed) return setError("Enter a name.");
     if (db.trim() === "" || !(value >= CUSTOM_DB_MIN && value <= CUSTOM_DB_MAX))
       return setError(`Enter a threshold between ${CUSTOM_DB_MIN} and ${CUSTOM_DB_MAX} dB.`);
-    if (customThresholds.some((t) => t.name === trimmed && t.metric === chosenMetric))
+    if (others.some((t) => t.name === trimmed && t.metric === chosenMetric))
       return setError(`${trimmed} already has a ${label(chosenMetric).toLowerCase()} threshold.`);
     // A new name takes the lowest colour no other name is using; a second
-    // threshold for a name already listed shares its colour.
-    let colorIndex = customThresholds.find((t) => t.name === trimmed)?.color_index;
+    // threshold for a name already listed shares its colour. An edited row
+    // keeps its colour unless that would now mean sharing it with another
+    // name (it was renamed away from a name that has another metric).
+    let colorIndex = others.find((t) => t.name === trimmed)?.color_index;
     if (colorIndex === undefined) {
-      const used = new Set(customThresholds.map((t) => t.color_index));
-      colorIndex = 0;
-      while (used.has(colorIndex)) colorIndex++;
+      const used = new Set(others.map((t) => t.color_index));
+      if (editing && !used.has(editing.color_index)) {
+        colorIndex = editing.color_index;
+      } else {
+        colorIndex = 0;
+        while (used.has(colorIndex)) colorIndex++;
+      }
     }
-    setCustomThresholds([
-      ...customThresholds,
-      { name: trimmed, metric: chosenMetric, threshold_db: value, color_index: colorIndex },
-    ]);
+    const entry = { name: trimmed, metric: chosenMetric, threshold_db: value, color_index: colorIndex };
+    if (editing) {
+      setCustomThresholds(customThresholds.map((t) => (t === editing ? entry : t)));
+      stopEditing();
+      return;
+    }
+    setCustomThresholds([...customThresholds, entry]);
     setName("");
     setDb("");
   }
@@ -558,36 +599,51 @@ function CustomThresholds({
               {customThresholds.map((t, i) => (
                 <li
                   key={`${t.name}|${t.metric}`}
-                  className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-50 dark:bg-slate-800 text-xs"
+                  className={`px-2.5 py-1 rounded-md bg-slate-50 dark:bg-slate-800 text-xs ${
+                    t === editing ? "ring-1 ring-inset ring-[#98c1d9]" : ""
+                  }`}
                 >
-                  <span className="flex-1 min-w-0">
-                    <span className="block break-words text-slate-700 dark:text-slate-200">
+                  <span className="flex items-start gap-px">
+                    <span className="flex-1 min-w-0 pr-1 break-words text-slate-700 dark:text-slate-200">
                       {t.name}
                     </span>
-                    <span className="block text-[11px] text-[#7c8ca2]">
-                      {label(t.metric)} ({t.metric}) · {t.threshold_db} dB
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => startEditing(t)}
+                      aria-label={`Edit ${t.name} ${label(t.metric).toLowerCase()} threshold`}
+                      title="Edit"
+                      className={customRowButtonClass}
+                    >
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomThresholds(customThresholds.filter((_, j) => j !== i))}
+                      aria-label={`Remove ${t.name} ${label(t.metric).toLowerCase()} threshold`}
+                      title="Remove"
+                      className={customRowButtonClass}
+                    >
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                      </svg>
+                    </button>
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setCustomThresholds(customThresholds.filter((_, j) => j !== i))}
-                    aria-label={`Remove ${t.name} ${label(t.metric).toLowerCase()} threshold`}
-                    title="Remove"
-                    className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-                  >
-                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                    </svg>
-                  </button>
+                  <span className="block text-[11px] text-[#7c8ca2]">
+                    {label(t.metric)} ({t.metric}) · {t.threshold_db} dB
+                  </span>
                 </li>
               ))}
             </ul>
           )}
-          <form onSubmit={add} className="flex flex-col gap-2">
+          <form ref={formRef} onSubmit={submit} className="flex flex-col gap-2">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-500 dark:text-slate-400">Name</span>
               <input
+                ref={nameRef}
                 type="text"
                 value={name}
                 maxLength={CUSTOM_NAME_MAX_LEN}
@@ -631,11 +687,20 @@ function CustomThresholds({
                   className={`${smallInputClass} w-full`}
                 />
               </label>
+              {editing && (
+                <button
+                  type="button"
+                  onClick={stopEditing}
+                  className="shrink-0 px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95"
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 type="submit"
                 className="shrink-0 px-3 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs hover:bg-[#293241] transition active:scale-95"
               >
-                Add
+                {editing ? "Save" : "Add"}
               </button>
             </div>
             {error && (
