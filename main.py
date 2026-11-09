@@ -630,6 +630,13 @@ def post_feedback(req: FeedbackRequest):
     return rows[0]
 
 
+# time of the newest submission, for the red dot on the map's Admin button --
+# open to everyone, since the map page isn't logged in, so it returns nothing else
+@app.get("/api/feedback/latest")
+def get_latest_feedback():
+    return query("SELECT MAX(created_at) AS latest FROM feedback")[0]
+
+
 # lists every submission, newest first -- used by the /feedback-inbox page
 @app.get("/api/feedback")
 def get_feedback(x_inbox_password: str | None = Header(None)):

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { FEEDBACK_CATEGORIES } from "./components/FeedbackPanel";
+import { markFeedbackSeen } from "./useNewFeedbackDot";
 
 // The /feedback-inbox page (picked in index.tsx by URL path) -- lists every
 // Feedback panel submission, newest first, with a status dropdown on each.
@@ -204,6 +205,7 @@ function FeedbackInbox({
         if (!r.ok) throw new Error(`Couldn't load feedback (${r.status}).`);
         const data: FeedbackItem[] = await r.json();
         if (!embedded) storePassword(PASSWORD_KEY, password);
+        markFeedbackSeen(data[0]?.created_at);
         setItems(data);
       })
       .catch((err) => setError(errorText(err)))

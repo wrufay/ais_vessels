@@ -81,3 +81,20 @@
 .admin-control {
   bottom: 2.4em;
 }
+
+.admin-control button {
+  position: relative;
+}
+
+/* red dot for new feedback (useNewFeedbackDot.ts) */
+.admin-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 0 1.5px #fff;
+  pointer-events: none;
+}
