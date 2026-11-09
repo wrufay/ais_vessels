@@ -5,7 +5,9 @@ import { FEEDBACK_CATEGORIES } from "./components/FeedbackPanel";
 // Feedback panel submission, newest first, with a status dropdown on each.
 // Gated by one shared password that the backend checks on every request
 // (FEEDBACK_INBOX_PASSWORD in the server's .env); kept in sessionStorage so
-// it's only asked for once per browser tab.
+// it's only asked for once per browser tab. The Admin page (AdminPage.tsx)
+// also shows this inbox: it passes in its own password, so no second password
+// is asked, and logging in there doesn't unlock the /feedback-inbox link.
 
 const API = import.meta.env.VITE_API_URL ?? "";
 const PASSWORD_KEY = "feedbackInboxPassword";
@@ -69,18 +71,18 @@ const trashIcon = (
   </svg>
 );
 
-function readStoredPassword(): string {
+export function readStoredPassword(key: string): string {
   try {
-    return sessionStorage.getItem(PASSWORD_KEY) ?? "";
+    return sessionStorage.getItem(key) ?? "";
   } catch {
     return "";
   }
 }
 
-function storePassword(password: string | null) {
+export function storePassword(key: string, password: string | null) {
   try {
-    if (password) sessionStorage.setItem(PASSWORD_KEY, password);
-    else sessionStorage.removeItem(PASSWORD_KEY);
+    if (password) sessionStorage.setItem(key, password);
+    else sessionStorage.removeItem(key);
   } catch {
     // storage blocked -- the password just won't be remembered
   }
@@ -88,7 +90,7 @@ function storePassword(password: string | null) {
 
 // fetch() itself throws a TypeError ("Failed to fetch") when the server
 // can't be reached at all -- reworded, since that's what it means here.
-function errorText(err: unknown): string {
+export function errorText(err: unknown): string {
   if (err instanceof TypeError) return "Couldn't reach the server. Check that it's running and try again.";
   return err instanceof Error ? err.message : String(err);
 }
@@ -100,9 +102,61 @@ function formatTime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function FeedbackInbox() {
-  const [password, setPassword] = useState(readStoredPassword);
-  const [passwordDraft, setPasswordDraft] = useState("");
+// the password box used by both this page and the Admin page
+export function PasswordForm({
+  title,
+  submitLabel,
+  busy,
+  error,
+  onSubmit,
+}: {
+  title: string;
+  submitLabel: string;
+  busy: boolean;
+  error: string | null;
+  onSubmit: (password: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  return (
+    <div className="w-full h-screen overflow-y-auto bg-slate-50 flex items-center justify-center">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (draft) onSubmit(draft);
+        }}
+        className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 w-80 flex flex-col gap-3"
+      >
+        <h1 className="text-sm font-semibold text-slate-700">{title}</h1>
+        <input
+          type="password"
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Password"
+          className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#3d5a80]"
+        />
+        <button
+          type="submit"
+          disabled={busy}
+          className="px-4 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs font-medium hover:bg-[#2e4460] transition disabled:opacity-60"
+        >
+          {busy ? "Checking…" : submitLabel}
+        </button>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </form>
+    </div>
+  );
+}
+
+function FeedbackInbox({
+  adminPassword,
+  onAuthFailed,
+}: {
+  adminPassword?: string;
+  onAuthFailed?: () => void;
+}) {
+  const embedded = adminPassword !== undefined;
+  const [password, setPassword] = useState(() => adminPassword ?? readStoredPassword(PASSWORD_KEY));
   const [items, setItems] = useState<FeedbackItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -116,8 +170,17 @@ function FeedbackInbox() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    document.title = "Feedback inbox";
-  }, []);
+    if (!embedded) document.title = "Feedback inbox";
+  }, [embedded]);
+
+  function forgetPassword() {
+    if (onAuthFailed) {
+      onAuthFailed();
+    } else {
+      storePassword(PASSWORD_KEY, null);
+      setPassword("");
+    }
+  }
 
   useEffect(() => {
     if (!confirming) return;
@@ -135,13 +198,12 @@ function FeedbackInbox() {
     fetch(`${API}/api/feedback`, { headers: { "X-Inbox-Password": password } })
       .then(async (r) => {
         if (r.status === 401) {
-          storePassword(null);
-          setPassword("");
+          forgetPassword();
           throw new Error("Wrong password.");
         }
         if (!r.ok) throw new Error(`Couldn't load feedback (${r.status}).`);
         const data: FeedbackItem[] = await r.json();
-        storePassword(password);
+        if (!embedded) storePassword(PASSWORD_KEY, password);
         setItems(data);
       })
       .catch((err) => setError(errorText(err)))
@@ -159,8 +221,7 @@ function FeedbackInbox() {
         body: JSON.stringify({ status }),
       });
       if (r.status === 401) {
-        storePassword(null);
-        setPassword("");
+        forgetPassword();
         throw new Error("Wrong password.");
       }
       if (!r.ok) throw new Error(`Couldn't save the status change (${r.status}).`);
@@ -195,8 +256,7 @@ function FeedbackInbox() {
         body: JSON.stringify({ ids: [...picked] }),
       });
       if (r.status === 401) {
-        storePassword(null);
-        setPassword("");
+        forgetPassword();
         throw new Error("Wrong password.");
       }
       if (!r.ok) throw new Error(`Couldn't delete the feedback (${r.status}).`);
@@ -212,42 +272,31 @@ function FeedbackInbox() {
     }
   }
 
-  if (!password || items === null) {
+  if (embedded && items === null) {
     return (
-      <div className="w-full h-screen overflow-y-auto bg-slate-50 flex items-center justify-center">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!passwordDraft) return;
-            setPassword(passwordDraft);
-            setAttempt((a) => a + 1);
-          }}
-          className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 w-80 flex flex-col gap-3"
-        >
-          <h1 className="text-sm font-semibold text-slate-700">Feedback inbox</h1>
-          <input
-            type="password"
-            autoFocus
-            value={passwordDraft}
-            onChange={(e) => setPasswordDraft(e.target.value)}
-            placeholder="Password"
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#3d5a80]"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-1.5 rounded-md bg-[#3d5a80] text-white text-xs font-medium hover:bg-[#2e4460] transition disabled:opacity-60"
-          >
-            {loading ? "Checking…" : "Open inbox"}
-          </button>
-          {error && <p className="text-xs text-red-600">{error}</p>}
-        </form>
+      <div className={`h-full flex items-center justify-center text-sm ${error ? "text-red-600" : "text-slate-500"}`}>
+        {error ?? "Loading…"}
       </div>
     );
   }
 
+  if (!password || items === null) {
+    return (
+      <PasswordForm
+        title="Feedback inbox"
+        submitLabel="Open inbox"
+        busy={loading}
+        error={error}
+        onSubmit={(draft) => {
+          setPassword(draft);
+          setAttempt((a) => a + 1);
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="w-full h-screen overflow-y-auto bg-slate-50">
+    <div className={`w-full ${embedded ? "h-full" : "h-screen"} overflow-y-auto bg-slate-50`}>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 min-h-[30px]">
           <h1 className="text-lg font-semibold text-slate-700">Feedback inbox</h1>

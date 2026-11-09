@@ -1700,10 +1700,11 @@ function ShipMap() {
         <FeedbackPanel api={API} />
       </SidePanel>
 
-      {/* Feedback button -- sits just above OL's attribution "i" in the
-          bottom-right corner, only while no right-side panel is open
-          (an open panel covers that corner anyway). */}
+      {/* Feedback and Admin buttons -- stacked just above OL's attribution
+          "i" in the bottom-right corner, only while no right-side panel is
+          open (an open panel covers that corner anyway). */}
       {!anyPanelOpen && (
+        <>
         <div className="ol-control feedback-control">
           <button
             type="button"
@@ -1718,6 +1719,20 @@ function ShipMap() {
             </svg>
           </button>
         </div>
+        {/* opens in a new tab so the map and its results stay as they are */}
+        <div className="ol-control admin-control">
+          <button
+            type="button"
+            title="Admin"
+            aria-label="Admin"
+            onClick={() => window.open("/admin", "_blank", "noopener")}
+          >
+            <svg className="w-3.5 h-3.5 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </button>
+        </div>
+        </>
       )}
 
       {/* Vessel type filter modal */}
