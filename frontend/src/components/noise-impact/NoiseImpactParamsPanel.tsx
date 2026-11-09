@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import ClosePanelBtn from "../ClosePanelBtn";
 import PanelHeader from "../PanelHeader";
+import { CSV_COLUMNS, decodeCsvBytes, parseCsv, thresholdsToCsv } from "../../utils/customThresholdCsv";
 import {
   DEFAULT_DEPTH_MAX,
   DEFAULT_DEPTH_MIN,
@@ -441,6 +442,57 @@ const METRIC_LABELS: Record<string, string> = {
   SEL_cum: "Cumulative",
   SPL_peak: "Peak",
 };
+const metricLabel = (m: string) => METRIC_LABELS[m] ?? m;
+
+// The lowest custom colour no threshold in the list is using.
+function lowestFreeColor(thresholds: NoiseImpactCustomThreshold[]): number {
+  const used = new Set(thresholds.map((t) => t.color_index));
+  let colorIndex = 0;
+  while (used.has(colorIndex)) colorIndex++;
+  return colorIndex;
+}
+
+// An imported file's thresholds, or what's wrong with it. Columns are found
+// by their heading and others are ignored, so columns can be added to the
+// file later without breaking older ones. The checks match the add form's.
+// The row numbers count like Excel's, with the heading as row 1.
+function readThresholdCsv(
+  text: string,
+  metricOptions: string[]
+): { thresholds: Omit<NoiseImpactCustomThreshold, "color_index">[] } | { error: string } {
+  const rows = parseCsv(text);
+  const isBlank = (row: string[]) => row.every((cell) => cell.trim() === "");
+  const headingRow = rows.findIndex((row) => !isBlank(row));
+  const headings = (rows[headingRow] ?? []).map((cell) => cell.trim().toLowerCase());
+  const [nameCol, metricCol, dbCol] = CSV_COLUMNS.map((c) => headings.indexOf(c));
+  if (nameCol < 0 || metricCol < 0 || dbCol < 0)
+    return { error: `Needs columns: ${CSV_COLUMNS.join(", ")}.` };
+
+  const thresholds: Omit<NoiseImpactCustomThreshold, "color_index">[] = [];
+  for (let i = headingRow + 1; i < rows.length; i++) {
+    if (isBlank(rows[i])) continue;
+    const rowLabel = `Row ${i + 1}:`;
+    const name = (rows[i][nameCol] ?? "").trim();
+    const metric = (rows[i][metricCol] ?? "").trim();
+    // Excel set to some languages, such as French, writes 173,6 for 173.6.
+    const value = Number((rows[i][dbCol] ?? "").trim().replace(",", "."));
+    // e.g. 173,6 without quotes would otherwise read as 173.
+    if (rows[i].slice(headings.length).some((cell) => cell.trim() !== ""))
+      return { error: `${rowLabel} more cells than column headings.` };
+    if (!name) return { error: `${rowLabel} enter a name.` };
+    if (name.length > CUSTOM_NAME_MAX_LEN)
+      return { error: `${rowLabel} name is longer than ${CUSTOM_NAME_MAX_LEN} characters.` };
+    if (!metricOptions.includes(metric))
+      return { error: `${rowLabel} use metric ${metricOptions.join(" or ")}.` };
+    if (!(value >= CUSTOM_DB_MIN && value <= CUSTOM_DB_MAX))
+      return { error: `${rowLabel} dB must be ${CUSTOM_DB_MIN} to ${CUSTOM_DB_MAX}.` };
+    if (thresholds.some((t) => t.name === name && t.metric === metric))
+      return { error: `${rowLabel} ${name} already has a ${metricLabel(metric).toLowerCase()} threshold.` };
+    thresholds.push({ name, metric, threshold_db: value });
+  }
+  if (thresholds.length === 0) return { error: "This file has no thresholds." };
+  return { thresholds };
+}
 
 // Foldable section title for the Species tab's four sections (13px bold
 // plus the fold arrow). Not the shared CollapsibleHeader, which is a
@@ -501,11 +553,18 @@ function CustomThresholds({
   const [error, setError] = useState<string | null>(null);
   // The row the form is editing; null = the form adds a new one.
   const [editing, setEditing] = useState<NoiseImpactCustomThreshold | null>(null);
+  // What the last import did. `list` is the list it left, so the message
+  // goes away by itself when the list next changes.
+  const [importResult, setImportResult] = useState<{
+    message: string;
+    isError: boolean;
+    list: NoiseImpactCustomThreshold[];
+  } | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const chosenMetric =
     metric || (metricOptions.includes("SEL_cum") ? "SEL_cum" : metricOptions[0] ?? "");
-  const label = (m: string) => METRIC_LABELS[m] ?? m;
 
   function startEditing(t: NoiseImpactCustomThreshold) {
     setEditing(t);
@@ -540,20 +599,15 @@ function CustomThresholds({
     if (db.trim() === "" || !(value >= CUSTOM_DB_MIN && value <= CUSTOM_DB_MAX))
       return setError(`Enter a threshold between ${CUSTOM_DB_MIN} and ${CUSTOM_DB_MAX} dB.`);
     if (others.some((t) => t.name === trimmed && t.metric === chosenMetric))
-      return setError(`${trimmed} already has a ${label(chosenMetric).toLowerCase()} threshold.`);
+      return setError(`${trimmed} already has a ${metricLabel(chosenMetric).toLowerCase()} threshold.`);
     // A new name takes the lowest colour no other name is using; a second
     // threshold for a name already listed shares its colour. An edited row
     // keeps its colour unless that would now mean sharing it with another
     // name (it was renamed away from a name that has another metric).
     let colorIndex = others.find((t) => t.name === trimmed)?.color_index;
     if (colorIndex === undefined) {
-      const used = new Set(others.map((t) => t.color_index));
-      if (editing && !used.has(editing.color_index)) {
-        colorIndex = editing.color_index;
-      } else {
-        colorIndex = 0;
-        while (used.has(colorIndex)) colorIndex++;
-      }
+      const keepsColor = editing && !others.some((t) => t.color_index === editing.color_index);
+      colorIndex = keepsColor ? editing.color_index : lowestFreeColor(others);
     }
     const entry = { name: trimmed, metric: chosenMetric, threshold_db: value, color_index: colorIndex };
     if (editing) {
@@ -564,6 +618,57 @@ function CustomThresholds({
     setCustomThresholds([...customThresholds, entry]);
     setName("");
     setDb("");
+  }
+
+  function exportCsv() {
+    const blob = new Blob([thresholdsToCsv(customThresholds)], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "custom_thresholds.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Adds the file's thresholds to the list; one whose name and metric are
+  // already listed updates that row's dB. A file with any bad row changes
+  // nothing, so a list is never left half loaded without anyone noticing.
+  async function importCsv(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // so picking the same file again still fires
+    if (!file) return;
+    const fail = (message: string) =>
+      setImportResult({ message, isError: true, list: customThresholds });
+    let parsed;
+    try {
+      parsed = readThresholdCsv(decodeCsvBytes(await file.arrayBuffer()), metricOptions);
+    } catch {
+      return fail("This file could not be read.");
+    }
+    if ("error" in parsed) return fail(parsed.error);
+
+    let list = customThresholds;
+    let added = 0;
+    let updated = 0;
+    for (const t of parsed.thresholds) {
+      const same = list.find((c) => c.name === t.name && c.metric === t.metric);
+      if (same) {
+        if (same.threshold_db === t.threshold_db) continue;
+        list = list.map((c) => (c === same ? { ...c, threshold_db: t.threshold_db } : c));
+        updated++;
+      } else {
+        const colorIndex = list.find((c) => c.name === t.name)?.color_index ?? lowestFreeColor(list);
+        list = [...list, { ...t, color_index: colorIndex }];
+        added++;
+      }
+    }
+    const counts = [added > 0 && `${added} added`, updated > 0 && `${updated} updated`].filter(Boolean);
+    setCustomThresholds(list);
+    setImportResult({
+      message: counts.length > 0 ? `${counts.join(", ")}.` : "No changes.",
+      isError: false,
+      list,
+    });
   }
 
   return (
@@ -610,7 +715,7 @@ function CustomThresholds({
                     <button
                       type="button"
                       onClick={() => startEditing(t)}
-                      aria-label={`Edit ${t.name} ${label(t.metric).toLowerCase()} threshold`}
+                      aria-label={`Edit ${t.name} ${metricLabel(t.metric).toLowerCase()} threshold`}
                       title="Edit"
                       className={customRowButtonClass}
                     >
@@ -622,7 +727,7 @@ function CustomThresholds({
                     <button
                       type="button"
                       onClick={() => setCustomThresholds(customThresholds.filter((_, j) => j !== i))}
-                      aria-label={`Remove ${t.name} ${label(t.metric).toLowerCase()} threshold`}
+                      aria-label={`Remove ${t.name} ${metricLabel(t.metric).toLowerCase()} threshold`}
                       title="Remove"
                       className={customRowButtonClass}
                     >
@@ -633,7 +738,7 @@ function CustomThresholds({
                     </button>
                   </span>
                   <span className="block text-[11px] text-[#7c8ca2]">
-                    {label(t.metric)} ({t.metric}) · {t.threshold_db} dB
+                    {metricLabel(t.metric)} ({t.metric}) · {t.threshold_db} dB
                   </span>
                 </li>
               ))}
@@ -667,7 +772,7 @@ function CustomThresholds({
               >
                 {metricOptions.map((m) => (
                   <option key={m} value={m}>
-                    {label(m)} ({m})
+                    {metricLabel(m)} ({m})
                   </option>
                 ))}
               </select>
@@ -707,6 +812,29 @@ function CustomThresholds({
               <span className="text-[11px] text-red-600 dark:text-red-400">{error}</span>
             )}
           </form>
+          <div className="flex items-center gap-2 pt-2">
+            <button type="button" onClick={() => fileRef.current?.click()} className={pillButtonClass}>
+              Import CSV
+            </button>
+            {customThresholds.length > 0 && (
+              <button type="button" onClick={exportCsv} className={pillButtonClass}>
+                Export CSV
+              </button>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={importCsv}
+              className="hidden"
+            />
+          </div>
+          {importResult?.list === customThresholds && (
+            <div className={`pt-1 text-[11px] ${importResult.isError ? "text-red-600 dark:text-red-400" : "text-[#7c8ca2]"}`}>
+              <div>{importResult.message}</div>
+              {importResult.isError && <div>Nothing was imported.</div>}
+            </div>
+          )}
         </>
       )}
     </div>
