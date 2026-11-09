@@ -173,12 +173,9 @@ MITIGATION_SYSTEMS = {
 # on the pile diameter_m and hammer energy_kj ranges given (low, high); the
 # app shows them but still runs outside them. Nedwell's a is given as ~170.
 # The user can pick one in the app instead of typing the peak SPL (see
-# _validate_source_formula).
+# _validate_source_formula). The app starts on the first one, so Nedwell comes
+# first here to match SEL_STRIKE_FORMULAS, which has no Reinhall & Dahl.
 PEAK_SPL_FORMULAS = {
-    "reinhall_dahl_2011": dict(
-        label="Reinhall & Dahl (2011)", a=186, b_e=10, c_d=10,
-        diameter_m=(0.5, 2.5), energy_kj=(100, 4000),
-    ),
     "nedwell_2003": dict(
         label="Nedwell et al. (2003)", a=170, b_e=10, c_d=20,
         diameter_m=(0.5, 6), energy_kj=(50, 5000),
@@ -198,6 +195,10 @@ PEAK_SPL_FORMULAS = {
     "pilz_2018": dict(
         label="Pilz et al. (2018)", a=191, b_e=10, c_d=10,
         diameter_m=(3, 8), energy_kj=(1000, 10000),
+    ),
+    "reinhall_dahl_2011": dict(
+        label="Reinhall & Dahl (2011)", a=186, b_e=10, c_d=10,
+        diameter_m=(0.5, 2.5), energy_kj=(100, 4000),
     ),
 }
 
