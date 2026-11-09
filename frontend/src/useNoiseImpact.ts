@@ -55,6 +55,7 @@ export interface NoiseImpactOptions {
   mitigation_systems: NoiseImpactMitigationSystem[];
   peak_spl_formulas: NoiseImpactSourceFormula[];
   sel_strike_formulas: NoiseImpactSourceFormula[];
+  custom_weightings: NoiseImpactCustomWeighting[];
 }
 
 // Hover-tooltip text, keyed by the same strings as NoiseImpactOptions --
@@ -92,12 +93,21 @@ export interface NoiseImpactZone extends NoiseImpactZoneShape {
   without: NoiseImpactZoneShape | null;
 }
 
+// A hearing group a custom threshold can be weighted by, and the dB its
+// curve takes off the noise at each site's frequency.
+export interface NoiseImpactCustomWeighting {
+  hearing_group: string;
+  reduction_db: Record<string, number>;
+}
+
 // A user-entered threshold (Species tab), sent with the run and compared
-// with unweighted noise -- see analysis/noise_impact.py's _run_custom.
+// with noise weighted by that hearing group's curve, or unweighted noise
+// when null -- see analysis/noise_impact.py's _run_custom.
 export interface NoiseImpactCustomThreshold {
   name: string;
   metric: string;
   threshold_db: number;
+  weighting: string | null;
   // Which custom colour this name uses (see zoneColor), given when the
   // name is first added and kept until it is removed, so removing another
   // name doesn't change it. Thresholds with the same name share it. Sent
@@ -232,6 +242,7 @@ export function useNoiseImpact(apiBase: string) {
     mitigation_systems: [],
     peak_spl_formulas: [],
     sel_strike_formulas: [],
+    custom_weightings: [],
   });
   const [info, setInfo] = useState<NoiseImpactInfo>({
     hearing_groups: {},

@@ -472,6 +472,8 @@ class NoiseImpactCustomThreshold(BaseModel):
     name: str
     metric: str
     threshold_db: float
+    # Hearing group whose curve the noise is weighted by; None = unweighted.
+    weighting: str | None = None
 
 
 class NoiseImpactMitigation(BaseModel):

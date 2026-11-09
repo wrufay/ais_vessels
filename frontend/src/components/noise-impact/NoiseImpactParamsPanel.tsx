@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import ClosePanelBtn from "../ClosePanelBtn";
 import PanelHeader from "../PanelHeader";
-import { CSV_COLUMNS, decodeCsvBytes, parseCsv, thresholdsToCsv } from "../../utils/customThresholdCsv";
+import {
+  CSV_COLUMNS,
+  CSV_WEIGHTING_COLUMN,
+  decodeCsvBytes,
+  parseCsv,
+  thresholdsToCsv,
+} from "../../utils/customThresholdCsv";
 import {
   DEFAULT_DEPTH_MAX,
   DEFAULT_DEPTH_MIN,
@@ -16,6 +22,7 @@ import type {
   NoiseImpactOptions,
   NoiseImpactInfo,
   NoiseImpactCustomThreshold,
+  NoiseImpactCustomWeighting,
   NoiseImpactMitigationSystem,
   NoiseImpactSourceFormula,
   SourceLevelMode,
@@ -436,6 +443,8 @@ function ThresholdGrid({
 const CUSTOM_DB_MIN = 100;
 const CUSTOM_DB_MAX = 300;
 const CUSTOM_NAME_MAX_LEN = 60;
+// As in analysis/noise_impact.py: the workbook weights no other metric.
+const CUSTOM_WEIGHTED_METRIC = "SEL_cum";
 const customRowButtonClass =
   "shrink-0 -my-0.5 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition";
 const METRIC_LABELS: Record<string, string> = {
@@ -455,11 +464,16 @@ function lowestFreeColor(thresholds: NoiseImpactCustomThreshold[]): number {
 // An imported file's thresholds, or what's wrong with it. Columns are found
 // by their heading and others are ignored, so columns can be added to the
 // file later without breaking older ones. The checks match the add form's.
-// The row numbers count like Excel's, with the heading as row 1.
+// The row numbers count like Excel's, with the heading as row 1. A file with
+// no weighting column gives weighting undefined: it says nothing about it.
+type ImportedThreshold = Omit<NoiseImpactCustomThreshold, "color_index" | "weighting"> & {
+  weighting?: string | null;
+};
 function readThresholdCsv(
   text: string,
-  metricOptions: string[]
-): { thresholds: Omit<NoiseImpactCustomThreshold, "color_index">[] } | { error: string } {
+  metricOptions: string[],
+  weightings: NoiseImpactCustomWeighting[]
+): { thresholds: ImportedThreshold[] } | { error: string } {
   const rows = parseCsv(text);
   const isBlank = (row: string[]) => row.every((cell) => cell.trim() === "");
   const headingRow = rows.findIndex((row) => !isBlank(row));
@@ -467,8 +481,9 @@ function readThresholdCsv(
   const [nameCol, metricCol, dbCol] = CSV_COLUMNS.map((c) => headings.indexOf(c));
   if (nameCol < 0 || metricCol < 0 || dbCol < 0)
     return { error: `Needs columns: ${CSV_COLUMNS.join(", ")}.` };
+  const weightingCol = headings.indexOf(CSV_WEIGHTING_COLUMN);
 
-  const thresholds: Omit<NoiseImpactCustomThreshold, "color_index">[] = [];
+  const thresholds: ImportedThreshold[] = [];
   for (let i = headingRow + 1; i < rows.length; i++) {
     if (isBlank(rows[i])) continue;
     const rowLabel = `Row ${i + 1}:`;
@@ -488,7 +503,12 @@ function readThresholdCsv(
       return { error: `${rowLabel} dB must be ${CUSTOM_DB_MIN} to ${CUSTOM_DB_MAX}.` };
     if (thresholds.some((t) => t.name === name && t.metric === metric))
       return { error: `${rowLabel} ${name} already has a ${metricLabel(metric).toLowerCase()} threshold.` };
-    thresholds.push({ name, metric, threshold_db: value });
+    const weighting = weightingCol < 0 ? undefined : (rows[i][weightingCol] ?? "").trim() || null;
+    if (weighting && !weightings.some((w) => w.hearing_group === weighting))
+      return { error: `${rowLabel} unknown weighting.` };
+    if (weighting && metric !== CUSTOM_WEIGHTED_METRIC)
+      return { error: `${rowLabel} ${metricLabel(metric).toLowerCase()} thresholds are not weighted.` };
+    thresholds.push({ name, metric, threshold_db: value, weighting });
   }
   if (thresholds.length === 0) return { error: "This file has no thresholds." };
   return { thresholds };
@@ -524,21 +544,28 @@ function SectionToggle({
   );
 }
 
-// User-entered thresholds: a name, a metric and a dB value each, compared
-// with unweighted noise (a hearing adjustment is just a fixed number of dB
-// at the site's single frequency, so it can be folded into the value).
+// User-entered thresholds: a name, a metric, a dB value and optionally one
+// of the workbook's hearing weighting curves each. The dB is compared with
+// noise weighted by that curve, or unweighted noise without one.
 // Run alongside the grid's picks -- see analysis/noise_impact.py's
 // _run_custom. A name can have one threshold per metric, like a hearing
 // group in the grid. The form below the list both adds a threshold and,
 // after a row's pencil is clicked, edits that row.
 function CustomThresholds({
   metricOptions,
+  weightings,
+  site,
+  siteFreqHz,
   customThresholds,
   setCustomThresholds,
   open,
   onToggle,
 }: {
   metricOptions: string[];
+  weightings: NoiseImpactCustomWeighting[];
+  // The picked site, for the weighting hint's dB.
+  site: string;
+  siteFreqHz: number | undefined;
   customThresholds: NoiseImpactCustomThreshold[];
   setCustomThresholds: (v: NoiseImpactCustomThreshold[]) => void;
   // Folded by default -- an optional extra most runs don't need. Added
@@ -550,6 +577,8 @@ function CustomThresholds({
   // "" = not chosen yet: Cumulative, once the metric list has loaded.
   const [metric, setMetric] = useState("");
   const [db, setDb] = useState("");
+  // "" = none.
+  const [weighting, setWeighting] = useState("");
   const [error, setError] = useState<string | null>(null);
   // The row the form is editing; null = the form adds a new one.
   const [editing, setEditing] = useState<NoiseImpactCustomThreshold | null>(null);
@@ -565,12 +594,16 @@ function CustomThresholds({
   const fileRef = useRef<HTMLInputElement>(null);
   const chosenMetric =
     metric || (metricOptions.includes("SEL_cum") ? "SEL_cum" : metricOptions[0] ?? "");
+  const canWeight = chosenMetric === CUSTOM_WEIGHTED_METRIC;
+  const chosenWeighting = canWeight ? weighting : "";
+  const weightingDb = weightings.find((w) => w.hearing_group === chosenWeighting)?.reduction_db[site];
 
   function startEditing(t: NoiseImpactCustomThreshold) {
     setEditing(t);
     setName(t.name);
     setMetric(t.metric);
     setDb(String(t.threshold_db));
+    setWeighting(t.weighting ?? "");
     setError(null);
     nameRef.current?.focus({ preventScroll: true });
     formRef.current?.scrollIntoView({ block: "nearest" });
@@ -581,6 +614,7 @@ function CustomThresholds({
     setName("");
     setMetric("");
     setDb("");
+    setWeighting("");
     setError(null);
   }
 
@@ -609,7 +643,13 @@ function CustomThresholds({
       const keepsColor = editing && !others.some((t) => t.color_index === editing.color_index);
       colorIndex = keepsColor ? editing.color_index : lowestFreeColor(others);
     }
-    const entry = { name: trimmed, metric: chosenMetric, threshold_db: value, color_index: colorIndex };
+    const entry = {
+      name: trimmed,
+      metric: chosenMetric,
+      threshold_db: value,
+      weighting: chosenWeighting || null,
+      color_index: colorIndex,
+    };
     if (editing) {
       setCustomThresholds(customThresholds.map((t) => (t === editing ? entry : t)));
       stopEditing();
@@ -618,6 +658,8 @@ function CustomThresholds({
     setCustomThresholds([...customThresholds, entry]);
     setName("");
     setDb("");
+    // Not kept like the metric: left on, it would silently weight the next one.
+    setWeighting("");
   }
 
   function exportCsv() {
@@ -631,7 +673,8 @@ function CustomThresholds({
   }
 
   // Adds the file's thresholds to the list; one whose name and metric are
-  // already listed updates that row's dB. A file with any bad row changes
+  // already listed updates that row's dB and weighting (a file with no
+  // weighting column leaves the row's weighting). A file with any bad row changes
   // nothing, so a list is never left half loaded without anyone noticing.
   async function importCsv(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -641,7 +684,7 @@ function CustomThresholds({
       setImportResult({ message, isError: true, list: customThresholds });
     let parsed;
     try {
-      parsed = readThresholdCsv(decodeCsvBytes(await file.arrayBuffer()), metricOptions);
+      parsed = readThresholdCsv(decodeCsvBytes(await file.arrayBuffer()), metricOptions, weightings);
     } catch {
       return fail("This file could not be read.");
     }
@@ -653,12 +696,15 @@ function CustomThresholds({
     for (const t of parsed.thresholds) {
       const same = list.find((c) => c.name === t.name && c.metric === t.metric);
       if (same) {
-        if (same.threshold_db === t.threshold_db) continue;
-        list = list.map((c) => (c === same ? { ...c, threshold_db: t.threshold_db } : c));
+        const newWeighting = t.weighting === undefined ? same.weighting : t.weighting;
+        if (same.threshold_db === t.threshold_db && same.weighting === newWeighting) continue;
+        list = list.map((c) =>
+          c === same ? { ...c, threshold_db: t.threshold_db, weighting: newWeighting } : c
+        );
         updated++;
       } else {
         const colorIndex = list.find((c) => c.name === t.name)?.color_index ?? lowestFreeColor(list);
-        list = [...list, { ...t, color_index: colorIndex }];
+        list = [...list, { ...t, weighting: t.weighting ?? null, color_index: colorIndex }];
         added++;
       }
     }
@@ -697,7 +743,7 @@ function CustomThresholds({
       {open && (
         <>
           <p className="text-[11px] text-[#7c8ca2] leading-relaxed pb-1.5">
-            No hearing adjustment is applied. Not affected by the Metrics setting.
+            Not affected by the Metrics setting.
           </p>
           {customThresholds.length > 0 && (
             <ul className="flex flex-col gap-1 pb-2">
@@ -740,6 +786,9 @@ function CustomThresholds({
                   <span className="block text-[11px] text-[#7c8ca2]">
                     {metricLabel(t.metric)} ({t.metric}) · {t.threshold_db} dB
                   </span>
+                  {t.weighting && (
+                    <span className="block text-[11px] text-[#7c8ca2]">Weighted: {t.weighting}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -776,6 +825,35 @@ function CustomThresholds({
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 dark:text-slate-400">Weighting</span>
+              <select
+                value={chosenWeighting}
+                disabled={!canWeight}
+                onChange={(e) => {
+                  setWeighting(e.target.value);
+                  setError(null);
+                }}
+                className={`${smallInputClass} ${canWeight ? "cursor-pointer" : "opacity-60"}`}
+              >
+                <option value="">None</option>
+                {weightings.map((w) => (
+                  <option key={w.hearing_group} value={w.hearing_group}>
+                    {w.hearing_group}
+                  </option>
+                ))}
+              </select>
+              {!canWeight && (
+                <span className="text-[11px] text-[#7c8ca2]">
+                  {metricLabel(chosenMetric)} thresholds are not weighted.
+                </span>
+              )}
+              {weightingDb !== undefined && (
+                <span className="text-[11px] text-[#7c8ca2]">
+                  Lowers the noise by {weightingDb.toFixed(1)} dB at {siteFreqHz} Hz.
+                </span>
+              )}
             </label>
             <div className="flex items-end gap-2">
               <label className="flex flex-col gap-1 flex-1 min-w-0">
@@ -1680,6 +1758,9 @@ function NoiseImpactParamsPanel({
             <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">
               <CustomThresholds
                 metricOptions={options.metrics}
+                weightings={options.custom_weightings}
+                site={site}
+                siteFreqHz={siteMeta?.src_freq}
                 customThresholds={customThresholds}
                 setCustomThresholds={setCustomThresholds}
                 open={customOpen}

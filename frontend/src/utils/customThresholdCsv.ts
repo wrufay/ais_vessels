@@ -3,6 +3,9 @@
 // saved. The checks on what a row holds are in NoiseImpactParamsPanel.tsx,
 // next to the ones for the add form.
 export const CSV_COLUMNS = ["name", "metric", "threshold_db"] as const;
+// Empty for an unweighted threshold. Optional on import, so files saved
+// before weighting existed still work.
+export const CSV_WEIGHTING_COLUMN = "weighting";
 
 function csvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -10,12 +13,12 @@ function csvCell(value: string): string {
 
 // Starts with a byte order mark, so Excel reads accents in names correctly.
 export function thresholdsToCsv(
-  thresholds: { name: string; metric: string; threshold_db: number }[]
+  thresholds: { name: string; metric: string; threshold_db: number; weighting: string | null }[]
 ): string {
   const rows = thresholds.map((t) =>
-    [t.name, t.metric, String(t.threshold_db)].map(csvCell).join(",")
+    [t.name, t.metric, String(t.threshold_db), t.weighting ?? ""].map(csvCell).join(",")
   );
-  return `﻿${[CSV_COLUMNS.join(","), ...rows].join("\r\n")}\r\n`;
+  return `\uFEFF${[[...CSV_COLUMNS, CSV_WEIGHTING_COLUMN].join(","), ...rows].join("\r\n")}\r\n`;
 }
 
 // Excel's plain "CSV" option doesn't save UTF-8, so bytes that aren't valid

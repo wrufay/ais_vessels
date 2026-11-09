@@ -37,6 +37,7 @@ from ns_pile_driving_noise_mapping import (  # noqa: E402 # type: ignore
 )
 from ns_pile_driving_noise_mapping.core import calculate_noise_impact  # noqa: E402 # type: ignore
 from ns_pile_driving_noise_mapping.enums import Reference, SourceType  # noqa: E402 # type: ignore
+from ns_pile_driving_noise_mapping.processing.auditory_weighting import _compute_weights  # noqa: E402 # type: ignore
 import ns_pile_driving_noise_mapping.core as _npnm_core  # noqa: E402 # type: ignore
 
 
@@ -121,12 +122,15 @@ SITES = {
 CUSTOM_IMPACT = "Custom"
 CUSTOM_DB_RANGE = (100.0, 300.0)
 CUSTOM_NAME_MAX_LEN = 60
+# The workbook weights no other metric, so neither can a custom threshold.
+CUSTOM_WEIGHTED_METRIC = Metric.SEL_CUM.value
 
 # What a custom row gets in the temporary workbook besides its metric and
 # dB. The package only accepts its own enum names for hearing group and
 # impact, so these are stand-ins: with IsWeighted = 0 the hearing group
 # isn't used (it only picks a weighting curve) and impact is only a label,
-# so the zone depends on nothing but the row's metric and dB. Reference
+# so the zone depends on nothing but the row's metric and dB. A weighted
+# row overrides the hearing group and IsWeighted (see _run_custom). Reference
 # and SourceType just have to pass build_threshold_filter_mask_str.
 _CUSTOM_STANDIN_ROW = {
     "HearingGroup": HearingGroup.LF_CETACEANS.value,
@@ -242,7 +246,8 @@ def list_options() -> dict:
     so the frontend can grey out the ones that don't. `mitigation_systems`
     `peak_spl_formulas` and `sel_strike_formulas` are MITIGATION_SYSTEMS,
     PEAK_SPL_FORMULAS and SEL_STRIKE_FORMULAS as lists, for the Source tab's
-    dropdowns."""
+    dropdowns. `custom_weightings` is _list_custom_weightings, for the Species
+    tab's custom thresholds."""
     return {
         "hearing_groups": [g.value for g in HearingGroup],
         "impact_types": [i.value for i in Impact],
@@ -257,7 +262,26 @@ def list_options() -> dict:
         "sel_strike_formulas": [
             {"key": key, **cfg} for key, cfg in SEL_STRIKE_FORMULAS.items()
         ],
+        "custom_weightings": _list_custom_weightings(),
     }
+
+
+def _list_custom_weightings() -> list[dict]:
+    """The hearing groups the workbook has a weighting curve for, each with
+    how many dB its curve takes off the noise at each site's frequency --
+    worked out by the package's own formula, so it's what a run will use."""
+    file_path = ExposureAssessmentParams._get_default_data_file_path()
+    df = pd.read_excel(file_path, sheet_name="NMFS2024_MammalWeightingParams")
+    return [
+        {
+            "hearing_group": r.HearingGroup,
+            "reduction_db": {
+                site: -float(_compute_weights(cfg["src_freq"] / 1000.0, r.a, r.b, r.f1, r.f2, r.C))
+                for site, cfg in SITES.items()
+            },
+        }
+        for r in df.itertuples()
+    ]
 
 
 def _list_thresholds() -> list[dict]:
@@ -546,6 +570,10 @@ def export_impact(
         sel_single_strike, n_strikes_per_pile, n_piles, assessment_period_hours,
         pairs, custom_thresholds, mit,
     )
+    custom_weightings = {
+        (ct["name"], ct["metric"]): ct["weighting"]
+        for ct in _validate_custom(custom_thresholds or [])
+    }
 
     keep = [i for i, zone in enumerate(result["zone_data"]) if _zone_exceeded(zone)]
     if not keep:
@@ -566,7 +594,7 @@ def export_impact(
         columns = [c for c in gpd.read_file(out_path, rows=0).columns if c != "geometry"]
         readme = _export_readme(
             format_name, site, depth_range, noise_level_params, zone_data, df_th,
-            df_th_not_exceeded, columns, mit, peak_formula, sel_formula,
+            df_th_not_exceeded, columns, mit, peak_formula, sel_formula, custom_weightings,
         )
         with open(os.path.join(tmp, f"{name}_README.txt"), "w", encoding="utf-8") as f:
             f.write(readme)
@@ -652,9 +680,12 @@ def _run_model(
 
 def _validate_custom(custom_thresholds: list[dict]) -> list[dict]:
     """Checked, cleaned copies of the custom thresholds (name stripped, dB
-    as float). Names are unique per metric, like a hearing group in the
-    workbook, so (name, Custom, metric) identifies one zone."""
+    as float, weighting None if not given). Names are unique per metric,
+    like a hearing group in the workbook, so (name, Custom, metric)
+    identifies one zone."""
     metrics = [m.value for m in Metric]
+    weightings = [w["hearing_group"] for w in _list_custom_weightings()] if any(
+        ct.get("weighting") for ct in custom_thresholds) else []
     lo, hi = CUSTOM_DB_RANGE
     seen = set()
     cleaned = []
@@ -662,6 +693,7 @@ def _validate_custom(custom_thresholds: list[dict]) -> list[dict]:
         name = str(ct["name"]).strip()
         metric = ct["metric"]
         db = float(ct["threshold_db"])
+        weighting = ct.get("weighting") or None
         if not name:
             raise ValueError("A custom threshold needs a name.")
         if len(name) > CUSTOM_NAME_MAX_LEN:
@@ -672,10 +704,14 @@ def _validate_custom(custom_thresholds: list[dict]) -> list[dict]:
         if not lo <= db <= hi:
             raise ValueError(
                 f"Custom threshold {name}: enter a value between {lo:g} and {hi:g} dB.")
+        if weighting and weighting not in weightings:
+            raise ValueError(f"Unknown weighting for custom threshold {name}: {weighting}")
+        if weighting and metric != CUSTOM_WEIGHTED_METRIC:
+            raise ValueError(f"Custom threshold {name}: {metric} thresholds are not weighted.")
         if (name, metric) in seen:
             raise ValueError(f"{name} has more than one {metric} custom threshold.")
         seen.add((name, metric))
-        cleaned.append({"name": name, "metric": metric, "threshold_db": db})
+        cleaned.append({"name": name, "metric": metric, "threshold_db": db, "weighting": weighting})
     return cleaned
 
 
@@ -687,15 +723,19 @@ def _run_custom(custom, tl_model_params, noise_level_params, depth_range) -> dic
     The package reads thresholds only from a workbook (ExposureAssessmentParams
     file_path), so this writes a temporary copy of the bundled one whose
     Thresholds sheet holds just the custom rows (_CUSTOM_STANDIN_ROW plus
-    each one's metric and dB; IsWeighted 0, so compared with unweighted
-    noise) and points file_path at it. The copy keeps every other sheet --
-    the package reads the weighting parameters from it too. A run of its
-    own, not rows added to the workbook run, so the stand-in hearing group
-    and the custom metrics can't pull extra workbook zones in.
+    each one's metric and dB) and points file_path at it. A row without a
+    weighting has IsWeighted 0, so it's compared with unweighted noise; one
+    with a weighting has that hearing group and IsWeighted 1, so the package
+    applies that group's curve exactly as for a workbook threshold. The copy
+    keeps every other sheet -- the package reads the weighting parameters
+    from it too. A run of its own, not rows added to the workbook run, so
+    the hearing groups and the custom metrics can't pull extra workbook
+    zones in.
 
     The package keeps the sheet's row order, so zone i is custom threshold
     i; checked before renaming, so a change in the package fails loudly
     instead of putting a name on the wrong zone."""
+    groups = [ct["weighting"] or _CUSTOM_STANDIN_ROW["HearingGroup"] for ct in custom]
     with tempfile.TemporaryDirectory() as tmp:
         file_path = Path(tmp) / "custom_thresholds.xlsx"
         shutil.copy(ExposureAssessmentParams._get_default_data_file_path(), file_path)
@@ -703,13 +743,19 @@ def _run_custom(custom, tl_model_params, noise_level_params, depth_range) -> dic
         sheet = workbook["Thresholds"]
         header = [cell.value for cell in sheet[1]]
         sheet.delete_rows(2, sheet.max_row)
-        for ct in custom:
-            row = {**_CUSTOM_STANDIN_ROW, "Metric": ct["metric"], "Threshold_dB": ct["threshold_db"]}
+        for ct, group in zip(custom, groups):
+            row = {
+                **_CUSTOM_STANDIN_ROW,
+                "HearingGroup": group,
+                "IsWeighted": 1 if ct["weighting"] else 0,
+                "Metric": ct["metric"],
+                "Threshold_dB": ct["threshold_db"],
+            }
             sheet.append([row.get(column) for column in header])
         workbook.save(file_path)
 
         exposure_params = ExposureAssessmentParams(
-            hearing_groups=[_CUSTOM_STANDIN_ROW["HearingGroup"]],
+            hearing_groups=list(dict.fromkeys(groups)),
             impact_types=[_CUSTOM_STANDIN_ROW["Impact"]],
             metrics=list(dict.fromkeys(ct["metric"] for ct in custom)),
             depth_range=depth_range,
@@ -718,10 +764,14 @@ def _run_custom(custom, tl_model_params, noise_level_params, depth_range) -> dic
         result = calculate_noise_impact(exposure_params, tl_model_params, noise_level_params)
 
     df_th = result["df_th"]
-    returned = [(str(th.Metric), float(th.Threshold_dB)) for th in df_th.itertuples()]
+    returned = [
+        (str(th.HearingGroup), str(th.Metric), float(th.Threshold_dB), int(th.IsWeighted))
+        for th in df_th.itertuples()
+    ]
     matches = len(returned) == len(custom) == len(result["zone_data"]) and all(
-        metric == ct["metric"] and math.isclose(db, ct["threshold_db"])
-        for (metric, db), ct in zip(returned, custom)
+        group == expected_group and metric == ct["metric"]
+        and math.isclose(db, ct["threshold_db"]) and weighted == (1 if ct["weighting"] else 0)
+        for (group, metric, db, weighted), ct, expected_group in zip(returned, custom, groups)
     )
     if not matches:
         raise RuntimeError(
@@ -772,20 +822,23 @@ _EXPORT_COLUMN_DESCRIPTIONS = {
 def _export_readme(
     format_name, site, depth_range, noise_level_params, zone_data, df_th,
     df_th_not_exceeded, columns, mitigation=None, peak_formula=None, sel_formula=None,
+    custom_weightings=None,
 ) -> str:
     """Plain-text README for the download zip: the scenario that produced
     the zones (none of which is stored in the file itself), the zones in
     the file and the thresholds that weren't exceeded, and what the column
     names and their values mean. Hearing group / impact / metric /
     weighting wording comes from the thresholds workbook's Info sheet, same
-    as the app's tooltips."""
+    as the app's tooltips. `custom_weightings` is (name, metric) -> the
+    hearing group whose curve a custom threshold used: its zone carries the
+    user's name instead, so nothing else says which curve it was."""
     cfg = SITES[site]
     info = _read_info_blocks("HearingGroup", "Impact", "Metric", "IsWeighted")
     # Custom thresholds aren't in the workbook's Info sheet.
     info["Impact"][CUSTOM_IMPACT] = (
         "User-defined threshold entered in the app, not from the thresholds "
         "workbook. Compared with noise without any hearing adjustment "
-        "(weighting).")
+        "(weighting), unless a hearing group's weighting is named next to it.")
     for th in df_th.itertuples():
         if str(th.Impact) == CUSTOM_IMPACT:
             info["HearingGroup"].setdefault(
@@ -794,8 +847,12 @@ def _export_readme(
     shallow, deep = sorted(abs(d) for d in depth_range)
 
     def label(th) -> str:
+        weighting = None
+        if str(th.Impact) == CUSTOM_IMPACT:
+            weighting = (custom_weightings or {}).get((str(th.HearingGroup), str(th.Metric)))
         return (f"{th.HearingGroup} – {th.Impact} – {th.Metric} "
-                f"(threshold {float(th.Threshold_dB):g} dB)")
+                f"(threshold {float(th.Threshold_dB):g} dB"
+                f"{f', {weighting} weighting' if weighting else ''})")
 
     def section(title: str, rows: list[tuple[str, str]]) -> list[str]:
         width = max(len(k) for k, _ in rows) + 2
