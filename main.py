@@ -630,11 +630,11 @@ def post_feedback(req: FeedbackRequest):
     return rows[0]
 
 
-# time of the newest submission, for the red dot on the map's Admin button --
-# open to everyone, since the map page isn't logged in, so it returns nothing else
-@app.get("/api/feedback/latest")
-def get_latest_feedback():
-    return query("SELECT MAX(created_at) AS latest FROM feedback")[0]
+# whether anything is still Pending, for the red dot on the map's Admin button --
+# open to everyone, since the dot is for all visitors, so it returns nothing else
+@app.get("/api/feedback/pending")
+def get_feedback_pending():
+    return query("SELECT EXISTS (SELECT 1 FROM feedback WHERE status = 'pending') AS pending")[0]
 
 
 # lists every submission, newest first -- used by the /feedback-inbox page
