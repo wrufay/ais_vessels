@@ -1098,6 +1098,8 @@ function NoiseImpactParamsPanel({
   selDiameterM,
   setSelDiameterM,
   selUsed,
+  syncCalculation,
+  onToggleSyncCalculation,
   nStrikesPerPile,
   setNStrikesPerPile,
   nPiles,
@@ -1151,6 +1153,8 @@ function NoiseImpactParamsPanel({
   setSelDiameterM: (v: number) => void;
   // The same for SEL / strike.
   selUsed: number | null;
+  syncCalculation: boolean;
+  onToggleSyncCalculation: () => void;
   nStrikesPerPile: number;
   setNStrikesPerPile: (v: number) => void;
   nPiles: number;
@@ -1306,6 +1310,30 @@ function NoiseImpactParamsPanel({
             <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
               Define pile driving source properties.
             </p>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={syncCalculation}
+              onClick={onToggleSyncCalculation}
+              className="flex items-center justify-between gap-2 text-left"
+            >
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Sync SPL and SEL calculation
+              </span>
+              <span
+                className={`relative shrink-0 w-8 h-[18px] rounded-full border-2 transition-colors ${
+                  syncCalculation ? "border-emerald-500" : "border-slate-400 dark:border-slate-500"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full shadow transition-transform ${
+                    syncCalculation
+                      ? "bg-emerald-500 translate-x-[14px]"
+                      : "bg-slate-400 dark:bg-slate-500 translate-x-0"
+                  }`}
+                />
+              </span>
+            </button>
             <SourceLevelField
               title="Peak SPL"
               levelLabel="Peak SPL"

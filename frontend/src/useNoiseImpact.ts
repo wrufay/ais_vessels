@@ -269,6 +269,9 @@ export function useNoiseImpact(apiBase: string) {
   const [selReference, setSelReference] = useState("");
   const [selEnergyKj, setSelEnergyKj] = useState(DEFAULT_HAMMER_ENERGY_KJ);
   const [selDiameterM, setSelDiameterM] = useState(DEFAULT_PILE_DIAMETER_M);
+  // Keeps the two "Calculate" sections' reference, energy and diameter the
+  // same: see the change* functions below.
+  const [syncCalculation, setSyncCalculation] = useState(true);
   const [nStrikesPerPile, setNStrikesPerPile] = useState(DEFAULT_N_STRIKES_PER_PILE);
   const [nPiles, setNPiles] = useState(DEFAULT_N_PILES);
   const [assessmentPeriodHours, setAssessmentPeriodHours] = useState(DEFAULT_ASSESSMENT_PERIOD_HOURS);
@@ -353,6 +356,46 @@ export function useNoiseImpact(apiBase: string) {
       .catch(() => {});
   }, [apiBase]);
 
+  // With sync on, a change in either "Calculate" section is copied to the
+  // other. The exception is a peak SPL reference with no SEL formula (Reinhall
+  // & Dahl): while peak SPL is on one, the references don't sync either way.
+  function hasSelFormula(reference: string) {
+    return options.sel_strike_formulas.some((f) => f.key === reference);
+  }
+  function changePeakReference(v: string) {
+    setPeakSplReference(v);
+    if (syncCalculation && hasSelFormula(v)) setSelReference(v);
+  }
+  function changeSelReference(v: string) {
+    setSelReference(v);
+    if (syncCalculation && hasSelFormula(peakSplReference)) setPeakSplReference(v);
+  }
+  function changePeakEnergy(v: number) {
+    setPeakEnergyKj(v);
+    if (syncCalculation) setSelEnergyKj(v);
+  }
+  function changeSelEnergy(v: number) {
+    setSelEnergyKj(v);
+    if (syncCalculation) setPeakEnergyKj(v);
+  }
+  function changePeakDiameter(v: number) {
+    setPeakDiameterM(v);
+    if (syncCalculation) setSelDiameterM(v);
+  }
+  function changeSelDiameter(v: number) {
+    setSelDiameterM(v);
+    if (syncCalculation) setPeakDiameterM(v);
+  }
+  // Turning sync on makes SEL take peak SPL's values; peak SPL doesn't change.
+  function toggleSyncCalculation() {
+    if (!syncCalculation) {
+      setSelEnergyKj(peakEnergyKj);
+      setSelDiameterM(peakDiameterM);
+      if (hasSelFormula(peakSplReference)) setSelReference(peakSplReference);
+    }
+    setSyncCalculation(!syncCalculation);
+  }
+
   function toggleMetric(value: string) {
     setMetrics((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   }
@@ -401,6 +444,7 @@ export function useNoiseImpact(apiBase: string) {
     setSelReference(options.sel_strike_formulas[0]?.key ?? "");
     setSelEnergyKj(DEFAULT_HAMMER_ENERGY_KJ);
     setSelDiameterM(DEFAULT_PILE_DIAMETER_M);
+    setSyncCalculation(true);
     setNStrikesPerPile(DEFAULT_N_STRIKES_PER_PILE);
     setNPiles(DEFAULT_N_PILES);
     setAssessmentPeriodHours(DEFAULT_ASSESSMENT_PERIOD_HOURS);
@@ -583,16 +627,17 @@ export function useNoiseImpact(apiBase: string) {
     depthMax, setDepthMax,
     splPeak, setSplPeak,
     peakSplMode, setPeakSplMode,
-    peakSplReference, setPeakSplReference,
-    peakEnergyKj, setPeakEnergyKj,
-    peakDiameterM, setPeakDiameterM,
+    peakSplReference, setPeakSplReference: changePeakReference,
+    peakEnergyKj, setPeakEnergyKj: changePeakEnergy,
+    peakDiameterM, setPeakDiameterM: changePeakDiameter,
     peakSplUsed,
     selSingleStrike, setSelSingleStrike,
     selMode, setSelMode,
-    selReference, setSelReference,
-    selEnergyKj, setSelEnergyKj,
-    selDiameterM, setSelDiameterM,
+    selReference, setSelReference: changeSelReference,
+    selEnergyKj, setSelEnergyKj: changeSelEnergy,
+    selDiameterM, setSelDiameterM: changeSelDiameter,
     selUsed,
+    syncCalculation, toggleSyncCalculation,
     nStrikesPerPile, setNStrikesPerPile,
     nPiles, setNPiles,
     assessmentPeriodHours, setAssessmentPeriodHours,

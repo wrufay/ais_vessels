@@ -249,6 +249,7 @@ function ShipMap() {
     selEnergyKj: noiseImpactSelEnergyKj, setSelEnergyKj: setNoiseImpactSelEnergyKj,
     selDiameterM: noiseImpactSelDiameterM, setSelDiameterM: setNoiseImpactSelDiameterM,
     selUsed: noiseImpactSelUsed,
+    syncCalculation: noiseImpactSyncCalculation, toggleSyncCalculation: toggleNoiseImpactSyncCalculation,
     nStrikesPerPile: noiseImpactNStrikesPerPile, setNStrikesPerPile: setNoiseImpactNStrikesPerPile,
     nPiles: noiseImpactNPiles,
     assessmentPeriodHours: noiseImpactAssessmentPeriodHours,
@@ -1779,6 +1780,8 @@ function ShipMap() {
           selDiameterM={noiseImpactSelDiameterM}
           setSelDiameterM={setNoiseImpactSelDiameterM}
           selUsed={noiseImpactSelUsed}
+          syncCalculation={noiseImpactSyncCalculation}
+          onToggleSyncCalculation={toggleNoiseImpactSyncCalculation}
           nStrikesPerPile={noiseImpactNStrikesPerPile}
           setNStrikesPerPile={setNoiseImpactNStrikesPerPile}
           nPiles={noiseImpactNPiles}
