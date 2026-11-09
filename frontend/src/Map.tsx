@@ -240,10 +240,15 @@ function ShipMap() {
     splPeak: noiseImpactSplPeak, setSplPeak: setNoiseImpactSplPeak,
     peakSplMode: noiseImpactPeakSplMode, setPeakSplMode: setNoiseImpactPeakSplMode,
     peakSplReference: noiseImpactPeakSplReference, setPeakSplReference: setNoiseImpactPeakSplReference,
-    hammerEnergyKj: noiseImpactHammerEnergyKj, setHammerEnergyKj: setNoiseImpactHammerEnergyKj,
-    pileDiameterM: noiseImpactPileDiameterM, setPileDiameterM: setNoiseImpactPileDiameterM,
+    peakEnergyKj: noiseImpactPeakEnergyKj, setPeakEnergyKj: setNoiseImpactPeakEnergyKj,
+    peakDiameterM: noiseImpactPeakDiameterM, setPeakDiameterM: setNoiseImpactPeakDiameterM,
     peakSplUsed: noiseImpactPeakSplUsed,
     selSingleStrike: noiseImpactSelSingleStrike, setSelSingleStrike: setNoiseImpactSelSingleStrike,
+    selMode: noiseImpactSelMode, setSelMode: setNoiseImpactSelMode,
+    selReference: noiseImpactSelReference, setSelReference: setNoiseImpactSelReference,
+    selEnergyKj: noiseImpactSelEnergyKj, setSelEnergyKj: setNoiseImpactSelEnergyKj,
+    selDiameterM: noiseImpactSelDiameterM, setSelDiameterM: setNoiseImpactSelDiameterM,
+    selUsed: noiseImpactSelUsed,
     nStrikesPerPile: noiseImpactNStrikesPerPile, setNStrikesPerPile: setNoiseImpactNStrikesPerPile,
     nPiles: noiseImpactNPiles,
     assessmentPeriodHours: noiseImpactAssessmentPeriodHours,
@@ -1758,13 +1763,22 @@ function ShipMap() {
           setPeakSplMode={setNoiseImpactPeakSplMode}
           peakSplReference={noiseImpactPeakSplReference}
           setPeakSplReference={setNoiseImpactPeakSplReference}
-          hammerEnergyKj={noiseImpactHammerEnergyKj}
-          setHammerEnergyKj={setNoiseImpactHammerEnergyKj}
-          pileDiameterM={noiseImpactPileDiameterM}
-          setPileDiameterM={setNoiseImpactPileDiameterM}
+          peakEnergyKj={noiseImpactPeakEnergyKj}
+          setPeakEnergyKj={setNoiseImpactPeakEnergyKj}
+          peakDiameterM={noiseImpactPeakDiameterM}
+          setPeakDiameterM={setNoiseImpactPeakDiameterM}
           peakSplUsed={noiseImpactPeakSplUsed}
           selSingleStrike={noiseImpactSelSingleStrike}
           setSelSingleStrike={setNoiseImpactSelSingleStrike}
+          selMode={noiseImpactSelMode}
+          setSelMode={setNoiseImpactSelMode}
+          selReference={noiseImpactSelReference}
+          setSelReference={setNoiseImpactSelReference}
+          selEnergyKj={noiseImpactSelEnergyKj}
+          setSelEnergyKj={setNoiseImpactSelEnergyKj}
+          selDiameterM={noiseImpactSelDiameterM}
+          setSelDiameterM={setNoiseImpactSelDiameterM}
+          selUsed={noiseImpactSelUsed}
           nStrikesPerPile={noiseImpactNStrikesPerPile}
           setNStrikesPerPile={setNoiseImpactNStrikesPerPile}
           nPiles={noiseImpactNPiles}

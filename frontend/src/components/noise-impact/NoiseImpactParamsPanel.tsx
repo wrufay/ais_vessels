@@ -6,7 +6,7 @@ import {
   DEFAULT_DEPTH_MIN,
   mitigationReductions,
   pairKey,
-  peakSplFromFormula,
+  levelFromFormula,
   pairMetrics,
   runnablePairs,
 } from "../../useNoiseImpact";
@@ -16,8 +16,8 @@ import type {
   NoiseImpactInfo,
   NoiseImpactCustomThreshold,
   NoiseImpactMitigationSystem,
-  NoiseImpactPeakSplFormula,
-  PeakSplMode,
+  NoiseImpactSourceFormula,
+  SourceLevelMode,
 } from "../../useNoiseImpact";
 
 const runIcon = (
@@ -668,7 +668,7 @@ function MitigationField({
   setLevel: (v: number) => void;
   // null while "Calculate" has no result yet.
   splPeak: number | null;
-  selSingleStrike: number;
+  selSingleStrike: number | null;
 }) {
   const picked = systems.find((m) => m.key === system);
   const cut = picked && mitigationReductions(picked, level);
@@ -722,7 +722,7 @@ function MitigationField({
             Mitigated:{" "}
             <span className={`font-semibold whitespace-nowrap ${resultTextClass}`}>
               {splPeak === null ? "–" : Math.round((splPeak - cut.il_peak_db) * 10) / 10} dB peak ·{" "}
-              {selSingleStrike - cut.il_sel_db} dB SEL
+              {selSingleStrike === null ? "–" : Math.round((selSingleStrike - cut.il_sel_db) * 10) / 10} dB SEL
             </span>
           </div>
           {picked.current_sensitive && (
@@ -736,8 +736,9 @@ function MitigationField({
   );
 }
 
-// Peak SPL (Source tab): typed in ("Enter value"), or worked out from
-// hammer energy and pile diameter with a published formula ("Calculate"),
+// A source level (Source tab: Peak SPL, SEL / strike): typed in ("Enter
+// value"), or worked out from its own hammer energy and pile diameter with a
+// published formula ("Calculate"),
 // which shows its result; clicking the result row (closed by default)
 // shows the formula with the numbers in it and the ranges the formula was
 // fitted on (it still runs outside them).
@@ -746,12 +747,14 @@ function MitigationField({
 // row picks that reference (the model runs with the picked one alone). When
 // energy or diameter is outside the picked reference's ranges, a warning
 // bar says which, and how many other references do cover them.
-function PeakSplField({
+function SourceLevelField({
+  title,
+  levelLabel,
   formulas,
   mode,
   setMode,
-  splPeak,
-  setSplPeak,
+  value,
+  setValue,
   reference,
   setReference,
   energyKj,
@@ -759,11 +762,14 @@ function PeakSplField({
   diameterM,
   setDiameterM,
 }: {
-  formulas: NoiseImpactPeakSplFormula[];
-  mode: PeakSplMode;
-  setMode: (v: PeakSplMode) => void;
-  splPeak: number;
-  setSplPeak: (v: number) => void;
+  // Section heading, and the name of the level ("SEL / strike").
+  title: string;
+  levelLabel: string;
+  formulas: NoiseImpactSourceFormula[];
+  mode: SourceLevelMode;
+  setMode: (v: SourceLevelMode) => void;
+  value: number;
+  setValue: (v: number) => void;
   reference: string;
   setReference: (v: string) => void;
   energyKj: number;
@@ -772,7 +778,7 @@ function PeakSplField({
   setDiameterM: (v: number) => void;
 }) {
   const picked = formulas.find((f) => f.key === reference);
-  const result = picked ? peakSplFromFormula(picked, energyKj, diameterM) : null;
+  const result = picked ? levelFromFormula(picked, energyKj, diameterM) : null;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   // Every formula's result, and whether energy and diameter lie inside
@@ -780,7 +786,7 @@ function PeakSplField({
   // set, so energy and diameter are above 0 and each value is a number.
   const compared = formulas.map((f) => ({
     formula: f,
-    db: peakSplFromFormula(f, energyKj, diameterM) ?? 0,
+    db: levelFromFormula(f, energyKj, diameterM) ?? 0,
     inRange:
       f.energy_kj[0] <= energyKj && energyKj <= f.energy_kj[1] &&
       f.diameter_m[0] <= diameterM && diameterM <= f.diameter_m[1],
@@ -793,13 +799,13 @@ function PeakSplField({
   const diameterOut =
     !!picked && (diameterM < picked.diameter_m[0] || diameterM > picked.diameter_m[1]);
   const othersCovering = compared.filter((c) => c.inRange && c.formula.key !== reference).length;
-  const modes: { id: PeakSplMode; label: string }[] = [
+  const modes: { id: SourceLevelMode; label: string }[] = [
     { id: "value", label: "Enter value" },
     { id: "formula", label: "Calculate" },
   ];
   return (
     <div className="flex flex-col gap-2">
-      <span className={sectionTitleClass}>Peak SPL</span>
+      <span className={sectionTitleClass}>{title}</span>
       <div className="flex p-0.5 rounded-md bg-slate-100 dark:bg-slate-800">
         {modes.map((m) => (
           <button
@@ -818,7 +824,7 @@ function PeakSplField({
         ))}
       </div>
       {mode === "value" ? (
-        <NumberField label="Peak SPL (dB)" value={splPeak} onChange={setSplPeak} small />
+        <NumberField label={`${levelLabel} (dB)`} value={value} onChange={setValue} small />
       ) : (
         <>
           <label className="flex flex-col gap-1">
@@ -872,7 +878,7 @@ function PeakSplField({
                 >
                   <span className="flex items-center gap-2 text-xs">
                     <span className={`text-[9px] text-slate-400 dark:text-slate-500 transition-transform duration-150 ${detailsOpen ? "rotate-90" : ""}`}>▶</span>
-                    Peak SPL
+                    {levelLabel}
                   </span>
                   <span className={`text-[13px] font-medium ${resultTextClass}`}>
                     {result.toFixed(1)} dB
@@ -1076,13 +1082,22 @@ function NoiseImpactParamsPanel({
   setPeakSplMode,
   peakSplReference,
   setPeakSplReference,
-  hammerEnergyKj,
-  setHammerEnergyKj,
-  pileDiameterM,
-  setPileDiameterM,
+  peakEnergyKj,
+  setPeakEnergyKj,
+  peakDiameterM,
+  setPeakDiameterM,
   peakSplUsed,
   selSingleStrike,
   setSelSingleStrike,
+  selMode,
+  setSelMode,
+  selReference,
+  setSelReference,
+  selEnergyKj,
+  setSelEnergyKj,
+  selDiameterM,
+  setSelDiameterM,
+  selUsed,
   nStrikesPerPile,
   setNStrikesPerPile,
   nPiles,
@@ -1114,18 +1129,28 @@ function NoiseImpactParamsPanel({
   setDepthMax: (v: number) => void;
   splPeak: number;
   setSplPeak: (v: number) => void;
-  peakSplMode: PeakSplMode;
-  setPeakSplMode: (v: PeakSplMode) => void;
+  peakSplMode: SourceLevelMode;
+  setPeakSplMode: (v: SourceLevelMode) => void;
   peakSplReference: string;
   setPeakSplReference: (v: string) => void;
-  hammerEnergyKj: number;
-  setHammerEnergyKj: (v: number) => void;
-  pileDiameterM: number;
-  setPileDiameterM: (v: number) => void;
+  peakEnergyKj: number;
+  setPeakEnergyKj: (v: number) => void;
+  peakDiameterM: number;
+  setPeakDiameterM: (v: number) => void;
   // What the model gets: splPeak, or the formula's result (null if none).
   peakSplUsed: number | null;
   selSingleStrike: number;
   setSelSingleStrike: (v: number) => void;
+  selMode: SourceLevelMode;
+  setSelMode: (v: SourceLevelMode) => void;
+  selReference: string;
+  setSelReference: (v: string) => void;
+  selEnergyKj: number;
+  setSelEnergyKj: (v: number) => void;
+  selDiameterM: number;
+  setSelDiameterM: (v: number) => void;
+  // The same for SEL / strike.
+  selUsed: number | null;
   nStrikesPerPile: number;
   setNStrikesPerPile: (v: number) => void;
   nPiles: number;
@@ -1177,7 +1202,7 @@ function NoiseImpactParamsPanel({
         ? "Depth min must be smaller than Depth max."
         : null;
   const splPeakInvalid = !(peakSplUsed !== null && peakSplUsed > 0);
-  const selSingleStrikeInvalid = !(selSingleStrike > 0);
+  const selSingleStrikeInvalid = !(selUsed !== null && selUsed > 0);
   const nStrikesPerPileInvalid = !(nStrikesPerPile > 0);
   const nPilesInvalid = !(nPiles > 0);
   const assessmentPeriodInvalid = !(assessmentPeriodHours > 0);
@@ -1202,8 +1227,9 @@ function NoiseImpactParamsPanel({
   if (metricsInvalid) missing.push("a metric");
   if (depthError) missing.push("a valid depth range");
   if (splPeakInvalid)
-    missing.push(peakSplMode === "value" ? "a peak SPL" : "a hammer energy and pile diameter");
-  if (selSingleStrikeInvalid) missing.push("an SEL/strike");
+    missing.push(peakSplMode === "value" ? "a peak SPL" : "valid peak SPL inputs");
+  if (selSingleStrikeInvalid)
+    missing.push(selMode === "value" ? "an SEL/strike" : "valid SEL inputs");
   if (nStrikesPerPileInvalid) missing.push("strikes/pile");
 
   return (
@@ -1280,26 +1306,36 @@ function NoiseImpactParamsPanel({
             <p className="text-[11px] text-[#7c8ca2] leading-relaxed">
               Define pile driving source properties.
             </p>
-            <PeakSplField
+            <SourceLevelField
+              title="Peak SPL"
+              levelLabel="Peak SPL"
               formulas={options.peak_spl_formulas}
               mode={peakSplMode}
               setMode={setPeakSplMode}
-              splPeak={splPeak}
-              setSplPeak={setSplPeak}
+              value={splPeak}
+              setValue={setSplPeak}
               reference={peakSplReference}
               setReference={setPeakSplReference}
-              energyKj={hammerEnergyKj}
-              setEnergyKj={setHammerEnergyKj}
-              diameterM={pileDiameterM}
-              setDiameterM={setPileDiameterM}
+              energyKj={peakEnergyKj}
+              setEnergyKj={setPeakEnergyKj}
+              diameterM={peakDiameterM}
+              setDiameterM={setPeakDiameterM}
             />
             <div className="flex flex-col gap-2 mt-2 pt-2.5 border-t border-slate-100 dark:border-slate-800">
-              <span className={sectionTitleClass}>Cumulative SEL</span>
-              <NumberField
-                label="SEL / strike (dB)"
+              <SourceLevelField
+                title="Cumulative SEL"
+                levelLabel="SEL / strike"
+                formulas={options.sel_strike_formulas}
+                mode={selMode}
+                setMode={setSelMode}
                 value={selSingleStrike}
-                onChange={setSelSingleStrike}
-                small
+                setValue={setSelSingleStrike}
+                reference={selReference}
+                setReference={setSelReference}
+                energyKj={selEnergyKj}
+                setEnergyKj={setSelEnergyKj}
+                diameterM={selDiameterM}
+                setDiameterM={setSelDiameterM}
               />
               <NumberField
                 label="Strikes / pile"
@@ -1315,7 +1351,7 @@ function NoiseImpactParamsPanel({
               level={mitigationLevel}
               setLevel={setMitigationLevel}
               splPeak={peakSplUsed}
-              selSingleStrike={selSingleStrike}
+              selSingleStrike={selUsed}
             />
             {/* Not user-adjustable yet -- shown so the request's full
                 parameter set isn't hidden, just not editable right now. */}

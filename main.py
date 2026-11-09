@@ -482,9 +482,9 @@ class NoiseImpactMitigation(BaseModel):
     il_sel_db: float
 
 
-class NoiseImpactPeakSplFormula(BaseModel):
-    # reference is a key of analysis/noise_impact.py's PEAK_SPL_FORMULAS;
-    # checked in _validate_peak_spl_formula.
+class NoiseImpactSourceFormula(BaseModel):
+    # reference is a key of analysis/noise_impact.py's PEAK_SPL_FORMULAS or
+    # SEL_STRIKE_FORMULAS; checked in _validate_source_formula.
     reference: str
     energy_kj: float
     diameter_m: float
@@ -515,7 +515,9 @@ class NoiseImpactRequest(BaseModel):
     mitigation: NoiseImpactMitigation | None = None
     # Works out spl_peak from hammer energy and pile diameter instead (the
     # spl_peak sent is then ignored); None = use spl_peak as typed.
-    peak_spl_formula: NoiseImpactPeakSplFormula | None = None
+    peak_spl_formula: NoiseImpactSourceFormula | None = None
+    # The same for sel_single_strike, with its own hammer energy and diameter.
+    sel_strike_formula: NoiseImpactSourceFormula | None = None
 
 
 # returns impact zones after running the pile-driving noise-impact model for one site.
@@ -538,6 +540,7 @@ def post_noise_impact_compute(req: NoiseImpactRequest):
             custom_thresholds=[c.model_dump() for c in req.custom_thresholds],
             mitigation=req.mitigation.model_dump() if req.mitigation else None,
             peak_spl_formula=req.peak_spl_formula.model_dump() if req.peak_spl_formula else None,
+            sel_strike_formula=req.sel_strike_formula.model_dump() if req.sel_strike_formula else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -570,6 +573,7 @@ def post_noise_impact_export(req: NoiseImpactExportRequest):
             custom_thresholds=[c.model_dump() for c in req.custom_thresholds],
             mitigation=req.mitigation.model_dump() if req.mitigation else None,
             peak_spl_formula=req.peak_spl_formula.model_dump() if req.peak_spl_formula else None,
+            sel_strike_formula=req.sel_strike_formula.model_dump() if req.sel_strike_formula else None,
             fmt=req.format,
         )
     except ValueError as e:

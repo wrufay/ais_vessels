@@ -29,10 +29,11 @@ export interface NoiseImpactMitigationSystem {
   current_sensitive: boolean;
 }
 
-// An empirical formula for the pile's peak SPL from hammer energy and pile
-// diameter -- analysis/noise_impact.py's PEAK_SPL_FORMULAS. The ranges,
-// [low, high], are what the formula was fitted on.
-export interface NoiseImpactPeakSplFormula {
+// An empirical formula for a pile's source level (peak SPL or SEL / strike)
+// from hammer energy and pile diameter -- analysis/noise_impact.py's
+// PEAK_SPL_FORMULAS and SEL_STRIKE_FORMULAS. The ranges, [low, high], are
+// what the formula was fitted on.
+export interface NoiseImpactSourceFormula {
   key: string;
   label: string;
   a: number;
@@ -42,9 +43,9 @@ export interface NoiseImpactPeakSplFormula {
   energy_kj: [number, number];
 }
 
-// How the Source tab gets the peak SPL: typed in, or worked out with a
-// NoiseImpactPeakSplFormula.
-export type PeakSplMode = "value" | "formula";
+// How the Source tab gets a source level: typed in, or worked out with a
+// NoiseImpactSourceFormula.
+export type SourceLevelMode = "value" | "formula";
 
 export interface NoiseImpactOptions {
   hearing_groups: string[];
@@ -52,7 +53,8 @@ export interface NoiseImpactOptions {
   metrics: string[];
   thresholds: NoiseImpactThreshold[];
   mitigation_systems: NoiseImpactMitigationSystem[];
-  peak_spl_formulas: NoiseImpactPeakSplFormula[];
+  peak_spl_formulas: NoiseImpactSourceFormula[];
+  sel_strike_formulas: NoiseImpactSourceFormula[];
 }
 
 // Hover-tooltip text, keyed by the same strings as NoiseImpactOptions --
@@ -128,11 +130,11 @@ export function mitigationReductions(
   return { il_peak_db: at(system.il_peak_db), il_sel_db: at(system.il_sel_db) };
 }
 
-// Peak SPL (dB re 1 µPa @ 1 m) from a formula, rounded to 0.1 dB like
-// the backend's _validate_peak_spl_formula; null until energy and diameter
-// are both above 0.
-export function peakSplFromFormula(
-  formula: NoiseImpactPeakSplFormula,
+// A source level (dB @ 1 m) from a formula, rounded to 0.1 dB like the
+// backend's _validate_source_formula; null until energy and diameter are
+// both above 0.
+export function levelFromFormula(
+  formula: NoiseImpactSourceFormula,
   energyKj: number,
   diameterM: number
 ): number | null {
@@ -229,6 +231,7 @@ export function useNoiseImpact(apiBase: string) {
     thresholds: [],
     mitigation_systems: [],
     peak_spl_formulas: [],
+    sel_strike_formulas: [],
   });
   const [info, setInfo] = useState<NoiseImpactInfo>({
     hearing_groups: {},
@@ -243,6 +246,7 @@ export function useNoiseImpact(apiBase: string) {
   const DEFAULT_SPL_PEAK = 220;
   const DEFAULT_SEL_SINGLE_STRIKE = 200;
   const DEFAULT_N_STRIKES_PER_PILE = 5000;
+  // Starting values for both "Calculate" sections.
   const DEFAULT_HAMMER_ENERGY_KJ = 2000;
   const DEFAULT_PILE_DIAMETER_M = 2;
   // Backend defaults (main.py's NoiseImpactRequest) -- now sent explicitly
@@ -254,12 +258,17 @@ export function useNoiseImpact(apiBase: string) {
   const [depthMax, setDepthMax] = useState(DEFAULT_DEPTH_MAX);
   const [splPeak, setSplPeak] = useState(DEFAULT_SPL_PEAK);
   // "Calculate" mode: the picked formula's key ("" until the options
-  // load, then the first one), hammer energy and pile diameter.
-  const [peakSplMode, setPeakSplMode] = useState<PeakSplMode>("value");
+  // load, then the first one), hammer energy and pile diameter. Peak SPL
+  // and SEL / strike each keep their own.
+  const [peakSplMode, setPeakSplMode] = useState<SourceLevelMode>("value");
   const [peakSplReference, setPeakSplReference] = useState("");
-  const [hammerEnergyKj, setHammerEnergyKj] = useState(DEFAULT_HAMMER_ENERGY_KJ);
-  const [pileDiameterM, setPileDiameterM] = useState(DEFAULT_PILE_DIAMETER_M);
+  const [peakEnergyKj, setPeakEnergyKj] = useState(DEFAULT_HAMMER_ENERGY_KJ);
+  const [peakDiameterM, setPeakDiameterM] = useState(DEFAULT_PILE_DIAMETER_M);
   const [selSingleStrike, setSelSingleStrike] = useState(DEFAULT_SEL_SINGLE_STRIKE);
+  const [selMode, setSelMode] = useState<SourceLevelMode>("value");
+  const [selReference, setSelReference] = useState("");
+  const [selEnergyKj, setSelEnergyKj] = useState(DEFAULT_HAMMER_ENERGY_KJ);
+  const [selDiameterM, setSelDiameterM] = useState(DEFAULT_PILE_DIAMETER_M);
   const [nStrikesPerPile, setNStrikesPerPile] = useState(DEFAULT_N_STRIKES_PER_PILE);
   const [nPiles, setNPiles] = useState(DEFAULT_N_PILES);
   const [assessmentPeriodHours, setAssessmentPeriodHours] = useState(DEFAULT_ASSESSMENT_PERIOD_HOURS);
@@ -290,14 +299,22 @@ export function useNoiseImpact(apiBase: string) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  // The peak SPL the model gets (before any mitigation): the typed value,
-  // or the picked formula's result (null while energy/diameter are unset).
+  // The source levels the model gets (before any mitigation): the typed
+  // value, or the picked formula's result (null while energy/diameter are
+  // unset).
   const peakSplFormula = options.peak_spl_formulas.find((f) => f.key === peakSplReference);
   const peakSplUsed =
     peakSplMode === "value"
       ? splPeak
       : peakSplFormula
-        ? peakSplFromFormula(peakSplFormula, hammerEnergyKj, pileDiameterM)
+        ? levelFromFormula(peakSplFormula, peakEnergyKj, peakDiameterM)
+        : null;
+  const selFormula = options.sel_strike_formulas.find((f) => f.key === selReference);
+  const selUsed =
+    selMode === "value"
+      ? selSingleStrike
+      : selFormula
+        ? levelFromFormula(selFormula, selEnergyKj, selDiameterM)
         : null;
 
   // Populate the Scenario/Species cards from the backend so this never
@@ -325,6 +342,7 @@ export function useNoiseImpact(apiBase: string) {
         setOptions(data);
         setMetrics((prev) => (prev.length > 0 ? prev : data.metrics));
         setPeakSplReference((prev) => prev || data.peak_spl_formulas[0]?.key || "");
+        setSelReference((prev) => prev || data.sel_strike_formulas[0]?.key || "");
       })
       .catch(() => {});
     fetch(`${apiBase}/api/noise-impact/info`)
@@ -376,9 +394,13 @@ export function useNoiseImpact(apiBase: string) {
     setSplPeak(DEFAULT_SPL_PEAK);
     setPeakSplMode("value");
     setPeakSplReference(options.peak_spl_formulas[0]?.key ?? "");
-    setHammerEnergyKj(DEFAULT_HAMMER_ENERGY_KJ);
-    setPileDiameterM(DEFAULT_PILE_DIAMETER_M);
+    setPeakEnergyKj(DEFAULT_HAMMER_ENERGY_KJ);
+    setPeakDiameterM(DEFAULT_PILE_DIAMETER_M);
     setSelSingleStrike(DEFAULT_SEL_SINGLE_STRIKE);
+    setSelMode("value");
+    setSelReference(options.sel_strike_formulas[0]?.key ?? "");
+    setSelEnergyKj(DEFAULT_HAMMER_ENERGY_KJ);
+    setSelDiameterM(DEFAULT_PILE_DIAMETER_M);
     setNStrikesPerPile(DEFAULT_N_STRIKES_PER_PILE);
     setNPiles(DEFAULT_N_PILES);
     setAssessmentPeriodHours(DEFAULT_ASSESSMENT_PERIOD_HOURS);
@@ -397,7 +419,8 @@ export function useNoiseImpact(apiBase: string) {
       (runPairs.length > 0 || customThresholds.length > 0) &&
       peakSplUsed !== null &&
       peakSplUsed > 0 &&
-      selSingleStrike > 0 &&
+      selUsed !== null &&
+      selUsed > 0 &&
       nStrikesPerPile > 0 &&
       nPiles > 0 &&
       assessmentPeriodHours > 0;
@@ -417,10 +440,10 @@ export function useNoiseImpact(apiBase: string) {
       pairs: runPairs,
       metrics,
       depth_range: [depthMin, depthMax],
-      // With a formula the backend works spl_peak out again itself (and
+      // With a formula the backend works the level out again itself (and
       // writes the formula into the download's README).
       spl_peak: peakSplUsed,
-      sel_single_strike: selSingleStrike,
+      sel_single_strike: selUsed,
       n_strikes_per_pile: nStrikesPerPile,
       n_piles: nPiles,
       assessment_period_hours: assessmentPeriodHours,
@@ -430,7 +453,11 @@ export function useNoiseImpact(apiBase: string) {
         : null,
       peak_spl_formula:
         peakSplMode === "formula"
-          ? { reference: peakSplReference, energy_kj: hammerEnergyKj, diameter_m: pileDiameterM }
+          ? { reference: peakSplReference, energy_kj: peakEnergyKj, diameter_m: peakDiameterM }
+          : null,
+      sel_strike_formula:
+        selMode === "formula"
+          ? { reference: selReference, energy_kj: selEnergyKj, diameter_m: selDiameterM }
           : null,
     };
     try {
@@ -557,10 +584,15 @@ export function useNoiseImpact(apiBase: string) {
     splPeak, setSplPeak,
     peakSplMode, setPeakSplMode,
     peakSplReference, setPeakSplReference,
-    hammerEnergyKj, setHammerEnergyKj,
-    pileDiameterM, setPileDiameterM,
+    peakEnergyKj, setPeakEnergyKj,
+    peakDiameterM, setPeakDiameterM,
     peakSplUsed,
     selSingleStrike, setSelSingleStrike,
+    selMode, setSelMode,
+    selReference, setSelReference,
+    selEnergyKj, setSelEnergyKj,
+    selDiameterM, setSelDiameterM,
+    selUsed,
     nStrikesPerPile, setNStrikesPerPile,
     nPiles, setNPiles,
     assessmentPeriodHours, setAssessmentPeriodHours,
