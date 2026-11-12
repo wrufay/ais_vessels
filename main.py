@@ -26,6 +26,8 @@ import io
 import json
 import os
 import sys
+import threading
+import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
@@ -716,6 +718,46 @@ class UsageRequest(BaseModel):
         "visit", "vessel_track", "analyse", "all_traffic", "heat_map", "mooring_upload",
         "noise_vessel", "noise_wind", "noise_combined", "impact_run", "feedback_sent",
     ]
+
+
+# Who is on the live site right now, for the "online now" badge on the Usage
+# tab: browser ID -> when its map page last said it was still open in a visible
+# tab. Kept in memory only and never saved -- the live backend is one process,
+# so a restart just starts from zero and fills back up within a minute.
+ONLINE_WINDOW_S = 120
+_online: dict[str, float] = {}
+_online_lock = threading.Lock()
+
+
+class HeartbeatRequest(BaseModel):
+    visitor: Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]
+
+
+# "still here" from an open map page, about once a minute -- open to everyone;
+# quietly skipped anywhere but the live site, like the usage counts
+@app.post("/api/usage/heartbeat")
+def post_usage_heartbeat(req: HeartbeatRequest):
+    if USAGE_SAVED:
+        now = time.monotonic()
+        with _online_lock:
+            _online[req.visitor] = now
+            # forget anyone gone quiet, so this never grows
+            for visitor, seen in list(_online.items()):
+                if now - seen > ONLINE_WINDOW_S:
+                    del _online[visitor]
+    return {"ok": True}
+
+
+# how many browsers had the map open in a visible tab in the last 2 minutes;
+# null where it isn't counted (anywhere but the live site)
+@app.get("/api/usage/online")
+def get_usage_online(x_inbox_password: str | None = Header(None)):
+    check_inbox_password(x_inbox_password)
+    if not USAGE_SAVED:
+        return {"online": None}
+    now = time.monotonic()
+    with _online_lock:
+        return {"online": sum(1 for seen in _online.values() if now - seen <= ONLINE_WINDOW_S)}
 
 
 # saves one visit or feature use -- open to everyone, since every visitor counts

@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import AdminPage from './AdminPage';
 import App from './App';
 import FeedbackInbox from './FeedbackInbox';
-import { trackVisit } from './usage';
+import { startHeartbeat, trackVisit } from './usage';
 import './index.css';
 
 // /feedback-inbox and /admin get their own pages -- nginx (and Vite in dev)
@@ -14,5 +14,6 @@ if (path === '/feedback-inbox') root.render(<FeedbackInbox />);
 else if (path === '/admin') root.render(<AdminPage />);
 else {
   trackVisit();
+  startHeartbeat();
   root.render(<App />);
 }

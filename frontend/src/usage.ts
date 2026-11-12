@@ -8,6 +8,9 @@ const VISITOR_KEY = "usageVisitor";
 const LAST_VISIT_KEY = "usageLastVisit";
 // a reload or a quick return within this time is the same sitting
 const NEW_VISIT_AFTER_MS = 30 * 60 * 1000;
+// how often an open map page says "still here" (the server counts a browser as
+// online for 2 minutes after its last one)
+const HEARTBEAT_MS = 60 * 1000;
 
 export type UsageEvent =
   | "visit"
@@ -63,4 +66,25 @@ export function trackVisit() {
     return;
   }
   trackUsage("visit");
+}
+
+// keeps this browser in the "online now" count while the map page is the
+// visible tab; a hidden tab goes quiet and drops off within 2 minutes
+export function startHeartbeat() {
+  function beat() {
+    if (document.visibilityState !== "visible") return;
+    const visitor = visitorId();
+    if (!visitor) return;
+    fetch(`${API}/api/usage/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitor }),
+    }).catch(() => {
+      // best-effort, like the usage counts
+    });
+  }
+  beat();
+  setInterval(beat, HEARTBEAT_MS);
+  // coming back to the tab counts again right away
+  document.addEventListener("visibilitychange", beat);
 }

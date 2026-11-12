@@ -6,6 +6,7 @@ import { errorText } from "./FeedbackInbox";
 // raw clicks, since some (like opening tracks) get clicked far more per visit.
 
 const API = import.meta.env.VITE_API_URL ?? "";
+const ONLINE_REFRESH_MS = 30 * 1000;
 
 interface Summary {
   totals: {
@@ -210,6 +211,33 @@ function FeatureChart({
 function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed: () => void }) {
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // null until loaded, and on a site that doesn't count it (badge hidden)
+  const [online, setOnline] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      fetch(`${API}/api/usage/online`, { headers: { "X-Inbox-Password": password } })
+        .then(async (r) => {
+          if (r.status === 401) {
+            onAuthFailed();
+            return;
+          }
+          if (!r.ok) return;
+          const body: { online: number | null } = await r.json();
+          if (!cancelled) setOnline(body.online);
+        })
+        .catch(() => {
+          // keep the last number until the next try
+        });
+    }
+    load();
+    const timer = setInterval(load, ONLINE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [password, onAuthFailed]);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,8 +271,17 @@ function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed
   return (
     <div className="w-full h-full overflow-y-auto bg-slate-50">
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="flex items-center mb-4 min-h-[30px]">
+        <div className="flex flex-wrap items-center gap-3 mb-4 min-h-[30px]">
           <h1 className="text-lg font-semibold text-slate-700">Usage</h1>
+          {online !== null && (
+            <span
+              title="Visitors with the map open in a visible tab in the last 2 minutes. Updates every 30 seconds."
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white pl-2.5 pr-3 py-0.5 text-[13px] text-slate-600"
+            >
+              <span className="w-2 h-2 rounded-full bg-green-600 ring-[3px] ring-green-100" />
+              <span className="font-semibold text-slate-800 tabular-nums">{online}</span> online now
+            </span>
+          )}
         </div>
 
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
