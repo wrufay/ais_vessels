@@ -701,11 +701,10 @@ def delete_feedback(req: FeedbackDeleteRequest, x_inbox_password: str | None = H
 
 # --- USAGE ---
 
-# Live and preview share one database, so each backend tags its rows with the
-# site it serves (USAGE_SITE in the compose files); anything else is "dev".
-USAGE_SITE = os.environ.get("USAGE_SITE", "dev")
-if USAGE_SITE not in ("live", "preview"):
-    USAGE_SITE = "dev"
+# Only the live site saves usage: the preview is for testing, and it shares this
+# database with live. Each backend says which site it is with USAGE_SITE (set in
+# the compose files); the preview and local test servers save nothing.
+USAGE_SAVED = os.environ.get("USAGE_SITE") == "live"
 
 # Days are counted in local (Atlantic) time, so "today" matches the clock here.
 USAGE_TZ = "America/Halifax"
@@ -720,28 +719,30 @@ class UsageRequest(BaseModel):
 
 
 # saves one visit or feature use -- open to everyone, since every visitor counts
+# (admins too); quietly skipped anywhere but the live site
 @app.post("/api/usage")
 def post_usage(req: UsageRequest):
-    query(
-        "INSERT INTO usage_events (site, visitor, event) VALUES (%s, %s, %s) RETURNING id",
-        [USAGE_SITE, req.visitor, req.event],
-    )
+    if USAGE_SAVED:
+        query(
+            "INSERT INTO usage_events (site, visitor, event) VALUES ('live', %s, %s) RETURNING id",
+            [req.visitor, req.event],
+        )
     return {"ok": True}
 
 
-# the numbers for the Usage tab: visits and visitors (different browser IDs with
-# any event) for today / 7 / 30 days, visits per day, and per feature how many
-# visitors used it and how many times
+# the numbers for the Usage tab (live site only): visits and visitors (different
+# browser IDs with any event) for today / 7 / 30 days, visits per day, and per
+# feature how many visitors used it and how many times
 @app.get("/api/usage/summary")
-def get_usage_summary(site: Literal["live", "preview"] = "live", x_inbox_password: str | None = Header(None)):
+def get_usage_summary(x_inbox_password: str | None = Header(None)):
     check_inbox_password(x_inbox_password)
-    params = {"site": site, "tz": USAGE_TZ}
+    params = {"tz": USAGE_TZ}
     recent = """
         WITH today AS (SELECT (NOW() AT TIME ZONE %(tz)s)::date AS d),
         ev AS (
             SELECT (created_at AT TIME ZONE %(tz)s)::date AS day, visitor, event
             FROM usage_events
-            WHERE site = %(site)s AND created_at >= NOW() - INTERVAL '32 days'
+            WHERE site = 'live' AND created_at >= NOW() - INTERVAL '32 days'
         )"""
     totals = query(
         recent + """

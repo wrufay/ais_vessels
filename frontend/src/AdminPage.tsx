@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import AdminUsage from "./AdminUsage";
 import FeedbackInbox, { PasswordForm, errorText, readStoredPassword, storePassword } from "./FeedbackInbox";
-import { markAdminBrowser } from "./usage";
 
 // The /admin page (picked in index.tsx by URL path) -- the tools for whoever
 // looks after the site, behind one password. It's the same password as the
@@ -36,7 +35,6 @@ function AdminPage() {
       if (r.status === 401) throw new Error("Wrong password.");
       if (!r.ok) throw new Error(`Couldn't log in (${r.status}).`);
       storePassword(PASSWORD_KEY, draft);
-      markAdminBrowser();
       setPassword(draft);
     } catch (err) {
       setError(errorText(err));

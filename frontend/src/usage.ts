@@ -1,12 +1,10 @@
 // Anonymous usage counts for the Admin page's Usage tab (AdminUsage.tsx). Each
 // browser gets a random ID in localStorage -- no names or IP addresses -- and
-// sends one small note to our own backend per visit or feature use. A browser
-// that has logged in to Admin stops counting itself, so checking the inbox and
-// testing don't inflate the numbers.
+// sends one small note to our own backend per visit or feature use. Everyone
+// counts the same, admins too; only the live site's backend saves the notes.
 
 const API = import.meta.env.VITE_API_URL ?? "";
 const VISITOR_KEY = "usageVisitor";
-const ADMIN_KEY = "usageAdminBrowser";
 const LAST_VISIT_KEY = "usageLastVisit";
 // a reload or a quick return within this time is the same sitting
 const NEW_VISIT_AFTER_MS = 30 * 60 * 1000;
@@ -40,24 +38,7 @@ function visitorId(): string | null {
   }
 }
 
-function isAdminBrowser(): boolean {
-  try {
-    return localStorage.getItem(ADMIN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function markAdminBrowser() {
-  try {
-    localStorage.setItem(ADMIN_KEY, "1");
-  } catch {
-    // storage blocked -- this browser just keeps counting
-  }
-}
-
 export function trackUsage(event: UsageEvent) {
-  if (isAdminBrowser()) return;
   const visitor = visitorId();
   if (!visitor) return;
   fetch(`${API}/api/usage`, {

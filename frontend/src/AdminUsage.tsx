@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { errorText } from "./FeedbackInbox";
 
-// The Usage tab of the Admin page -- anonymous visit and feature counts saved
-// by usage.ts. Features are compared by how many visitors used them, not by
+// The Usage tab of the Admin page -- anonymous visit and feature counts from the
+// live site, saved by usage.ts. Features are compared by how many visitors used them, not by
 // raw clicks, since some (like opening tracks) get clicked far more per visit.
 
 const API = import.meta.env.VITE_API_URL ?? "";
-
-type Site = "live" | "preview";
 
 interface Summary {
   totals: {
@@ -45,11 +43,6 @@ const FEATURE_GROUPS: { group: string; items: [string, string][] }[] = [
   },
   { group: "Impacts", items: [["impact_run", "Noise impact calculation"]] },
   { group: "Other", items: [["feedback_sent", "Feedback sent"]] },
-];
-
-const SITES: { value: Site; label: string }[] = [
-  { value: "live", label: "Live site" },
-  { value: "preview", label: "Preview" },
 ];
 
 // "2026-11-03" -> a local Date (not UTC, which would shift the day)
@@ -147,7 +140,6 @@ function VisitsChart({ days }: { days: Summary["days"] }) {
 }
 
 function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed: () => void }) {
-  const [site, setSite] = useState<Site>("live");
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,7 +147,7 @@ function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed
     let cancelled = false;
     setData(null);
     setError(null);
-    fetch(`${API}/api/usage/summary?site=${site}`, { headers: { "X-Inbox-Password": password } })
+    fetch(`${API}/api/usage/summary`, { headers: { "X-Inbox-Password": password } })
       .then(async (r) => {
         if (r.status === 401) {
           onAuthFailed();
@@ -169,7 +161,7 @@ function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed
     return () => {
       cancelled = true;
     };
-  }, [site, password, onAuthFailed]);
+  }, [password, onAuthFailed]);
 
   const tiles = data
     ? [
@@ -183,23 +175,8 @@ function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed
   return (
     <div className="w-full h-full overflow-y-auto bg-slate-50">
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 min-h-[30px]">
+        <div className="flex items-center mb-4 min-h-[30px]">
           <h1 className="text-lg font-semibold text-slate-700">Usage</h1>
-          <div className="flex rounded-md border border-slate-300 overflow-hidden text-xs font-medium">
-            {SITES.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => setSite(s.value)}
-                aria-pressed={site === s.value}
-                className={`px-3.5 py-1.5 transition ${
-                  site === s.value ? "bg-[#3d5a80] text-white" : "bg-white text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
@@ -260,7 +237,7 @@ function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed
               ))}
             </div>
 
-            <p className="text-xs text-slate-400">Anonymous counts only. Admin visits are not counted.</p>
+            <p className="text-xs text-slate-400">Anonymous counts from the live site only.</p>
           </>
         )}
       </div>
