@@ -43,5 +43,15 @@ CREATE TABLE IF NOT EXISTS feedback (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- anonymous usage counts for the Admin page's Usage tab (see main.py)
+CREATE TABLE IF NOT EXISTS usage_events (
+    id          BIGSERIAL PRIMARY KEY,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    site        TEXT NOT NULL CHECK (site IN ('live', 'preview', 'dev')),
+    visitor     TEXT NOT NULL CHECK (visitor ~ '^[0-9a-f]{32}$'),
+    event       TEXT NOT NULL CHECK (char_length(event) BETWEEN 1 AND 40)
+);
+CREATE INDEX IF NOT EXISTS usage_events_site_time ON usage_events (site, created_at);
+
 -- Add this index AFTER bulk load, not before:
 -- CREATE INDEX ON ais_positions (mmsi, received_at DESC);

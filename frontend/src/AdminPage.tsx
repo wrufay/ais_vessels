@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import AdminUsage from "./AdminUsage";
 import FeedbackInbox, { PasswordForm, errorText, readStoredPassword, storePassword } from "./FeedbackInbox";
+import { markAdminBrowser } from "./usage";
 
 // The /admin page (picked in index.tsx by URL path) -- the tools for whoever
 // looks after the site, behind one password. It's the same password as the
@@ -9,10 +11,18 @@ import FeedbackInbox, { PasswordForm, errorText, readStoredPassword, storePasswo
 const API = import.meta.env.VITE_API_URL ?? "";
 const PASSWORD_KEY = "adminPassword";
 
+type Tab = "inbox" | "usage";
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: "inbox", label: "Feedback inbox" },
+  { value: "usage", label: "Usage" },
+];
+
 function AdminPage() {
   const [password, setPassword] = useState(() => readStoredPassword(PASSWORD_KEY));
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("inbox");
 
   useEffect(() => {
     document.title = "Admin";
@@ -26,6 +36,7 @@ function AdminPage() {
       if (r.status === 401) throw new Error("Wrong password.");
       if (!r.ok) throw new Error(`Couldn't log in (${r.status}).`);
       storePassword(PASSWORD_KEY, draft);
+      markAdminBrowser();
       setPassword(draft);
     } catch (err) {
       setError(errorText(err));
@@ -34,11 +45,13 @@ function AdminPage() {
     }
   }
 
-  function logOut(message: string | null = null) {
+  const logOut = useCallback((message: string | null = null) => {
     storePassword(PASSWORD_KEY, null);
     setPassword("");
     setError(message);
-  }
+  }, []);
+  // stable, so the tabs don't refetch every time this page re-renders
+  const onAuthFailed = useCallback(() => logOut("Wrong password."), [logOut]);
 
   if (!password) {
     return <PasswordForm title="Admin" submitLabel="Log in" busy={checking} error={error} onSubmit={logIn} />;
@@ -59,12 +72,30 @@ function AdminPage() {
             </button>
           </div>
           <div className="flex gap-4 text-sm">
-            <span className="pb-2 font-medium text-[#3d5a80] border-b-2 border-[#3d5a80]">Feedback inbox</span>
+            {TABS.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setTab(t.value)}
+                aria-pressed={tab === t.value}
+                className={`pb-2 border-b-2 transition ${
+                  tab === t.value
+                    ? "font-medium text-[#3d5a80] border-[#3d5a80]"
+                    : "text-slate-500 border-transparent hover:text-slate-700"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
         </div>
       </header>
       <div className="flex-1 min-h-0">
-        <FeedbackInbox adminPassword={password} onAuthFailed={() => logOut("Wrong password.")} />
+        {tab === "inbox" ? (
+          <FeedbackInbox adminPassword={password} onAuthFailed={onAuthFailed} />
+        ) : (
+          <AdminUsage password={password} onAuthFailed={onAuthFailed} />
+        )}
       </div>
     </div>
   );

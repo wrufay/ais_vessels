@@ -70,6 +70,7 @@ import { useMeasureTool } from "./useMeasureTool";
 import { useBasemap, BASEMAPS } from "./useBasemap";
 import { useTour } from "./useTour";
 import { useNewFeedback } from "./useNewFeedback";
+import { trackUsage } from "./usage";
 import Tour from "./tour/Tour";
 
 const API = import.meta.env.VITE_API_URL ?? "";
@@ -1153,6 +1154,7 @@ function ShipMap() {
           })
           .filter((m) => m.name && !isNaN(m.lat) && !isNaN(m.lon));
         setUploadedMoorings((prev) => [...prev, ...parsed]);
+        if (parsed.length > 0) trackUsage("mooring_upload");
       } catch {
         alert(
           "Invalid CSV. Expected columns: name, lat, lon, depth, deployment, recovery"
@@ -1340,6 +1342,7 @@ function ShipMap() {
 
   function loadRegionStats() {
     if (!drawnPolygon) return;
+    trackUsage("analyse");
     setRegionLoading(true);
     setRegionStats(null);
     setRegionTime(null);
@@ -1362,6 +1365,7 @@ function ShipMap() {
 
   function viewVesselsInRegion(polygon: object) {
     if (regionLoading) return;
+    trackUsage("all_traffic");
     setRegionLoading(true);
     clearRegionTraffic();
     fetch(`${API}/api/region/vessels`, {
@@ -1381,6 +1385,7 @@ function ShipMap() {
   // The heat map replaces the traffic dots, and the dots replace the heat map.
   function showHeatMapInRegion(polygon: object) {
     if (regionLoading) return;
+    trackUsage("heat_map");
     setRegionLoading(true);
     clearRegionTraffic();
     fetch(`${API}/api/region/heatmap`, {

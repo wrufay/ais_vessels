@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { trackUsage } from "./usage";
 
 export interface NoiseImpactSite {
   src_lon: number;
@@ -481,6 +482,7 @@ export function useNoiseImpact(apiBase: string) {
       nPiles > 0 &&
       assessmentPeriodHours > 0;
     if (!ready || running) return;
+    trackUsage("impact_run");
     setRunning(true);
     setError(null);
     setExportError(null);

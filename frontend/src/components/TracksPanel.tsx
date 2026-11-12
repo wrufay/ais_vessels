@@ -6,6 +6,7 @@ import { classifyType, SPEED_STYLE } from "../utils/mapStyles";
 import { TYPE_COLORS } from "../data/vesselTypeColors";
 import type { VesselFilters } from "./VesselTypeFilterModal";
 import PanelHeader from "./PanelHeader";
+import { trackUsage } from "../usage";
 import DateRangePicker from "./DateRangePicker";
 import CollapsibleHeader from "./CollapsibleHeader";
 import SizeOpacityPanel from "./SizeOpacityPanel";
@@ -190,6 +191,7 @@ function TracksPanel({
                   sourceRef.current.clear();
                   setPointCount(null);
                   loadRoute(v);
+                  trackUsage("vessel_track");
                 }
               }}
               className={`w-full text-left px-3 py-2.5 rounded-sm mb-0.5 transition ${

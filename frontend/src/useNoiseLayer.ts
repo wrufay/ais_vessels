@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type ImageLayer from "ol/layer/Image";
 import ImageStatic from "ol/source/ImageStatic";
 import { fromLonLat } from "ol/proj";
+import { trackUsage, type UsageEvent } from "./usage";
 
 // Fixed geographic bounds of the noise raster overlay -- was previously
 // computed twice independently (once for the initial layer, once inside the
@@ -65,6 +66,18 @@ export function useNoiseLayer(apiBase: string) {
   useEffect(() => {
     noiseLayerRef.current?.setVisible(showNoise);
   }, [showNoise]);
+
+  // counts turning the noise layer on, and switching its noise type while on
+  useEffect(() => {
+    if (!showNoise) return;
+    const events: Record<string, UsageEvent> = {
+      vessel_noise: "noise_vessel",
+      wind_noise: "noise_wind",
+      combined_noise: "noise_combined",
+    };
+    const event = events[noiseVariable];
+    if (event) trackUsage(event);
+  }, [showNoise, noiseVariable]);
 
   useEffect(() => {
     fetch(`${apiBase}/api/noise/available`)

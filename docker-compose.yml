@@ -29,6 +29,9 @@ services:
 
       # password for the /feedback-inbox page -- set it in .env (gitignored)
       - FEEDBACK_INBOX_PASSWORD=${FEEDBACK_INBOX_PASSWORD:-}
+
+      # tags this site's rows in the shared usage counts (Admin > Usage)
+      - USAGE_SITE=live
     volumes:
       # locally converted noise GeoTIFFs (see pipeline/noise_to_geotiff.py)
       - ./pipeline/noise_data:/app/pipeline/noise_data:ro

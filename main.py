@@ -94,6 +94,21 @@ ALTER TABLE feedback ADD COLUMN IF NOT EXISTS
 ALTER TABLE feedback ALTER COLUMN title DROP DEFAULT;
 """
 
+# Anonymous usage counts for the Admin page's Usage tab -- one row per visit or
+# feature use. No names or IP addresses: visitor is a random ID kept in the
+# browser. Which events exist is checked by the API (UsageRequest), not here, so
+# counting a new feature later needs no database change.
+USAGE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS usage_events (
+    id          BIGSERIAL PRIMARY KEY,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    site        TEXT NOT NULL CHECK (site IN ('live', 'preview', 'dev')),
+    visitor     TEXT NOT NULL CHECK (visitor ~ '^[0-9a-f]{32}$'),
+    event       TEXT NOT NULL CHECK (char_length(event) BETWEEN 1 AND 40)
+);
+CREATE INDEX IF NOT EXISTS usage_events_site_time ON usage_events (site, created_at);
+"""
+
 # Lets older feedback tables hold the "new" status (rebuilds the allowed-status
 # rule; existing rows keep theirs). The default stays 'pending' so a backend
 # still on older code never saves a status its inbox doesn't know; this code
@@ -113,6 +128,7 @@ async def lifespan(app: FastAPI):
             cur.execute(FEEDBACK_TABLE_SQL)
             cur.execute(FEEDBACK_TITLE_COLUMN_SQL)
             cur.execute(FEEDBACK_NEW_STATUS_SQL)
+            cur.execute(USAGE_TABLE_SQL)
     finally:
         conn.close()
     yield
@@ -681,3 +697,84 @@ def delete_feedback(req: FeedbackDeleteRequest, x_inbox_password: str | None = H
     check_inbox_password(x_inbox_password)
     rows = query("DELETE FROM feedback WHERE id = ANY(%s) RETURNING id", [req.ids])
     return {"deleted": [r["id"] for r in rows]}
+
+
+# --- USAGE ---
+
+# Live and preview share one database, so each backend tags its rows with the
+# site it serves (USAGE_SITE in the compose files); anything else is "dev".
+USAGE_SITE = os.environ.get("USAGE_SITE", "dev")
+if USAGE_SITE not in ("live", "preview"):
+    USAGE_SITE = "dev"
+
+# Days are counted in local (Atlantic) time, so "today" matches the clock here.
+USAGE_TZ = "America/Halifax"
+
+
+class UsageRequest(BaseModel):
+    visitor: Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]
+    event: Literal[
+        "visit", "vessel_track", "analyse", "all_traffic", "heat_map", "mooring_upload",
+        "noise_vessel", "noise_wind", "noise_combined", "impact_run", "feedback_sent",
+    ]
+
+
+# saves one visit or feature use -- open to everyone, since every visitor counts
+@app.post("/api/usage")
+def post_usage(req: UsageRequest):
+    query(
+        "INSERT INTO usage_events (site, visitor, event) VALUES (%s, %s, %s) RETURNING id",
+        [USAGE_SITE, req.visitor, req.event],
+    )
+    return {"ok": True}
+
+
+# the numbers for the Usage tab: visits and visitors (different browser IDs with
+# any event) for today / 7 / 30 days, visits per day, and per feature how many
+# visitors used it and how many times
+@app.get("/api/usage/summary")
+def get_usage_summary(site: Literal["live", "preview"] = "live", x_inbox_password: str | None = Header(None)):
+    check_inbox_password(x_inbox_password)
+    params = {"site": site, "tz": USAGE_TZ}
+    recent = """
+        WITH today AS (SELECT (NOW() AT TIME ZONE %(tz)s)::date AS d),
+        ev AS (
+            SELECT (created_at AT TIME ZONE %(tz)s)::date AS day, visitor, event
+            FROM usage_events
+            WHERE site = %(site)s AND created_at >= NOW() - INTERVAL '32 days'
+        )"""
+    totals = query(
+        recent + """
+        SELECT
+            d AS today,
+            COUNT(*) FILTER (WHERE event = 'visit' AND day = d) AS visits_1,
+            COUNT(DISTINCT visitor) FILTER (WHERE day = d) AS visitors_1,
+            COUNT(*) FILTER (WHERE event = 'visit' AND day > d - 7) AS visits_7,
+            COUNT(DISTINCT visitor) FILTER (WHERE day > d - 7) AS visitors_7,
+            COUNT(*) FILTER (WHERE event = 'visit' AND day > d - 30) AS visits_30,
+            COUNT(DISTINCT visitor) FILTER (WHERE day > d - 30) AS visitors_30
+        FROM today LEFT JOIN ev ON TRUE
+        GROUP BY d""",
+        params,
+    )[0]
+    days = query(
+        recent + """
+        SELECT g::date AS day, COUNT(ev.visitor) AS visits
+        FROM today, generate_series(d - 29, d, INTERVAL '1 day') AS g
+        LEFT JOIN ev ON ev.day = g::date AND ev.event = 'visit'
+        GROUP BY g ORDER BY g""",
+        params,
+    )
+    features = query(
+        recent + """
+        SELECT event, COUNT(DISTINCT visitor) AS visitors, COUNT(*) AS uses
+        FROM ev, today
+        WHERE event <> 'visit' AND day > d - 30
+        GROUP BY event""",
+        params,
+    )
+    return {
+        "totals": totals,
+        "days": days,
+        "features": {f["event"]: {"visitors": f["visitors"], "uses": f["uses"]} for f in features},
+    }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import PanelHeader from "./PanelHeader";
+import { trackUsage } from "../usage";
 
 export const FEEDBACK_CATEGORIES = [
   { value: "issue", label: "Issue" },
@@ -48,6 +49,7 @@ function FeedbackPanel({ api }: { api: string }) {
       setMessage("");
       setEmail("");
       setSent(true);
+      trackUsage("feedback_sent");
     } catch (err) {
       setError(
         err instanceof TypeError
