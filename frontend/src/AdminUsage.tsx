@@ -139,22 +139,8 @@ function VisitsChart({ days }: { days: Summary["days"] }) {
   );
 }
 
-// A round axis top just above the largest count, with at most 5 steps
-// (24 -> 0..25 by 5, 3 -> 0..3 by 1, 130 -> 0..150 by 50).
-function niceAxis(max: number): { top: number; step: number } {
-  const target = Math.max(max, 1);
-  let step = 1;
-  for (let magnitude = 1; ; magnitude *= 10) {
-    const fit = [1, 2, 5].map((m) => m * magnitude).find((s) => target / s <= 5);
-    if (fit) {
-      step = fit;
-      break;
-    }
-  }
-  return { top: Math.ceil(target / step) * step, step };
-}
-
-// the bars use 80% of the chart column, leaving room for the count after them
+// the longest bar uses 80% of the chart column, leaving room for the count
+// after it; there's no scale, since every bar is labelled with its count
 const BAR_SPAN = 80;
 
 function FeatureChart({
@@ -165,9 +151,8 @@ function FeatureChart({
   allVisitors: number;
 }) {
   const counts = FEATURE_GROUPS.flatMap(({ items }) => items.map(([event]) => features[event]?.visitors ?? 0));
-  const { top, step } = niceAxis(Math.max(...counts));
-  const ticks = Array.from({ length: top / step + 1 }, (_, i) => i * step);
-  const at = (v: number) => `${(v / top) * BAR_SPAN}%`;
+  const most = Math.max(...counts, 1);
+  const barWidth = (v: number) => `${(v / most) * BAR_SPAN}%`;
   const rowGrid =
     "grid grid-cols-[8rem_minmax(0,1fr)] sm:grid-cols-[12.5rem_minmax(0,1fr)_5rem] gap-x-3 items-center";
 
@@ -181,27 +166,8 @@ function FeatureChart({
       </p>
 
       <div className="relative">
-        {/* vertical grid lines, lined up with the chart column of every row */}
-        <div className="absolute top-0 bottom-0 left-[calc(8rem+0.75rem)] right-0 sm:left-[calc(12.5rem+0.75rem)] sm:right-[calc(5rem+0.75rem)] pointer-events-none">
-          {ticks.map((t) => (
-            <span
-              key={t}
-              className={`absolute top-5 bottom-0 w-px ${t === 0 ? "bg-slate-300" : "bg-slate-100"}`}
-              style={{ left: at(t) }}
-            />
-          ))}
-        </div>
-
-        <div className={`${rowGrid} h-5 text-[11px] text-slate-400`}>
-          <span className="text-right">visitors</span>
-          <span className="relative h-full">
-            {ticks.map((t) => (
-              <span key={t} className="absolute -translate-x-1/2 tabular-nums" style={{ left: at(t) }}>
-                {t}
-              </span>
-            ))}
-          </span>
-        </div>
+        {/* the bars' starting line, down the left edge of the chart column */}
+        <span className="absolute top-6 bottom-0 w-px bg-slate-300 left-[calc(8rem+0.75rem)] sm:left-[calc(12.5rem+0.75rem)] pointer-events-none" />
 
         {FEATURE_GROUPS.map(({ group, items }) => (
           <div key={group}>
@@ -220,7 +186,7 @@ function FeatureChart({
                     {f.visitors > 0 && (
                       <span
                         className="h-3.5 rounded-r bg-[#3d5a80] group-hover:bg-[#2e4460] shrink-0"
-                        style={{ width: at(f.visitors) }}
+                        style={{ width: barWidth(f.visitors) }}
                       />
                     )}
                     <span className="ml-2 whitespace-nowrap tabular-nums">
