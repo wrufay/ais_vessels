@@ -139,6 +139,108 @@ function VisitsChart({ days }: { days: Summary["days"] }) {
   );
 }
 
+// A round axis top just above the largest count, with at most 5 steps
+// (24 -> 0..25 by 5, 3 -> 0..3 by 1, 130 -> 0..150 by 50).
+function niceAxis(max: number): { top: number; step: number } {
+  const target = Math.max(max, 1);
+  let step = 1;
+  for (let magnitude = 1; ; magnitude *= 10) {
+    const fit = [1, 2, 5].map((m) => m * magnitude).find((s) => target / s <= 5);
+    if (fit) {
+      step = fit;
+      break;
+    }
+  }
+  return { top: Math.ceil(target / step) * step, step };
+}
+
+// the bars use 80% of the chart column, leaving room for the count after them
+const BAR_SPAN = 80;
+
+function FeatureChart({
+  features,
+  allVisitors,
+}: {
+  features: Summary["features"];
+  allVisitors: number;
+}) {
+  const counts = FEATURE_GROUPS.flatMap(({ items }) => items.map(([event]) => features[event]?.visitors ?? 0));
+  const { top, step } = niceAxis(Math.max(...counts));
+  const ticks = Array.from({ length: top / step + 1 }, (_, i) => i * step);
+  const at = (v: number) => `${(v / top) * BAR_SPAN}%`;
+  const rowGrid =
+    "grid grid-cols-[8rem_minmax(0,1fr)] sm:grid-cols-[12.5rem_minmax(0,1fr)_5rem] gap-x-3 items-center";
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 mb-3">
+      <h2 className="text-sm font-semibold text-slate-700">
+        Feature usage <span className="font-normal text-slate-400">· last 30 days</span>
+      </h2>
+      <p className="text-xs text-slate-500 mb-2">
+        Visitors per feature. %: out of {plural(allVisitors, "total visitor")}.
+      </p>
+
+      <div className="relative">
+        {/* vertical grid lines, lined up with the chart column of every row */}
+        <div className="absolute top-0 bottom-0 left-[calc(8rem+0.75rem)] right-0 sm:left-[calc(12.5rem+0.75rem)] sm:right-[calc(5rem+0.75rem)] pointer-events-none">
+          {ticks.map((t) => (
+            <span
+              key={t}
+              className={`absolute top-5 bottom-0 w-px ${t === 0 ? "bg-slate-300" : "bg-slate-100"}`}
+              style={{ left: at(t) }}
+            />
+          ))}
+        </div>
+
+        <div className={`${rowGrid} h-5 text-[11px] text-slate-400`}>
+          <span className="text-right">visitors</span>
+          <span className="relative h-full">
+            {ticks.map((t) => (
+              <span key={t} className="absolute -translate-x-1/2 tabular-nums" style={{ left: at(t) }}>
+                {t}
+              </span>
+            ))}
+          </span>
+        </div>
+
+        {FEATURE_GROUPS.map(({ group, items }) => (
+          <div key={group}>
+            <p className="relative text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-2">{group}</p>
+            {items.map(([event, label]) => {
+              const f = features[event] ?? { visitors: 0, uses: 0 };
+              const percent = allVisitors > 0 ? Math.round((f.visitors / allVisitors) * 100) : 0;
+              return (
+                <div
+                  key={event}
+                  title={`${label}: ${plural(f.visitors, "visitor")} (${percent}%), ${plural(f.uses, "use")}`}
+                  className={`${rowGrid} group relative py-1 text-[13px]`}
+                >
+                  <span className="text-slate-700 truncate">{label}</span>
+                  <span className="flex items-center min-w-0">
+                    {f.visitors > 0 && (
+                      <span
+                        className="h-3.5 rounded-r bg-[#3d5a80] group-hover:bg-[#2e4460] shrink-0"
+                        style={{ width: at(f.visitors) }}
+                      />
+                    )}
+                    <span className="ml-2 whitespace-nowrap tabular-nums">
+                      <span className="font-semibold text-slate-800">{f.visitors}</span>{" "}
+                      <span className="text-xs text-slate-400">({percent}%)</span>
+                    </span>
+                  </span>
+                  <span className="hidden sm:block text-xs text-slate-400 text-right tabular-nums">
+                    {plural(f.uses, "use")}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed: () => void }) {
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -198,44 +300,7 @@ function AdminUsage({ password, onAuthFailed }: { password: string; onAuthFailed
 
             <VisitsChart days={data.days} />
 
-            <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 mb-3">
-              <h2 className="text-sm font-semibold text-slate-700">
-                Features used{" "}
-                <span className="font-normal text-slate-400">
-                  · last 30 days · share of all {plural(allVisitors, "visitor")} who used each one (full bar = 100%)
-                </span>
-              </h2>
-              {FEATURE_GROUPS.map(({ group, items }) => (
-                <div key={group}>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-3 mb-0.5">{group}</p>
-                  {items.map(([event, label]) => {
-                    const f = data.features[event] ?? { visitors: 0, uses: 0 };
-                    const share = allVisitors > 0 ? f.visitors / allVisitors : 0;
-                    return (
-                      <div
-                        key={event}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[12.5rem_minmax(0,1fr)_9.5rem_4.5rem] gap-x-3 gap-y-1 items-center py-1 text-[13px]"
-                      >
-                        <span className="text-slate-700">{label}</span>
-                        <span className="text-xs text-slate-400 text-right tabular-nums sm:order-last">
-                          {plural(f.uses, "use")}
-                        </span>
-                        <span className="col-span-full sm:col-span-1 h-2.5 rounded bg-slate-100 overflow-hidden">
-                          <span
-                            className="block h-full rounded-r bg-[#3d5a80]"
-                            style={{ width: `${(share * 100).toFixed(1)}%` }}
-                          />
-                        </span>
-                        <span className="text-slate-600 tabular-nums">
-                          <span className="font-semibold text-slate-800">{f.visitors}</span>{" "}
-                          {f.visitors === 1 ? "visitor" : "visitors"} · {Math.round(share * 100)}%
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+            <FeatureChart features={data.features} allVisitors={allVisitors} />
 
             <p className="text-xs text-slate-400">Anonymous counts from the live site only.</p>
           </>
