@@ -17,11 +17,29 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "usage", label: "Usage" },
 ];
 
+// The open tab lives in the address (/admin#usage), so a reload stays on it, it
+// can be bookmarked, and Back/Forward move between the tabs.
+function tabFromAddress(): Tab {
+  return window.location.hash === "#usage" ? "usage" : "inbox";
+}
+
 function AdminPage() {
   const [password, setPassword] = useState(() => readStoredPassword(PASSWORD_KEY));
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("inbox");
+  const [tab, setTab] = useState<Tab>(tabFromAddress);
+
+  useEffect(() => {
+    const onBackOrForward = () => setTab(tabFromAddress());
+    window.addEventListener("popstate", onBackOrForward);
+    return () => window.removeEventListener("popstate", onBackOrForward);
+  }, []);
+
+  function openTab(next: Tab) {
+    if (next === tab) return;
+    history.pushState(null, "", next === "usage" ? "#usage" : window.location.pathname);
+    setTab(next);
+  }
 
   useEffect(() => {
     document.title = "Admin";
@@ -74,7 +92,7 @@ function AdminPage() {
               <button
                 key={t.value}
                 type="button"
-                onClick={() => setTab(t.value)}
+                onClick={() => openTab(t.value)}
                 aria-pressed={tab === t.value}
                 className={`pb-2 border-b-2 transition ${
                   tab === t.value
