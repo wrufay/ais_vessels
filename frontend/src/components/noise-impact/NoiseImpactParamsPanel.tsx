@@ -63,6 +63,10 @@ const sectionTitleClass = "text-[13px] font-semibold text-slate-600 dark:text-sl
 // they read apart from the numbers typed in the boxes (slate-700 /
 // slate-200) -- a mid grey, one step lighter in each mode.
 const resultTextClass = "text-slate-500 dark:text-slate-400";
+// Amber bar for the Source tab's warnings (inputs outside a reference's
+// ranges, a peak SPL reference with no SEL formula).
+const warningBarClass =
+  "text-[11px] leading-relaxed text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-md px-2 py-1.5";
 const pillButtonClass =
   "px-2 py-0.5 rounded-full border border-slate-300 dark:border-slate-600 text-[10px] text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95";
 
@@ -1032,6 +1036,7 @@ function SourceLevelField({
   setEnergyKj,
   diameterM,
   setDiameterM,
+  notice,
 }: {
   // Section heading, and the name of the level ("SEL / strike").
   title: string;
@@ -1047,6 +1052,9 @@ function SourceLevelField({
   setEnergyKj: (v: number) => void;
   diameterM: number;
   setDiameterM: (v: number) => void;
+  // An extra warning shown in "Calculate" mode under the result, above the
+  // range warning (two lines: what, and what it means), or null for none.
+  notice?: { title: string; hint: string } | null;
 }) {
   const picked = formulas.find((f) => f.key === reference);
   const result = picked ? levelFromFormula(picked, energyKj, diameterM) : null;
@@ -1170,8 +1178,14 @@ function SourceLevelField({
               )}
             </div>
           )}
+          {notice && (
+            <div className={warningBarClass}>
+              ⚠ {notice.title}
+              <span className="block mt-0.5 text-amber-700 dark:text-amber-400">{notice.hint}</span>
+            </div>
+          )}
           {picked && result !== null && (energyOut || diameterOut) && (
-            <div className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-md px-2 py-1.5">
+            <div className={warningBarClass}>
               ⚠{" "}
               {diameterOut && (
                 <>
@@ -1476,6 +1490,20 @@ function NoiseImpactParamsPanel({
       : depthMin > depthMax
         ? "Depth min must be smaller than Depth max."
         : null;
+  // A peak SPL reference with no SEL formula (Reinhall & Dahl): remind the
+  // user that SEL can't use it, and say what SEL uses instead.
+  const peakReferenceLabel = options.peak_spl_formulas.find((f) => f.key === peakSplReference)?.label;
+  const selReferenceLabel = options.sel_strike_formulas.find((f) => f.key === selReference)?.label;
+  const peakNoSelNotice =
+    peakReferenceLabel && !options.sel_strike_formulas.some((f) => f.key === peakSplReference)
+      ? {
+          title: `${peakReferenceLabel} has no SEL formula.`,
+          hint:
+            selMode === "formula" && selReferenceLabel
+              ? `SEL uses ${selReferenceLabel}.`
+              : "SEL is entered as a value.",
+        }
+      : null;
   const splPeakInvalid = !(peakSplUsed !== null && peakSplUsed > 0);
   const selSingleStrikeInvalid = !(selUsed !== null && selUsed > 0);
   const nStrikesPerPileInvalid = !(nStrikesPerPile > 0);
@@ -1619,6 +1647,7 @@ function NoiseImpactParamsPanel({
               setEnergyKj={setPeakEnergyKj}
               diameterM={peakDiameterM}
               setDiameterM={setPeakDiameterM}
+              notice={peakNoSelNotice}
             />
             <div className="flex flex-col gap-2 mt-2 pt-2.5 border-t border-slate-100 dark:border-slate-800">
               <SourceLevelField
