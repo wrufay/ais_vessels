@@ -369,9 +369,9 @@ export function useNoiseImpact(apiBase: string) {
   }, [apiBase]);
 
   // With sync on, a change in either "Calculate" section is copied to the
-  // other. The exception is picking a peak SPL reference with no SEL formula
-  // (Reinhall & Dahl): SEL then keeps its own reference. Changing SEL's
-  // reference still moves peak SPL off it.
+  // other. The exception is a peak SPL reference with no SEL formula
+  // (Reinhall & Dahl): while peak SPL is on one, the references don't sync
+  // either way (numbers still do).
   function hasSelFormula(reference: string) {
     return options.sel_strike_formulas.some((f) => f.key === reference);
   }
@@ -381,7 +381,7 @@ export function useNoiseImpact(apiBase: string) {
   }
   function changeSelReference(v: string) {
     setSelReference(v);
-    if (syncCalculation) setPeakSplReference(v);
+    if (syncCalculation && hasSelFormula(peakSplReference)) setPeakSplReference(v);
   }
   function changePeakEnergy(v: number) {
     setPeakEnergyKj(v);
