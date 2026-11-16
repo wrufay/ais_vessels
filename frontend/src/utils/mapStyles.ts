@@ -48,13 +48,17 @@ export const TYPE_NUM: Record<string, number> = {
   cargo: 1, tanker: 2, fishing: 3, passenger: 4, "search & rescue": 5, other: 6,
 };
 
-// WebGL style for the selected vessel route layer (pointType: 0=normal, 1=start, 2=end)
-export const ROUTE_WEBGL_VARIABLES = { dotSize: 5, dotOpacity: 1.0 };
+// WebGL style for the selected vessel route layer (pointType: 0=normal, 1=start, 2=end).
+// Points get the circle; the track lines get the thin grey stroke (WebGL draws
+// points above lines). Start/end keep a fixed size so they stay easy to find.
+export const ROUTE_WEBGL_VARIABLES = { dotSize: 3, dotOpacity: 1.0 };
 export const ROUTE_WEBGL_STYLE = {
+  "stroke-color": ["color", 60, 60, 60, ["*", 0.7, ["var", "dotOpacity"]]],
+  "stroke-width": 1,
   "circle-radius": [
     "case",
-    ["==", ["get", "pointType"], 1], ["*", ["var", "dotSize"], 1.4],
-    ["==", ["get", "pointType"], 2], ["*", ["var", "dotSize"], 1.4],
+    ["==", ["get", "pointType"], 1], 7,
+    ["==", ["get", "pointType"], 2], 7,
     ["var", "dotSize"],
   ],
   "circle-fill-color": [

@@ -12,6 +12,7 @@ import { getTopLeft, getWidth } from "ol/extent";
 import { fromLonLat, toLonLat } from "ol/proj";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
+import LineString from "ol/geom/LineString";
 import OLPolygon from "ol/geom/Polygon";
 import VectorLayer from "ol/layer/Vector";
 import WebGLVectorLayer from "ol/layer/WebGLVector";
@@ -91,6 +92,7 @@ interface RoutePoint {
   sog: number | null;
   cog: number | null;
   source: string;
+  gap_before: boolean;
 }
 
 interface RegionPosition {
@@ -347,7 +349,7 @@ function ShipMap() {
   }>(defaultFilters);
   const [showTypeFilter, setShowTypeFilter] = useState(false);
   const [mooringSize, setMooringSize, mooringSizeRef] = useStateRef(10, () => mooringSourceRef.current.changed());
-  const [vesselSize, setVesselSize] = useStateRef(5, (v) => routeLayerRef.current?.updateStyleVariables({ dotSize: v }));
+  const [vesselSize, setVesselSize] = useStateRef(3, (v) => routeLayerRef.current?.updateStyleVariables({ dotSize: v }));
   const [regionDotSize, setRegionDotSize] = useState(4);
   const [mooringOpacity, setMooringOpacity, mooringOpacityRef] = useStateRef(1, () => mooringSourceRef.current.changed());
   const [vesselOpacity, setVesselOpacity] = useStateRef(1, (v) => routeLayerRef.current?.updateStyleVariables({ dotOpacity: v }));
@@ -1261,6 +1263,18 @@ function ShipMap() {
             isEnd: i === pts.length - 1,
             pointType: i === 0 ? 1 : i === pts.length - 1 ? 2 : 0,
           })));
+
+          // Thin line joining the pings in time order, broken where the
+          // server marked a gap (no pings for over an hour) so it doesn't
+          // draw a guessed straight path there.
+          const stretches: number[][][] = [];
+          pts.forEach((p, i) => {
+            if (i === 0 || p.gap_before) stretches.push([]);
+            stretches[stretches.length - 1].push(fromLonLat([p.longitude, p.latitude]));
+          });
+          sourceRef.current.addFeatures(stretches
+            .filter((s) => s.length > 1)
+            .map((s) => new Feature(new LineString(s))));
 
           const extent = sourceRef.current.getExtent();
           if (extent)

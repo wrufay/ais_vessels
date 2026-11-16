@@ -203,7 +203,10 @@ def get_ccg_status():
 
 # define MAXIMUM number of points shown per route.
 # longer routes get downsampled to prevent slowing down the application, adjust if desired.
-MAX_ROUTE_POINTS = 500 
+MAX_ROUTE_POINTS = 500
+
+# pings further apart than this are not joined by the track line (no data in between).
+TRACK_GAP_SECONDS = 60 * 60
 
 
 # returns position history for ONE vessel, by MMSI (downsampled if long)
@@ -234,9 +237,25 @@ def get_vessel_route(
 
     points = query(sql, params)
     total = len(points)
+
+    # Count the real gaps (pings over TRACK_GAP_SECONDS apart) before thinning,
+    # so the track line can still break at them when the kept points are far
+    # apart in time. gap_before = a gap lies between this point and the one before.
+    gaps_so_far, n = [], 0
+    for i, p in enumerate(points):
+        if i > 0 and p["time"] - points[i - 1]["time"] > TRACK_GAP_SECONDS:
+            n += 1
+        gaps_so_far.append(n)
+
+    keep = range(total)
     if total > MAX_ROUTE_POINTS:
         step = total / MAX_ROUTE_POINTS
-        points = [points[int(i * step)] for i in range(MAX_ROUTE_POINTS)]
+        keep = [int(i * step) for i in range(MAX_ROUTE_POINTS)]
+    prev = None
+    for k in keep:
+        points[k]["gap_before"] = prev is not None and gaps_so_far[k] > gaps_so_far[prev]
+        prev = k
+    points = [points[k] for k in keep]
     return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS}
 
 
