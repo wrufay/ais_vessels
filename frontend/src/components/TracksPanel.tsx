@@ -247,7 +247,7 @@ function TracksPanel({
               <svg width="22" height="4" className="shrink-0" aria-hidden="true">
                 <line x1="0" y1="2" x2="22" y2="2" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
               </svg>
-              No signal: the line there is a guess
+              No positions received: path estimated
             </div>
           )}
         </>
