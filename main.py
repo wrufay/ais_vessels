@@ -31,6 +31,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
+import numpy as np # type: ignore
 import pandas as pd # type: ignore
 import psycopg2 # type: ignore
 import psycopg2.extras # type: ignore
@@ -208,6 +209,61 @@ MAX_ROUTE_POINTS = 500
 # pings further apart than this are not joined by the track line (no data in between).
 TRACK_GAP_SECONDS = 60 * 60
 
+# The track line is drawn from ALL pings (not just the kept dots), thinned by
+# shape: every ping stays within this many metres of the line. A line is cheap
+# to draw, but to keep the answer small the allowance doubles until the line
+# has at most MAX_PATH_POINTS points (only for very long or very busy ranges).
+TRACK_PATH_TOLERANCE_M = 10
+MAX_PATH_POINTS = 20_000
+
+
+# Douglas-Peucker: start with a straight line from the first to the last point,
+# keep the point furthest from it if it is more than tol away, and repeat on
+# both halves. Straight runs shrink to their two ends; turns keep their points.
+# x, y in metres. Returns the indices of the points to keep.
+def simplify_line(x, y, tol: float):
+    n = len(x)
+    keep = np.zeros(n, dtype=bool)
+    keep[0] = keep[-1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        a, b = stack.pop()
+        if b - a < 2:
+            continue
+        dx, dy = x[b] - x[a], y[b] - y[a]
+        px, py = x[a + 1:b] - x[a], y[a + 1:b] - y[a]
+        length2 = dx * dx + dy * dy
+        t = np.clip((px * dx + py * dy) / length2, 0, 1) if length2 > 0 else 0
+        dist = np.hypot(px - t * dx, py - t * dy)
+        i = int(np.argmax(dist))
+        if dist[i] > tol:
+            m = a + 1 + i
+            keep[m] = True
+            stack += [(a, m), (m, b)]
+    return np.flatnonzero(keep)
+
+
+# The track line as a list of stretches (split where the gaps are), each a list
+# of [lon, lat]. starts = index of each stretch's first ping.
+def track_path(points: list[dict], starts: list[int]) -> list[list[list[float]]]:
+    if not points:
+        return []
+    lon = np.array([p["longitude"] for p in points], dtype=float)
+    lat = np.array([p["latitude"] for p in points], dtype=float)
+    # Metres on a flat map around the track's middle latitude -- close enough
+    # for deciding which pings to keep.
+    x = np.radians(lon) * 6_371_000 * np.cos(np.radians(lat.mean()))
+    y = np.radians(lat) * 6_371_000
+    bounds = list(zip(starts, starts[1:] + [len(points)]))
+    tol = TRACK_PATH_TOLERANCE_M
+    while True:
+        kept = [s + simplify_line(x[s:e], y[s:e], tol) for s, e in bounds if e - s > 1]
+        if sum(len(k) for k in kept) <= MAX_PATH_POINTS:
+            break
+        tol *= 2
+    # 5 decimals = about 1 m, plenty for a line and keeps the answer small.
+    return [[[round(lon[i], 5), round(lat[i], 5)] for i in k] for k in kept]
+
 
 # returns position history for ONE vessel, by MMSI (downsampled if long)
 # used by Map.tsx when displaying a vessel's track on the map when selecting it in the list.
@@ -238,31 +294,24 @@ def get_vessel_route(
     points = query(sql, params)
     total = len(points)
 
-    # Count the real gaps (pings over TRACK_GAP_SECONDS apart) before thinning,
-    # so the track line can still break at them when the kept points are far
-    # apart in time. gap_before = a gap lies between this point and the one before.
-    # Trips = the stretches between those gaps, counted from every ping (not just
-    # the kept ones), so each has its real first/last time and ping count.
-    gaps_so_far, n, trips = [], 0, []
-    for i, p in enumerate(points):
-        if i > 0 and p["time"] - points[i - 1]["time"] > TRACK_GAP_SECONDS:
-            n += 1
-        gaps_so_far.append(n)
-        if len(trips) <= n:
-            trips.append({"start": p["time"], "end": p["time"], "pings": 0})
-        trips[n]["end"] = p["time"]
-        trips[n]["pings"] += 1
+    # Trips = the stretches between gaps (pings over TRACK_GAP_SECONDS apart),
+    # counted from every ping (not just the kept dots), so each has its real
+    # first/last time and ping count.
+    starts = [i for i in range(total) if i == 0 or points[i]["time"] - points[i - 1]["time"] > TRACK_GAP_SECONDS]
+    trips = [
+        {"start": points[s]["time"], "end": points[e - 1]["time"], "pings": e - s}
+        for s, e in zip(starts, starts[1:] + [total])
+    ]
+    path = track_path(points, starts)
 
+    # Dots: every Nth ping, plus always the very last one so the end marker
+    # sits where the ship really finished.
     keep = range(total)
     if total > MAX_ROUTE_POINTS:
         step = total / MAX_ROUTE_POINTS
-        keep = [int(i * step) for i in range(MAX_ROUTE_POINTS)]
-    prev = None
-    for k in keep:
-        points[k]["gap_before"] = prev is not None and gaps_so_far[k] > gaps_so_far[prev]
-        prev = k
+        keep = [int(i * step) for i in range(MAX_ROUTE_POINTS - 1)] + [total - 1]
     points = [points[k] for k in keep]
-    return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS, "trips": trips}
+    return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS, "trips": trips, "path": path}
 
 
 # --- REGIONS ---

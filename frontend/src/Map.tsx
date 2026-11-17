@@ -92,7 +92,6 @@ interface RoutePoint {
   sog: number | null;
   cog: number | null;
   source: string;
-  gap_before: boolean;
 }
 
 // One trip = the pings between two gaps of over an hour (times in epoch seconds).
@@ -107,6 +106,8 @@ interface RouteData {
   total?: number;
   sampled?: boolean;
   trips?: Trip[];
+  // The track line: one list of [lon, lat] per stretch between gaps.
+  path?: number[][][];
 }
 
 interface RegionPosition {
@@ -1340,17 +1341,12 @@ function ShipMap() {
     if (last > 0) dots.push(dot(last));
     sourceRef.current.addFeatures(dots);
 
-    // Thin line joining the pings in time order, broken where the
-    // server marked a gap (no pings for over an hour) so it doesn't
-    // draw a guessed straight path there.
-    const stretches: number[][][] = [];
-    pts.forEach((p, i) => {
-      if (i === 0 || p.gap_before) stretches.push([]);
-      stretches[stretches.length - 1].push(fromLonLat([p.longitude, p.latitude]));
-    });
-    sourceRef.current.addFeatures(stretches
+    // Thin line along the real path: the server builds it from every ping
+    // (not just these dots), one piece per stretch between gaps of over an
+    // hour, so it doesn't cut corners or draw a guessed straight path.
+    sourceRef.current.addFeatures((data.path || [])
       .filter((s) => s.length > 1)
-      .map((s) => new Feature(new LineString(s))));
+      .map((s) => new Feature(new LineString(s.map((c) => fromLonLat(c))))));
 
     const extent = sourceRef.current.getExtent();
     if (extent)
