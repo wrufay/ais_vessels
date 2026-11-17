@@ -1315,18 +1315,30 @@ function ShipMap() {
     setPointTotal(data.sampled ? data.total ?? null : null);
     if (pts.length === 0) return;
 
-    sourceRef.current.addFeatures(pts.map((p, i) => new Feature({
-      geometry: new Point(fromLonLat([p.longitude, p.latitude])),
-      sog: p.sog,
-      cog: p.cog,
-      time: p.time,
-      lat: p.latitude,
-      lon: p.longitude,
-      source: p.source,
-      isStart: i === 0,
-      isEnd: i === pts.length - 1,
-      pointType: i === 0 ? 1 : i === pts.length - 1 ? 2 : 0,
-    })));
+    const dot = (i: number) => {
+      const p = pts[i];
+      return new Feature({
+        geometry: new Point(fromLonLat([p.longitude, p.latitude])),
+        sog: p.sog,
+        cog: p.cog,
+        time: p.time,
+        lat: p.latitude,
+        lon: p.longitude,
+        source: p.source,
+        isStart: i === 0,
+        isEnd: i === pts.length - 1,
+        pointType: i === 0 ? 1 : i === pts.length - 1 ? 2 : 0,
+      });
+    };
+    // WebGL draws dots in the order their features were created (it has no
+    // z-index), so create the start and end markers last. Otherwise later
+    // pings at the same spot -- often the boat waiting in harbour -- cover
+    // the start marker.
+    const last = pts.length - 1;
+    const dots = pts.slice(1, last).map((_, k) => dot(k + 1));
+    dots.push(dot(0));
+    if (last > 0) dots.push(dot(last));
+    sourceRef.current.addFeatures(dots);
 
     // Thin line joining the pings in time order, broken where the
     // server marked a gap (no pings for over an hour) so it doesn't
