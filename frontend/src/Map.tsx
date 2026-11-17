@@ -95,6 +95,20 @@ interface RoutePoint {
   gap_before: boolean;
 }
 
+// One trip = the pings between two gaps of over an hour (times in epoch seconds).
+export interface Trip {
+  start: number;
+  end: number;
+  pings: number;
+}
+
+interface RouteData {
+  points: RoutePoint[];
+  total?: number;
+  sampled?: boolean;
+  trips?: Trip[];
+}
+
 interface RegionPosition {
   mmsi: number;
   lat: number;
@@ -181,6 +195,18 @@ function ShipMap() {
   }
   const [pointCount, setPointCount] = useState<number | null>(null);
   const [pointTotal, setPointTotal] = useState<number | null>(null);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [selectedTrip, setSelectedTrip] = useState<number | null>(null);
+  const monthRouteRef = useRef<RouteData | null>(null);
+  const routeRequestRef = useRef(0);
+  // Unselecting the ship drops its trips and any route answer still on the way.
+  useEffect(() => {
+    if (selected) return;
+    routeRequestRef.current++;
+    monthRouteRef.current = null;
+    setTrips([]);
+    setSelectedTrip(null);
+  }, [selected]);
   const [popup, setPopup] = useState<Popup | null>(null);
   const [mooringPopup, setMooringPopup] = useState<{
     x: number;
@@ -1232,60 +1258,95 @@ function ShipMap() {
     e.target.value = "";
   }
 
+  // Ask the server for one ship's track between two times. Only the newest
+  // request may draw: fast clicks between ships or trips must not leave an
+  // older, slower answer on the map.
+  function fetchRoute(mmsi: number, from: string, to: string, onData: (data: RouteData) => void) {
+    const id = ++routeRequestRef.current;
+    const params = new URLSearchParams({ start: from, end: to });
+    fetch(`${API}/api/vessel/${mmsi}/route?${params}`)
+      .then((r) => r.json())
+      .then((data: RouteData) => {
+        if (id === routeRequestRef.current) onData(data);
+      })
+      .catch(console.error);
+  }
+
   function loadRoute(vessel = selected) {
     if (!vessel) return;
     setPointCount(null);
     sourceRef.current.clear();
+    monthRouteRef.current = null;
+    setTrips([]);
+    setSelectedTrip(null);
 
-    const params = new URLSearchParams({
-      start: `${start}T00:00:00`,
-      end: `${end}T23:59:59`,
+    fetchRoute(vessel.mmsi, `${start}T00:00:00`, `${end}T23:59:59`, (data) => {
+      // Kept so "All trips" can redraw it without asking the server again.
+      monthRouteRef.current = data;
+      setTrips(data.trips || []);
+      showRoute(data);
     });
+  }
 
-    fetch(`${API}/api/vessel/${vessel.mmsi}/route?${params}`)
-      .then((r) => r.json())
-      .then(
-        (data: { points: RoutePoint[]; total?: number; sampled?: boolean }) => {
-          const pts = data.points || [];
-          setPointCount(pts.length);
-          setPointTotal(data.sampled ? data.total ?? null : null);
-          if (pts.length === 0) return;
+  // null = all trips. A picked trip is fetched on its own, so the server
+  // thins only that trip's pings and it gets the full point limit.
+  function selectTrip(index: number | null) {
+    if (!selected) return;
+    setSelectedTrip(index);
+    setPointCount(null);
+    sourceRef.current.clear();
+    if (index === null) {
+      routeRequestRef.current++;
+      if (monthRouteRef.current) showRoute(monthRouteRef.current);
+      return;
+    }
+    // Ping times come back rounded to whole seconds, so widen by 1 s to be
+    // sure the trip's first and last pings are included. Other trips are over
+    // an hour away, so they can't slip in.
+    const iso = (s: number) => new Date(s * 1000).toISOString();
+    const trip = trips[index];
+    fetchRoute(selected.mmsi, iso(trip.start - 1), iso(trip.end + 1), showRoute);
+  }
 
-          sourceRef.current.addFeatures(pts.map((p, i) => new Feature({
-            geometry: new Point(fromLonLat([p.longitude, p.latitude])),
-            sog: p.sog,
-            cog: p.cog,
-            time: p.time,
-            lat: p.latitude,
-            lon: p.longitude,
-            source: p.source,
-            isStart: i === 0,
-            isEnd: i === pts.length - 1,
-            pointType: i === 0 ? 1 : i === pts.length - 1 ? 2 : 0,
-          })));
+  function showRoute(data: RouteData) {
+    const pts = data.points || [];
+    sourceRef.current.clear();
+    setPointCount(pts.length);
+    setPointTotal(data.sampled ? data.total ?? null : null);
+    if (pts.length === 0) return;
 
-          // Thin line joining the pings in time order, broken where the
-          // server marked a gap (no pings for over an hour) so it doesn't
-          // draw a guessed straight path there.
-          const stretches: number[][][] = [];
-          pts.forEach((p, i) => {
-            if (i === 0 || p.gap_before) stretches.push([]);
-            stretches[stretches.length - 1].push(fromLonLat([p.longitude, p.latitude]));
-          });
-          sourceRef.current.addFeatures(stretches
-            .filter((s) => s.length > 1)
-            .map((s) => new Feature(new LineString(s))));
+    sourceRef.current.addFeatures(pts.map((p, i) => new Feature({
+      geometry: new Point(fromLonLat([p.longitude, p.latitude])),
+      sog: p.sog,
+      cog: p.cog,
+      time: p.time,
+      lat: p.latitude,
+      lon: p.longitude,
+      source: p.source,
+      isStart: i === 0,
+      isEnd: i === pts.length - 1,
+      pointType: i === 0 ? 1 : i === pts.length - 1 ? 2 : 0,
+    })));
 
-          const extent = sourceRef.current.getExtent();
-          if (extent)
-            mapObj.current!.getView().fit(extent, {
-              padding: [60, 60, 60, 60],
-              maxZoom: 12,
-              duration: 800,
-            });
-        }
-      )
-      .catch(console.error);
+    // Thin line joining the pings in time order, broken where the
+    // server marked a gap (no pings for over an hour) so it doesn't
+    // draw a guessed straight path there.
+    const stretches: number[][][] = [];
+    pts.forEach((p, i) => {
+      if (i === 0 || p.gap_before) stretches.push([]);
+      stretches[stretches.length - 1].push(fromLonLat([p.longitude, p.latitude]));
+    });
+    sourceRef.current.addFeatures(stretches
+      .filter((s) => s.length > 1)
+      .map((s) => new Feature(new LineString(s))));
+
+    const extent = sourceRef.current.getExtent();
+    if (extent)
+      mapObj.current!.getView().fit(extent, {
+        padding: [60, 60, 60, 60],
+        maxZoom: 12,
+        duration: 800,
+      });
   }
 
   function renderRegionPositions(positions: RegionPosition[]) {
@@ -1590,6 +1651,9 @@ function ShipMap() {
           pointCount={pointCount}
           pointTotal={pointTotal}
           loadRoute={loadRoute}
+          trips={trips}
+          selectedTrip={selectedTrip}
+          onSelectTrip={selectTrip}
           onVesselListResizeMouseDown={onVesselListResizeMouseDown}
           vesselOpen={vesselOpen}
           setVesselOpen={setVesselOpen}

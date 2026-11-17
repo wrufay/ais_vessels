@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
 import { Virtuoso } from "react-virtuoso";
 import type VectorSource from "ol/source/Vector";
-import { type Vessel, formatRelativeTime } from "../Map";
+import { type Trip, type Vessel, formatRelativeTime } from "../Map";
 import { classifyType, SPEED_STYLE } from "../utils/mapStyles";
 import { TYPE_COLORS } from "../data/vesselTypeColors";
 import type { VesselFilters } from "./VesselTypeFilterModal";
@@ -40,6 +40,9 @@ function TracksPanel({
   pointCount,
   pointTotal,
   loadRoute,
+  trips,
+  selectedTrip,
+  onSelectTrip,
   onVesselListResizeMouseDown,
   vesselOpen,
   setVesselOpen,
@@ -71,6 +74,9 @@ function TracksPanel({
   pointCount: number | null;
   pointTotal: number | null;
   loadRoute: (vessel?: Vessel) => void;
+  trips: Trip[];
+  selectedTrip: number | null;
+  onSelectTrip: (index: number | null) => void;
   onVesselListResizeMouseDown: (e: React.MouseEvent) => void;
   vesselOpen: boolean;
   setVesselOpen: (fn: (prev: boolean) => boolean) => void;
@@ -211,7 +217,9 @@ function TracksPanel({
               <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 tabular-nums">
                 {active && pointCount !== null && pointTotal !== null && pointTotal > pointCount
                   ? `showing ${pointCount.toLocaleString()} / ${pointTotal.toLocaleString()} pts`
-                  : `${v.point_count.toLocaleString()} pts in range`}
+                  : active && pointCount !== null && selectedTrip !== null
+                    ? `${pointCount.toLocaleString()} pts in trip`
+                    : `${v.point_count.toLocaleString()} pts in range`}
               </div>
             </button>
           );
@@ -222,6 +230,14 @@ function TracksPanel({
             onMouseDown={onVesselListResizeMouseDown}
             className="h-1.5 mx-2 -my-0.5 rounded-full cursor-row-resize hover:bg-[#98c1d9]/40 active:bg-[#98c1d9]/60"
           />
+          {selected && trips.length > 1 && (
+            <TripList
+              vesselName={selected.vessel_name || "Unknown vessel"}
+              trips={trips}
+              selectedTrip={selectedTrip}
+              onSelectTrip={onSelectTrip}
+            />
+          )}
         </>
       )}
       </div>
@@ -248,6 +264,62 @@ function TracksPanel({
         />
       </div>
     </>
+  );
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "25 Sep 06:12-18:35" (UTC, like the rest of the app); the end gets its own
+// day when the trip runs past midnight.
+function tripLabel(t: Trip): string {
+  const s = new Date(t.start * 1000), e = new Date(t.end * 1000);
+  const day = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")} ${MONTHS[d.getUTCMonth()]}`;
+  const hm = (d: Date) => d.toISOString().slice(11, 16);
+  if (t.start === t.end) return `${day(s)} ${hm(s)}`;
+  return day(s) === day(e)
+    ? `${day(s)} ${hm(s)}\u2013${hm(e)}`
+    : `${day(s)} ${hm(s)}\u2013${day(e)} ${hm(e)}`;
+}
+
+// The selected ship's trips (split where it sent no pings for over an hour).
+// Picking one shows only that trip; "All trips" shows the whole range again.
+function TripList({
+  vesselName,
+  trips,
+  selectedTrip,
+  onSelectTrip,
+}: {
+  vesselName: string;
+  trips: Trip[];
+  selectedTrip: number | null;
+  onSelectTrip: (index: number | null) => void;
+}) {
+  const row = (sel: boolean) =>
+    `w-full flex items-center gap-2 px-2 py-1 rounded-sm text-[11px] tabular-nums whitespace-nowrap text-left transition ${
+      sel
+        ? "bg-[#3d5a80] text-white"
+        : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+    }`;
+  const muted = (sel: boolean) => (sel ? "text-slate-200" : "text-slate-400 dark:text-slate-500");
+  return (
+    <div className="mx-2 mt-2 px-1">
+      <div className="text-[11px] text-slate-400 dark:text-slate-500 mb-0.5 truncate">
+        Trips of {vesselName.trim()} (UTC)
+      </div>
+      <div className="max-h-44 overflow-y-auto">
+        <button className={row(selectedTrip === null)} onClick={() => onSelectTrip(null)}>
+          <span className="flex-1">All trips</span>
+          <span className={muted(selectedTrip === null)}>{trips.length} trips</span>
+        </button>
+        {trips.map((t, i) => (
+          <button key={t.start} className={row(selectedTrip === i)} onClick={() => onSelectTrip(i)}>
+            <span className={`w-4 text-right ${muted(selectedTrip === i)}`}>{i + 1}</span>
+            <span className="flex-1">{tripLabel(t)}</span>
+            <span className={muted(selectedTrip === i)}>{t.pings.toLocaleString()} pts</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

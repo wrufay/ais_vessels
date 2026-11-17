@@ -241,11 +241,17 @@ def get_vessel_route(
     # Count the real gaps (pings over TRACK_GAP_SECONDS apart) before thinning,
     # so the track line can still break at them when the kept points are far
     # apart in time. gap_before = a gap lies between this point and the one before.
-    gaps_so_far, n = [], 0
+    # Trips = the stretches between those gaps, counted from every ping (not just
+    # the kept ones), so each has its real first/last time and ping count.
+    gaps_so_far, n, trips = [], 0, []
     for i, p in enumerate(points):
         if i > 0 and p["time"] - points[i - 1]["time"] > TRACK_GAP_SECONDS:
             n += 1
         gaps_so_far.append(n)
+        if len(trips) <= n:
+            trips.append({"start": p["time"], "end": p["time"], "pings": 0})
+        trips[n]["end"] = p["time"]
+        trips[n]["pings"] += 1
 
     keep = range(total)
     if total > MAX_ROUTE_POINTS:
@@ -256,7 +262,7 @@ def get_vessel_route(
         points[k]["gap_before"] = prev is not None and gaps_so_far[k] > gaps_so_far[prev]
         prev = k
     points = [points[k] for k in keep]
-    return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS}
+    return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS, "trips": trips}
 
 
 # --- REGIONS ---
