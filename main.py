@@ -216,6 +216,13 @@ TRACK_GAP_SECONDS = 60 * 60
 TRACK_PATH_TOLERANCE_M = 10
 MAX_PATH_POINTS = 20_000
 
+# A "trip" where the ship never really moved -- all pings within this many
+# metres of each other and none at this speed (knots) or faster -- is marked
+# as in harbour: the ship sat at its berth with AIS on, and its GPS wobble
+# would otherwise look like a tiny, messy trip.
+HARBOUR_MAX_SPREAD_M = 100
+HARBOUR_MAX_SPEED_KN = 1
+
 
 # Douglas-Peucker: start with a straight line from the first to the last point,
 # keep the point furthest from it if it is more than tol away, and repeat on
@@ -243,18 +250,17 @@ def simplify_line(x, y, tol: float):
     return np.flatnonzero(keep)
 
 
-# The track line as a list of stretches (split where the gaps are), each a list
-# of [lon, lat]. starts = index of each stretch's first ping.
-def track_path(points: list[dict], starts: list[int]) -> list[list[list[float]]]:
-    if not points:
-        return []
-    lon = np.array([p["longitude"] for p in points], dtype=float)
-    lat = np.array([p["latitude"] for p in points], dtype=float)
-    # Metres on a flat map around the track's middle latitude -- close enough
-    # for deciding which pings to keep.
+# Metres on a flat map around the track's middle latitude -- close enough for
+# distances within a track.
+def track_metres(lon, lat):
     x = np.radians(lon) * 6_371_000 * np.cos(np.radians(lat.mean()))
     y = np.radians(lat) * 6_371_000
-    bounds = list(zip(starts, starts[1:] + [len(points)]))
+    return x, y
+
+
+# The track line as a list of stretches (bounds = (first, end) index of each
+# stretch between gaps), each a list of [lon, lat].
+def track_path(lon, lat, x, y, bounds) -> list[list[list[float]]]:
     tol = TRACK_PATH_TOLERANCE_M
     while True:
         kept = [s + simplify_line(x[s:e], y[s:e], tol) for s, e in bounds if e - s > 1]
@@ -263,6 +269,11 @@ def track_path(points: list[dict], starts: list[int]) -> list[list[list[float]]]
         tol *= 2
     # 5 decimals = about 1 m, plenty for a line and keeps the answer small.
     return [[[round(lon[i], 5), round(lat[i], 5)] for i in k] for k in kept]
+
+
+def in_harbour(x, y, sog) -> bool:
+    spread = np.hypot(x.max() - x.min(), y.max() - y.min())
+    return bool(spread <= HARBOUR_MAX_SPREAD_M and sog.max() < HARBOUR_MAX_SPEED_KN)
 
 
 # returns position history for ONE vessel, by MMSI (downsampled if long)
@@ -298,11 +309,19 @@ def get_vessel_route(
     # counted from every ping (not just the kept dots), so each has its real
     # first/last time and ping count.
     starts = [i for i in range(total) if i == 0 or points[i]["time"] - points[i - 1]["time"] > TRACK_GAP_SECONDS]
-    trips = [
-        {"start": points[s]["time"], "end": points[e - 1]["time"], "pings": e - s}
-        for s, e in zip(starts, starts[1:] + [total])
-    ]
-    path = track_path(points, starts)
+    bounds = list(zip(starts, starts[1:] + [total]))
+    trips, path = [], []
+    if total:
+        lon = np.array([p["longitude"] for p in points], dtype=float)
+        lat = np.array([p["latitude"] for p in points], dtype=float)
+        sog = np.array([p["sog"] or 0 for p in points], dtype=float)
+        x, y = track_metres(lon, lat)
+        trips = [
+            {"start": points[s]["time"], "end": points[e - 1]["time"], "pings": e - s,
+             "in_harbour": in_harbour(x[s:e], y[s:e], sog[s:e])}
+            for s, e in bounds
+        ]
+        path = track_path(lon, lat, x, y, bounds)
 
     # Dots: every Nth ping, plus always the very last one so the end marker
     # sits where the ship really finished.

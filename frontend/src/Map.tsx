@@ -95,10 +95,12 @@ interface RoutePoint {
 }
 
 // One trip = the pings between two gaps of over an hour (times in epoch seconds).
+// in_harbour = the ship never really moved (sat at its berth with AIS on).
 export interface Trip {
   start: number;
   end: number;
   pings: number;
+  in_harbour: boolean;
 }
 
 interface RouteData {

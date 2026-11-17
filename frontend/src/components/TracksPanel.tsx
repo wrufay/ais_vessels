@@ -294,13 +294,15 @@ function TripList({
   selectedTrip: number | null;
   onSelectTrip: (index: number | null) => void;
 }) {
-  const row = (sel: boolean) =>
+  // Harbour rows (the ship sat at its berth) are greyed, but stay clickable.
+  const row = (sel: boolean, harbour = false) =>
     `w-full flex items-center gap-2 px-2 py-1 rounded-sm text-[11px] tabular-nums whitespace-nowrap text-left transition ${
       sel
         ? "bg-[#3d5a80] text-white"
-        : "text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+        : `${harbour ? "text-slate-400 dark:text-slate-500" : "text-slate-600 dark:text-slate-300"} hover:bg-slate-200 dark:hover:bg-slate-700`
     }`;
   const muted = (sel: boolean) => (sel ? "text-slate-200" : "text-slate-400 dark:text-slate-500");
+  const realTrips = trips.filter((t) => !t.in_harbour).length;
   return (
     <div className="mx-2 mt-2 px-1">
       <div className="text-[11px] text-slate-400 dark:text-slate-500 mb-0.5 truncate">
@@ -309,13 +311,13 @@ function TripList({
       <div className="max-h-44 overflow-y-auto">
         <button className={row(selectedTrip === null)} onClick={() => onSelectTrip(null)}>
           <span className="flex-1">All trips</span>
-          <span className={muted(selectedTrip === null)}>{trips.length} trips</span>
+          <span className={muted(selectedTrip === null)}>{realTrips} {realTrips === 1 ? "trip" : "trips"}</span>
         </button>
         {trips.map((t, i) => (
-          <button key={t.start} className={row(selectedTrip === i)} onClick={() => onSelectTrip(i)}>
+          <button key={t.start} className={row(selectedTrip === i, t.in_harbour)} onClick={() => onSelectTrip(i)}>
             <span className={`w-4 text-right ${muted(selectedTrip === i)}`}>{i + 1}</span>
             <span className="flex-1">{tripLabel(t)}</span>
-            <span className={muted(selectedTrip === i)}>{t.pings.toLocaleString()} pts</span>
+            <span className={muted(selectedTrip === i)}>{t.in_harbour ? "in harbour" : `${t.pings.toLocaleString()} pts`}</span>
           </button>
         ))}
       </div>
