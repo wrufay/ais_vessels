@@ -34,6 +34,7 @@ function TracksPanel({
   setDraftFilters,
   setShowTypeFilter,
   vesselListHeight,
+  vesselListElRef,
   selected,
   setSelected,
   sourceRef,
@@ -70,6 +71,7 @@ function TracksPanel({
   setDraftFilters: (v: VesselFilters) => void;
   setShowTypeFilter: (v: boolean) => void;
   vesselListHeight: number;
+  vesselListElRef: RefObject<HTMLDivElement | null>;
   selected: Vessel | null;
   setSelected: (v: Vessel | null) => void;
   sourceRef: RefObject<VectorSource>;
@@ -171,6 +173,7 @@ function TracksPanel({
             </button>
           </div>
           <div
+            ref={vesselListElRef}
             style={{ height: vesselListHeight }}
             className="px-2 min-h-0"
           >

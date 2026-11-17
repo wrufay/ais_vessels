@@ -419,12 +419,16 @@ function ShipMap() {
   const [starOpacity, setStarOpacity, starOpacityRef] = useStateRef(1, () => noiseImpactLayerRef.current?.changed());
   const [starSizeOpen, setStarSizeOpen] = useState(false);
   const [vesselListOpen, setVesselListOpen] = useState(true);
-  const [vesselListHeight, setVesselListHeight] = useState(140);
+  // ~6 ships. The box shrinks to fit when the panel runs out of room (e.g.
+  // while a ship's trip list is open), so a drag starts from the height
+  // actually shown, not the stored one.
+  const [vesselListHeight, setVesselListHeight] = useState(400);
+  const vesselListElRef = useRef<HTMLDivElement>(null);
   const onVesselListResizeMouseDown = useDragResize({
     axis: "y",
     min: 40,
     max: Infinity,
-    getStart: () => vesselListHeight,
+    getStart: () => vesselListElRef.current?.offsetHeight ?? vesselListHeight,
     onChange: setVesselListHeight,
   });
 
@@ -1715,6 +1719,7 @@ function ShipMap() {
           setDraftFilters={setDraftFilters}
           setShowTypeFilter={setShowTypeFilter}
           vesselListHeight={vesselListHeight}
+          vesselListElRef={vesselListElRef}
           selected={selected}
           setSelected={setSelected}
           sourceRef={sourceRef}
