@@ -118,7 +118,7 @@ function TracksPanel({
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
-            className="w-full bg-slate-50 dark:bg-slate-800 border border-transparent rounded-sm pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 dark:text-slate-500 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
+            className="w-full bg-slate-50 dark:bg-slate-800 border border-transparent rounded-sm pl-9 pr-3 py-2 text-xs placeholder:text-slate-400 dark:text-slate-500 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-[#98c1d9] focus:ring-2 focus:ring-[#98c1d9]/20 transition"
             placeholder="Search name, MMSI, or type…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
