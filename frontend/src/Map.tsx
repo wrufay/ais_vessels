@@ -4,7 +4,6 @@ import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import ImageLayer from "ol/layer/Image";
 import ImageStatic from "ol/source/ImageStatic";
-import XYZ from "ol/source/XYZ";
 import TileWMS from "ol/source/TileWMS";
 import TileGrid from "ol/tilegrid/TileGrid";
 import { get as getProjection } from "ol/proj";
@@ -68,7 +67,7 @@ import { useStateRef } from "./useStateRef";
 import { useNoiseLayer, NOISE_EXTENT } from "./useNoiseLayer";
 import { useBathymetry } from "./useBathymetry";
 import { useMeasureTool } from "./useMeasureTool";
-import { useBasemap, BASEMAPS } from "./useBasemap";
+import { useBasemap, BASEMAPS, basemapPreload, basemapSource } from "./useBasemap";
 import { useTour } from "./useTour";
 import { useNewFeedback } from "./useNewFeedback";
 import { trackUsage } from "./usage";
@@ -840,11 +839,8 @@ function ShipMap() {
         (() => {
           const initialBasemap = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0];
           const layer = new TileLayer({
-            source: new XYZ({
-              url: initialBasemap.url,
-              attributions: initialBasemap.attributions,
-              maxZoom: initialBasemap.maxZoom,
-            }),
+            preload: basemapPreload(initialBasemap),
+            source: basemapSource(initialBasemap),
           });
           basemapLayerRef.current = layer;
           return layer;
