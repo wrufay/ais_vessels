@@ -31,6 +31,20 @@ export function formatTime(epochSeconds: number): string {
   );
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "25 Sep 06:12–18:35" (UTC, like the rest of the app); the end gets its own
+// day when the range runs past midnight. Times in epoch seconds.
+export function formatTimeRange(start: number, end: number): string {
+  const s = new Date(start * 1000), e = new Date(end * 1000);
+  const day = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")} ${MONTHS[d.getUTCMonth()]}`;
+  const hm = (d: Date) => d.toISOString().slice(11, 16);
+  if (start === end) return `${day(s)} ${hm(s)}`;
+  return day(s) === day(e)
+    ? `${day(s)} ${hm(s)}\u2013${hm(e)}`
+    : `${day(s)} ${hm(s)}\u2013${day(e)} ${hm(e)}`;
+}
+
 export const EMPTY_STYLE = new Style({});
 
 // Single source of truth for the fast/mid/slow speed-based color scheme --

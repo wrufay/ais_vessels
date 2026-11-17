@@ -338,8 +338,11 @@ def get_vessel_route(
         # straight "no signal" line from the last ping before to the first after.
         stretches = [0] + gaps
         path = track_path(lon, lat, x, y, list(zip(stretches, stretches[1:] + [total])))
+        # With its times and length, for the "No signal" popup on hover.
         gap_lines = [
-            [[round(lon[i - 1], 5), round(lat[i - 1], 5)], [round(lon[i], 5), round(lat[i], 5)]]
+            {"start": points[i - 1]["time"], "end": points[i]["time"],
+             "km": round(float(np.hypot(x[i] - x[i - 1], y[i] - y[i - 1])) / 1000, 1),
+             "line": [[round(lon[i - 1], 5), round(lat[i - 1], 5)], [round(lon[i], 5), round(lat[i], 5)]]}
             for i in gaps if not ends_trip(i)
         ]
 

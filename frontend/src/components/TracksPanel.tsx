@@ -2,7 +2,7 @@ import type { RefObject } from "react";
 import { Virtuoso } from "react-virtuoso";
 import type VectorSource from "ol/source/Vector";
 import { type Trip, type Vessel, formatRelativeTime } from "../Map";
-import { classifyType, SPEED_STYLE } from "../utils/mapStyles";
+import { classifyType, formatTimeRange, SPEED_STYLE } from "../utils/mapStyles";
 import { TYPE_COLORS } from "../data/vesselTypeColors";
 import type { VesselFilters } from "./VesselTypeFilterModal";
 import PanelHeader from "./PanelHeader";
@@ -44,6 +44,7 @@ function TracksPanel({
   trips,
   selectedTrip,
   onSelectTrip,
+  hasNoSignal,
   onVesselListResizeMouseDown,
   vesselOpen,
   setVesselOpen,
@@ -79,6 +80,7 @@ function TracksPanel({
   trips: Trip[];
   selectedTrip: number | null;
   onSelectTrip: (index: number | null) => void;
+  hasNoSignal: boolean;
   onVesselListResizeMouseDown: (e: React.MouseEvent) => void;
   vesselOpen: boolean;
   setVesselOpen: (fn: (prev: boolean) => boolean) => void;
@@ -240,6 +242,14 @@ function TracksPanel({
               onSelectTrip={onSelectTrip}
             />
           )}
+          {selected && hasNoSignal && (
+            <div className="mx-2 mt-1.5 px-3 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+              <svg width="22" height="4" className="shrink-0" aria-hidden="true">
+                <line x1="0" y1="2" x2="22" y2="2" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
+              </svg>
+              No signal: the line there is a guess
+            </div>
+          )}
         </>
       )}
       </div>
@@ -271,20 +281,6 @@ function TracksPanel({
 
 // "1 pt", "2 pts", "4,185 pts"
 const pts = (n: number) => `${n.toLocaleString()} ${n === 1 ? "pt" : "pts"}`;
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-// "25 Sep 06:12-18:35" (UTC, like the rest of the app); the end gets its own
-// day when the trip runs past midnight.
-function tripLabel(t: Trip): string {
-  const s = new Date(t.start * 1000), e = new Date(t.end * 1000);
-  const day = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")} ${MONTHS[d.getUTCMonth()]}`;
-  const hm = (d: Date) => d.toISOString().slice(11, 16);
-  if (t.start === t.end) return `${day(s)} ${hm(s)}`;
-  return day(s) === day(e)
-    ? `${day(s)} ${hm(s)}\u2013${hm(e)}`
-    : `${day(s)} ${hm(s)}\u2013${day(e)} ${hm(e)}`;
-}
 
 // The selected ship's trips (split where it sent no pings for over an hour).
 // Picking one shows only that trip; "All trips" shows the whole range again.
@@ -321,7 +317,7 @@ function TripList({
         {trips.map((t, i) => (
           <button key={t.start} className={row(selectedTrip === i, t.in_harbour)} onClick={() => onSelectTrip(i)}>
             <span className={`w-4 text-right ${muted(selectedTrip === i)}`}>{i + 1}</span>
-            <span className="flex-1">{tripLabel(t)}</span>
+            <span className="flex-1">{formatTimeRange(t.start, t.end)}</span>
             <span className={muted(selectedTrip === i)}>{t.in_harbour ? "in harbour" : pts(t.pings)}</span>
           </button>
         ))}

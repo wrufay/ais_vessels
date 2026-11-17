@@ -28,6 +28,7 @@ import { type Mooring, AMAR_MOORINGS } from "./data/moorings";
 import {
   classifyType,
   formatTime,
+  formatTimeRange,
   REGION_WEBGL_STYLE,
   REGION_WEBGL_VARIABLES,
   ROUTE_WEBGL_STYLE,
@@ -109,8 +110,9 @@ interface RouteData {
   trips?: Trip[];
   // The track line: one list of [lon, lat] per stretch between gaps.
   path?: number[][][];
-  // Straight lines across no-signal gaps inside a trip (drawn dashed).
-  gap_lines?: number[][][];
+  // Straight lines across no-signal gaps inside a trip (drawn dashed), with
+  // the gap's times (epoch seconds) and length for the hover popup.
+  gap_lines?: { start: number; end: number; km: number; line: number[][] }[];
 }
 
 interface RegionPosition {
@@ -145,6 +147,14 @@ export function formatRelativeTime(iso: string): string {
 }
 
 const MIN_LIST_PINGS = 3;
+
+// Distance in pixels from point p to the segment a-b.
+function pixelDistanceToSegment(p: number[], a: number[], b: number[]): number {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  const t = len2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+}
 
 function ShipMap() {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -205,6 +215,16 @@ function ShipMap() {
   const [selectedTrip, setSelectedTrip] = useState<number | null>(null);
   const monthRouteRef = useRef<RouteData | null>(null);
   const routeRequestRef = useRef(0);
+  // Whether the shown track has dashed "no signal" parts (shows the note
+  // under the trip list), and the one under the cursor (hover popup).
+  const [hasNoSignal, setHasNoSignal] = useState(false);
+  const [noSignalHover, setNoSignalHover] = useState<{
+    x: number;
+    y: number;
+    start: number;
+    end: number;
+    km: number;
+  } | null>(null);
   // Unselecting the ship drops its trips and any route answer still on the way.
   useEffect(() => {
     if (selected) return;
@@ -212,6 +232,7 @@ function ShipMap() {
     monthRouteRef.current = null;
     setTrips([]);
     setSelectedTrip(null);
+    setHasNoSignal(false);
   }, [selected]);
   const [popup, setPopup] = useState<Popup | null>(null);
   const [mooringPopup, setMooringPopup] = useState<{
@@ -1086,6 +1107,19 @@ function ShipMap() {
         return;
       }
 
+      // "No signal" popup while over a dashed line. WebGL hit detection
+      // misses these thin lines, so measure the pixel distance to each one
+      // directly -- a track has only a few.
+      let gap: Feature | null = null;
+      for (const f of sourceRef.current.getFeatures()) {
+        if (!f.get("noSignal")) continue;
+        const [a, b] = (f.getGeometry() as LineString).getCoordinates().map((c) => map.getPixelFromCoordinate(c));
+        if (pixelDistanceToSegment(e.pixel, a, b) <= 6) { gap = f; break; }
+      }
+      setNoSignalHover(gap
+        ? { x: e.pixel[0], y: e.pixel[1], start: gap.get("start"), end: gap.get("end"), km: gap.get("km") }
+        : null);
+
       let overClickable = false;
       map.forEachFeatureAtPixel(e.pixel, (feature) => {
         if (feature.get("mooring")) {
@@ -1282,6 +1316,7 @@ function ShipMap() {
     monthRouteRef.current = null;
     setTrips([]);
     setSelectedTrip(null);
+    setHasNoSignal(false);
 
     fetchRoute(vessel.mmsi, `${start}T00:00:00`, `${end}T23:59:59`, (data) => {
       // Kept so "All trips" can redraw it without asking the server again.
@@ -1297,6 +1332,7 @@ function ShipMap() {
     if (!selected) return;
     setSelectedTrip(index);
     setPointCount(null);
+    setHasNoSignal(false);
     sourceRef.current.clear();
     if (index === null) {
       routeRequestRef.current++;
@@ -1349,10 +1385,14 @@ function ShipMap() {
     sourceRef.current.addFeatures((data.path || [])
       .filter((s) => s.length > 1)
       .map((s) => new Feature(new LineString(s.map((c) => fromLonLat(c))))));
-    sourceRef.current.addFeatures((data.gap_lines || []).map((s) => new Feature({
-      geometry: new LineString(s.map((c) => fromLonLat(c))),
+    sourceRef.current.addFeatures((data.gap_lines || []).map((g) => new Feature({
+      geometry: new LineString(g.line.map((c) => fromLonLat(c))),
       noSignal: 1,
+      start: g.start,
+      end: g.end,
+      km: g.km,
     })));
+    setHasNoSignal((data.gap_lines || []).length > 0);
 
     const extent = sourceRef.current.getExtent();
     if (extent)
@@ -1685,6 +1725,7 @@ function ShipMap() {
           trips={trips}
           selectedTrip={selectedTrip}
           onSelectTrip={selectTrip}
+          hasNoSignal={hasNoSignal}
           onVesselListResizeMouseDown={onVesselListResizeMouseDown}
           vesselOpen={vesselOpen}
           setVesselOpen={setVesselOpen}
@@ -1952,6 +1993,15 @@ function ShipMap() {
           <PopupRow label="Depth" labelWidth="w-20">{mooringPopup.mooring.depth}m</PopupRow>
           <PopupRow label="Deployed" labelWidth="w-20">{mooringPopup.mooring.deployment}</PopupRow>
           <PopupRow label="Recovered" labelWidth="w-20">{mooringPopup.mooring.recovery}</PopupRow>
+        </MapPopup>
+      )}
+
+      {/* "No signal" popup while hovering a dashed line */}
+      {noSignalHover && (
+        <MapPopup x={noSignalHover.x} y={noSignalHover.y} title="No signal">
+          <PopupRow label="Time">{formatTimeRange(noSignalHover.start, noSignalHover.end)} UTC</PopupRow>
+          <PopupRow label="Length">{((noSignalHover.end - noSignalHover.start) / 3600).toFixed(1)} h</PopupRow>
+          <PopupRow label="Distance">{noSignalHover.km} km, no pings heard</PopupRow>
         </MapPopup>
       )}
 
