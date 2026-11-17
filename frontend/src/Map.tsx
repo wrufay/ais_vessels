@@ -177,8 +177,8 @@ function ShipMap() {
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [selected, setSelected] = useState<Vessel | null>(null);
   const [search, setSearch] = useState("");
-  const [start, setStart] = useState("2025-08-01");
-  const [end, setEnd] = useState("2025-08-31");
+  const [start, setStart] = useState("2026-09-01");
+  const [end, setEnd] = useState("2026-09-30");
   // Picking a start date that's on or after the current end date would
   // leave an invalid/empty range -- bump end to the day after instead of
   // just letting that happen. Left alone (not reset) if the existing end
