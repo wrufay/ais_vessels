@@ -220,8 +220,8 @@ function TracksPanel({
                 {active && pointCount !== null && pointTotal !== null && pointTotal > pointCount
                   ? `showing ${pointCount.toLocaleString()} / ${pointTotal.toLocaleString()} pts`
                   : active && pointCount !== null && selectedTrip !== null
-                    ? `${pointCount.toLocaleString()} pts in trip`
-                    : `${v.point_count.toLocaleString()} pts in range`}
+                    ? `${pts(pointCount)} in trip`
+                    : `${pts(v.point_count)} in range`}
               </div>
             </button>
           );
@@ -268,6 +268,9 @@ function TracksPanel({
     </>
   );
 }
+
+// "1 pt", "2 pts", "4,185 pts"
+const pts = (n: number) => `${n.toLocaleString()} ${n === 1 ? "pt" : "pts"}`;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -319,7 +322,7 @@ function TripList({
           <button key={t.start} className={row(selectedTrip === i, t.in_harbour)} onClick={() => onSelectTrip(i)}>
             <span className={`w-4 text-right ${muted(selectedTrip === i)}`}>{i + 1}</span>
             <span className="flex-1">{tripLabel(t)}</span>
-            <span className={muted(selectedTrip === i)}>{t.in_harbour ? "in harbour" : `${t.pings.toLocaleString()} pts`}</span>
+            <span className={muted(selectedTrip === i)}>{t.in_harbour ? "in harbour" : pts(t.pings)}</span>
           </button>
         ))}
       </div>

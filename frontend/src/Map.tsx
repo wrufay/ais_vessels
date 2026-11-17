@@ -109,6 +109,8 @@ interface RouteData {
   trips?: Trip[];
   // The track line: one list of [lon, lat] per stretch between gaps.
   path?: number[][][];
+  // Straight lines across no-signal gaps inside a trip (drawn dashed).
+  gap_lines?: number[][][];
 }
 
 interface RegionPosition {
@@ -1347,6 +1349,10 @@ function ShipMap() {
     sourceRef.current.addFeatures((data.path || [])
       .filter((s) => s.length > 1)
       .map((s) => new Feature(new LineString(s.map((c) => fromLonLat(c))))));
+    sourceRef.current.addFeatures((data.gap_lines || []).map((s) => new Feature({
+      geometry: new LineString(s.map((c) => fromLonLat(c))),
+      noSignal: 1,
+    })));
 
     const extent = sourceRef.current.getExtent();
     if (extent)

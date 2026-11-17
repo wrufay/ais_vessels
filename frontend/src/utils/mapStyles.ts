@@ -51,8 +51,10 @@ export const TYPE_NUM: Record<string, number> = {
 // WebGL style for the selected vessel route layer (pointType: 0=normal, 1=start, 2=end).
 // Points get the circle; the track lines get the thin grey stroke (WebGL draws
 // points above lines). Start/end keep a fixed size so they stay easy to find.
+// Lines with noSignal = 1 cross a stretch where no pings were heard: dashed,
+// since there the line is only a straight guess.
 export const ROUTE_WEBGL_VARIABLES = { dotSize: 3, dotOpacity: 1.0 };
-export const ROUTE_WEBGL_STYLE = {
+const ROUTE_TRACK_STYLE = {
   "stroke-color": ["color", 60, 60, 60, ["*", 0.7, ["var", "dotOpacity"]]],
   "stroke-width": 1,
   "circle-radius": [
@@ -83,6 +85,18 @@ export const ROUTE_WEBGL_STYLE = {
   ],
   "circle-opacity": ["var", "dotOpacity"],
 };
+
+export const ROUTE_WEBGL_STYLE = [
+  {
+    filter: ["==", ["get", "noSignal"], 1],
+    style: {
+      "stroke-color": ["color", 60, 60, 60, ["*", 0.8, ["var", "dotOpacity"]]],
+      "stroke-width": 1.5,
+      "stroke-line-dash": [6, 5],
+    },
+  },
+  { else: true, style: ROUTE_TRACK_STYLE },
+];
 
 // WebGL style for the region track layer — mode 0=grey, 1=type, 2=speed, 3=per-vessel
 export const VESSEL_PALETTE: string[] = sharedColors.track.multiVessel;

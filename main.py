@@ -223,6 +223,14 @@ MAX_PATH_POINTS = 20_000
 HARBOUR_MAX_SPREAD_M = 100
 HARBOUR_MAX_SPEED_KN = 1
 
+# A gap over TRACK_GAP_SECONDS (no pings heard) only ends a trip when the ship
+# sat still across it -- moved under TRIP_SPLIT_MOVE_M, e.g. a night in harbour
+# -- or it lasted over TRIP_SPLIT_GAP_SECONDS. Otherwise the ship kept moving
+# out of the shore receivers' range: the gap stays inside the trip and is sent
+# as a "no signal" line (drawn dashed), so one journey isn't cut into pieces.
+TRIP_SPLIT_MOVE_M = 1000
+TRIP_SPLIT_GAP_SECONDS = 12 * 60 * 60
+
 
 # Douglas-Peucker: start with a straight line from the first to the last point,
 # keep the point furthest from it if it is more than tol away, and repeat on
@@ -305,23 +313,35 @@ def get_vessel_route(
     points = query(sql, params)
     total = len(points)
 
-    # Trips = the stretches between gaps (pings over TRACK_GAP_SECONDS apart),
-    # counted from every ping (not just the kept dots), so each has its real
-    # first/last time and ping count.
-    starts = [i for i in range(total) if i == 0 or points[i]["time"] - points[i - 1]["time"] > TRACK_GAP_SECONDS]
-    bounds = list(zip(starts, starts[1:] + [total]))
-    trips, path = [], []
+    # Gaps = no pings for over TRACK_GAP_SECONDS (index of the ping after each).
+    # Trips are counted from every ping (not just the kept dots), so each has
+    # its real first/last time and ping count.
+    gaps = [i for i in range(1, total) if points[i]["time"] - points[i - 1]["time"] > TRACK_GAP_SECONDS]
+    trips, path, gap_lines = [], [], []
     if total:
         lon = np.array([p["longitude"] for p in points], dtype=float)
         lat = np.array([p["latitude"] for p in points], dtype=float)
         sog = np.array([p["sog"] or 0 for p in points], dtype=float)
         x, y = track_metres(lon, lat)
+
+        def ends_trip(i):
+            moved = np.hypot(x[i] - x[i - 1], y[i] - y[i - 1])
+            return moved < TRIP_SPLIT_MOVE_M or points[i]["time"] - points[i - 1]["time"] > TRIP_SPLIT_GAP_SECONDS
+
+        starts = [0] + [i for i in gaps if ends_trip(i)]
         trips = [
             {"start": points[s]["time"], "end": points[e - 1]["time"], "pings": e - s,
              "in_harbour": in_harbour(x[s:e], y[s:e], sog[s:e])}
-            for s, e in bounds
+            for s, e in zip(starts, starts[1:] + [total])
         ]
-        path = track_path(lon, lat, x, y, bounds)
+        # The solid line breaks at every gap; gaps inside a trip get a
+        # straight "no signal" line from the last ping before to the first after.
+        stretches = [0] + gaps
+        path = track_path(lon, lat, x, y, list(zip(stretches, stretches[1:] + [total])))
+        gap_lines = [
+            [[round(lon[i - 1], 5), round(lat[i - 1], 5)], [round(lon[i], 5), round(lat[i], 5)]]
+            for i in gaps if not ends_trip(i)
+        ]
 
     # Dots: every Nth ping, plus always the very last one so the end marker
     # sits where the ship really finished.
@@ -330,7 +350,7 @@ def get_vessel_route(
         step = total / MAX_ROUTE_POINTS
         keep = [int(i * step) for i in range(MAX_ROUTE_POINTS - 1)] + [total - 1]
     points = [points[k] for k in keep]
-    return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS, "trips": trips, "path": path}
+    return {"mmsi": mmsi, "points": points, "count": len(points), "total": total, "sampled": total > MAX_ROUTE_POINTS, "trips": trips, "path": path, "gap_lines": gap_lines}
 
 
 # --- REGIONS ---
