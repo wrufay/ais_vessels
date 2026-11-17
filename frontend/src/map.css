@@ -22,8 +22,8 @@
 
 /* Right-anchored (not left, like .ol-zoom above) -- glued to the bottom
    right corner, offset by --map-controls-offset-right so it clears the
-   Impacts panel while that's open (the only time this control is even
-   added to the map -- see the showImpactsPanel effect in Map.tsx).
+   right-hand panel while one is open, or the Feedback/Admin/"i" buttons
+   in the corner when none is (same spots as the heat map legend).
    Flush against the bottom edge (bottom: 0), same as CursorCoordinates'
    own `bottom-0` -- and restyled below to match that component's pill
    look exactly (size, colors, font), rather than OL's default ruler-bar

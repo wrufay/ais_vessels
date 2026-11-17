@@ -682,18 +682,6 @@ function ShipMap() {
     noiseImpactLayerRef.current?.setVisible(showNoiseImpact);
   }, [showNoiseImpact]);
 
-  // Scale bar is noise-impact-only -- distances only matter for reading
-  // zone size/extent, not for the vessel-track/mooring/region views this
-  // map otherwise shows -- so it's added/removed with the Impacts panel
-  // itself rather than living on the map permanently.
-  useEffect(() => {
-    const map = mapObj.current;
-    const scaleLine = scaleLineRef.current;
-    if (!map || !scaleLine) return;
-    if (showImpactsPanel) map.addControl(scaleLine);
-    else map.removeControl(scaleLine);
-  }, [showImpactsPanel]);
-
   // Turn on bathymetry and zoom to the WEA whenever a new noise-impact
   // result comes in -- keyed on the result/site themselves, not the
   // show/hide toggle above, so this fires once per Run regardless of
@@ -1141,10 +1129,10 @@ function ShipMap() {
         : "crosshair";
     });
 
-    // Not added here -- see the showImpactsPanel effect below, which adds/
-    // removes it so it only shows up while the noise-impact feature (the
-    // Impacts panel) is actually in use, instead of on every map view.
+    // Scale bar, always shown: distances matter for tracks and regions as
+    // well as noise-impact zones.
     scaleLineRef.current = new ScaleLine({ units: "metric" });
+    map.addControl(scaleLineRef.current);
 
     mapObj.current = map;
     return () => map.setTarget(undefined);
@@ -1597,13 +1585,12 @@ function ShipMap() {
       // Read by map.css to push OL's built-in zoom control out from under
       // IconBar (a permanent full-height sidebar) and the params panel
       // when it's open -- same offset CursorCoordinates uses below.
-      // --map-controls-offset-right does the same for the scale bar
-      // against the right-anchored Impacts panel (the only panel it
-      // shares screen space with, since it's only ever shown alongside
-      // that panel -- see the showImpactsPanel effect above).
+      // --map-controls-offset-right does the same for the scale bar:
+      // beside the open right-hand panel, or clear of the Feedback/Admin/"i"
+      // buttons in the corner when no panel is open (like HeatMapLegend).
       style={{
         "--map-controls-offset": `${iconBarWidth + (showParamsPanel ? paramsPanelWidth : 0)}px`,
-        "--map-controls-offset-right": `${showImpactsPanel ? panelWidth : 0}px`,
+        "--map-controls-offset-right": `${anyPanelOpen ? panelWidth : 32}px`,
       } as CSSProperties}
     >
       {/* Map — full screen */}
@@ -1621,7 +1608,7 @@ function ShipMap() {
           vmin={heatMapScale.vmin}
           vmax={heatMapScale.vmax}
           rightOffset={anyPanelOpen ? panelWidth + 8 : 40}
-          bottomOffset={showImpactsPanel ? 28 : 8}
+          bottomOffset={28}
           hidden={heatMapLegendHidden}
           onHide={() => setHeatMapLegendHidden(true)}
           onShow={() => setHeatMapLegendHidden(false)}
