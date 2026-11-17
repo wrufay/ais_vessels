@@ -142,6 +142,8 @@ export function formatRelativeTime(iso: string): string {
   return `${days} d ago`;
 }
 
+const MIN_LIST_PINGS = 3;
+
 function ShipMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapObj = useRef<Map | null>(null);
@@ -1497,9 +1499,25 @@ function ShipMap() {
     setHeatMapScale(null);
   }
 
+  // Ships heard fewer than MIN_LIST_PINGS times in the date range are left out
+  // of the list (their pings stay in the database and in region analyses):
+  // with 1-2 pings there is no track to see, and every garbled copy of another
+  // ship's ping we found (e.g. "64J") had only 1-2. Typing a hidden ship's exact
+  // MMSI or name still shows it.
+  const listedCount = useMemo(
+    () => vessels.filter((v) => v.point_count >= MIN_LIST_PINGS).length,
+    [vessels]
+  );
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
+    const exact = search.trim().toLowerCase();
     return vessels.filter((v) => {
+      if (
+        v.point_count < MIN_LIST_PINGS &&
+        !(exact && (String(v.mmsi) === exact || (v.vessel_name || "").trim().toLowerCase() === exact))
+      )
+        return false;
       if (filters.type.size > 0 && !filters.type.has(classifyType(v.ship_type)))
         return false;
       if (filters.source !== "all" && v.source !== filters.source) return false;
@@ -1646,6 +1664,7 @@ function ShipMap() {
           setVesselListOpen={setVesselListOpen}
           filtered={filtered}
           vessels={vessels}
+          listedCount={listedCount}
           filters={filters}
           setDraftFilters={setDraftFilters}
           setShowTypeFilter={setShowTypeFilter}

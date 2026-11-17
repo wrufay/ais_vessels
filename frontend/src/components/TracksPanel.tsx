@@ -29,6 +29,7 @@ function TracksPanel({
   setVesselListOpen,
   filtered,
   vessels,
+  listedCount,
   filters,
   setDraftFilters,
   setShowTypeFilter,
@@ -63,6 +64,7 @@ function TracksPanel({
   setVesselListOpen: (fn: (prev: boolean) => boolean) => void;
   filtered: Vessel[];
   vessels: Vessel[];
+  listedCount: number;
   filters: VesselFilters;
   setDraftFilters: (v: VesselFilters) => void;
   setShowTypeFilter: (v: boolean) => void;
@@ -134,9 +136,9 @@ function TracksPanel({
           label="Vessels"
           trailing={
             <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
-              {filtered.length !== vessels.length
-                ? `${filtered.length} / ${vessels.length}`
-                : `${vessels.length}`}
+              {filtered.length !== listedCount
+                ? `${filtered.length} / ${listedCount}`
+                : `${listedCount}`}
             </span>
           }
         />
