@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 from contextlib import asynccontextmanager
+from datetime import date, timedelta
 from typing import Annotated, Literal
 
 import numpy as np # type: ignore
@@ -888,52 +889,104 @@ def post_usage(req: UsageRequest):
     return {"ok": True}
 
 
-# the numbers for the Usage tab (live site only): visits and visitors (different
-# browser IDs with any event) for today / 7 / 30 days, visits per day, and per
-# feature how many visitors used it and how many times
-@app.get("/api/usage/summary")
-def get_usage_summary(x_inbox_password: str | None = Header(None)):
-    check_inbox_password(x_inbox_password)
-    params = {"tz": USAGE_TZ}
-    recent = """
-        WITH today AS (SELECT (NOW() AT TIME ZONE %(tz)s)::date AS d),
-        ev AS (
-            SELECT (created_at AT TIME ZONE %(tz)s)::date AS day, visitor, event
-            FROM usage_events
-            WHERE site = 'live' AND created_at >= NOW() - INTERVAL '32 days'
-        )"""
-    totals = query(
-        recent + """
-        SELECT
-            d AS today,
-            COUNT(*) FILTER (WHERE event = 'visit' AND day = d) AS visits_1,
-            COUNT(DISTINCT visitor) FILTER (WHERE day = d) AS visitors_1,
-            COUNT(*) FILTER (WHERE event = 'visit' AND day > d - 7) AS visits_7,
-            COUNT(DISTINCT visitor) FILTER (WHERE day > d - 7) AS visitors_7,
-            COUNT(*) FILTER (WHERE event = 'visit' AND day > d - 30) AS visits_30,
-            COUNT(DISTINCT visitor) FILTER (WHERE day > d - 30) AS visitors_30
-        FROM today LEFT JOIN ev ON TRUE
-        GROUP BY d""",
-        params,
+# The Usage tab picks a time frame per chart: the last N days, or its own start
+# and end days (both included). Above USAGE_WEEKLY_OVER_DAYS days, visits are
+# shown per week instead of per day, since daily bars would be too thin to read.
+USAGE_WEEKLY_OVER_DAYS = 90
+
+# the usage rows (live site only) on local days start..end, as a subquery;
+# the time bounds are on created_at itself so the index on it is used
+USAGE_EVENTS_IN_RANGE = """
+    SELECT (created_at AT TIME ZONE %(tz)s)::date AS day, visitor, event
+    FROM usage_events
+    WHERE site = 'live'
+      AND created_at >= %(start)s::date::timestamp AT TIME ZONE %(tz)s
+      AND created_at < (%(end)s::date + 1)::timestamp AT TIME ZONE %(tz)s"""
+
+
+def usage_range(days: int, start: date | None, end: date | None) -> tuple[date, date, date]:
+    """(start, end, today) for a time frame: the last `days` days, or start..end."""
+    today = query("SELECT (NOW() AT TIME ZONE %s)::date AS d", [USAGE_TZ])[0]["d"]
+    if start is None and end is None:
+        return today - timedelta(days=days - 1), today, today
+    if start is None or end is None:
+        raise HTTPException(status_code=400, detail="Give both a start and an end day.")
+    if start > end:
+        raise HTTPException(status_code=400, detail="The start day is after the end day.")
+    if start > today:
+        raise HTTPException(status_code=400, detail="The start day is in the future.")
+    return start, min(end, today), today
+
+
+# visits and visitors (different browser IDs with any event) on days start..end
+def usage_counts(start: date, end: date) -> dict:
+    return query(
+        f"""SELECT COUNT(*) FILTER (WHERE event = 'visit') AS visits, COUNT(DISTINCT visitor) AS visitors
+        FROM ({USAGE_EVENTS_IN_RANGE}) ev""",
+        {"tz": USAGE_TZ, "start": start, "end": end},
     )[0]
-    days = query(
-        recent + """
-        SELECT g::date AS day, COUNT(ev.visitor) AS visits
-        FROM today, generate_series(d - 29, d, INTERVAL '1 day') AS g
-        LEFT JOIN ev ON ev.day = g::date AND ev.event = 'visit'
+
+
+# the visits part of the Usage tab: the fixed today / last 7 days boxes, the
+# totals for the chosen time frame, and visits per day (or per week, Monday to
+# Sunday, cut at the ends of the time frame) for its chart
+@app.get("/api/usage/visits")
+def get_usage_visits(
+    days: int = Query(30, ge=1, le=3660),
+    start: date | None = Query(None),
+    end: date | None = Query(None),
+    x_inbox_password: str | None = Header(None),
+):
+    check_inbox_password(x_inbox_password)
+    start, end, today = usage_range(days, start, end)
+    per_day = query(
+        f"""SELECT g::date AS day, COUNT(ev.visitor) AS visits
+        FROM generate_series(%(start)s::date, %(end)s::date, INTERVAL '1 day') AS g
+        LEFT JOIN ({USAGE_EVENTS_IN_RANGE}) ev ON ev.day = g::date AND ev.event = 'visit'
         GROUP BY g ORDER BY g""",
-        params,
+        {"tz": USAGE_TZ, "start": start, "end": end},
     )
+    weekly = (end - start).days + 1 > USAGE_WEEKLY_OVER_DAYS
+    bars: list[dict] = []
+    for d in per_day:
+        if not weekly or not bars or d["day"].weekday() == 0:
+            bars.append({"start": d["day"], "end": d["day"], "visits": 0})
+        bars[-1]["end"] = d["day"]
+        bars[-1]["visits"] += d["visits"]
+    return {
+        "today": today,
+        "start": start,
+        "end": end,
+        "step": "week" if weekly else "day",
+        "today_counts": usage_counts(today, today),
+        "week_counts": usage_counts(today - timedelta(days=6), today),
+        "range_counts": usage_counts(start, end),
+        "bars": bars,
+    }
+
+
+# the feature part of the Usage tab: per feature, how many visitors used it and
+# how many times in the chosen time frame, and how many visitors there were
+@app.get("/api/usage/features")
+def get_usage_features(
+    days: int = Query(30, ge=1, le=3660),
+    start: date | None = Query(None),
+    end: date | None = Query(None),
+    x_inbox_password: str | None = Header(None),
+):
+    check_inbox_password(x_inbox_password)
+    start, end, today = usage_range(days, start, end)
     features = query(
-        recent + """
-        SELECT event, COUNT(DISTINCT visitor) AS visitors, COUNT(*) AS uses
-        FROM ev, today
-        WHERE event <> 'visit' AND day > d - 30
+        f"""SELECT event, COUNT(DISTINCT visitor) AS visitors, COUNT(*) AS uses
+        FROM ({USAGE_EVENTS_IN_RANGE}) ev
+        WHERE event <> 'visit'
         GROUP BY event""",
-        params,
+        {"tz": USAGE_TZ, "start": start, "end": end},
     )
     return {
-        "totals": totals,
-        "days": days,
+        "today": today,
+        "start": start,
+        "end": end,
+        "visitors": usage_counts(start, end)["visitors"],
         "features": {f["event"]: {"visitors": f["visitors"], "uses": f["uses"]} for f in features},
     }
