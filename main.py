@@ -37,6 +37,7 @@ import pandas as pd # type: ignore
 import psycopg2 # type: ignore
 import psycopg2.extras # type: ignore
 from fastapi import FastAPI, Header, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StringConstraints
 import shapely # type: ignore
@@ -45,6 +46,7 @@ from shapely.geometry import shape # type: ignore
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "analysis"))
 from plots import plot_vessel_types, plot_speed_overall, plot_vessel_density, render_vessel_density_overlay, ORDERED_TYPES, classify_ship_type  # noqa: E402 # type: ignore
 from noise import render_noise_overlay, noise_range, NOISE_DATA_DIR, combo_dirname, parse_combo_dirname  # noqa: E402 # type: ignore
+from bathymetry import depth_at, tile_path as bathy_tile_path  # noqa: E402 # type: ignore
 from noise_impact import list_sites as list_noise_impact_sites, list_options as list_noise_impact_options, list_parameter_info as list_noise_impact_info, compute_impact as compute_noise_impact, export_impact as export_noise_impact  # noqa: E402 # type: ignore
 
 # reads DATABASE_URL from environment (REQUIRED)
@@ -585,6 +587,31 @@ def get_noise_overlay(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return Response(content=png, media_type="image/png")
+
+
+# water depth under the map cursor, for the lat/lon readout
+# used by useCursorDepth.ts
+@app.get("/api/depth")
+def get_depth(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    """Depth in whole metres, or null over land / outside the bathymetry
+    files (see analysis/bathymetry.py)."""
+    try:
+        return {"depth_m": depth_at(lat, lon)}
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="Bathymetry files not available")
+
+
+# seabed tiles that fill the zoom levels Esri's Ocean basemap doesn't have
+# used by useBasemap.ts (oceanFillLayer)
+@app.get("/api/bathy-tiles/{z}/{x}/{y}.webp")
+def get_bathy_tile(z: int, x: int, y: int):
+    path = bathy_tile_path(z, x, y)
+    if path is None:
+        raise HTTPException(status_code=404, detail="No tile")
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=86400"})
 
 
 # --- INTERACTIVE NOISE IMPACT ---

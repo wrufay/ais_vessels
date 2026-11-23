@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type TileLayer from "ol/layer/Tile";
+import TileLayer from "ol/layer/Tile";
 import XYZ from "ol/source/XYZ";
+import type ImageTile from "ol/ImageTile";
+
+const API = import.meta.env.VITE_API_URL ?? "";
 
 export const BASEMAPS = [
   { id: "esri-street",     label: "World Street Map",    tooltip: "Road and transit detail for identifying ports and coastal features.",                                      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",     maxZoom: 18, attributions: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>' },
@@ -29,6 +32,36 @@ export function basemapSource(bm: Basemap) {
 }
 export const basemapPreload = (bm: Basemap) => (bm.fillGaps ? 3 : 0);
 
+const OCEAN = BASEMAPS.find((b) => b.id === "esri-ocean")!;
+const EMPTY_TILE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+// Our own zoom 11-12 seabed tiles (pipeline/make_bathymetry_tiles.py, served
+// by the backend), drawn just above the Ocean basemap. Stretching Esri's
+// zoom-10 tile (above) gets blurry, so wherever Esri has no closer tile of
+// its own, this layer shows ours instead; where Esri has one, it stays empty.
+// To know which, each tile first loads Esri's tile for the same spot -- the
+// basemap has just asked for that same URL, so the browser usually has it.
+// Land is see-through in our tiles, so land always comes from Esri.
+export function oceanFillLayer() {
+  return new TileLayer({
+    minZoom: 10, // only when zoomed in past Esri's offshore tiles
+    visible: false,
+    source: new XYZ({
+      url: `${API}/api/bathy-tiles/{z}/{x}/{y}.webp`,
+      minZoom: 11,
+      maxZoom: 12, // the data has a point every ~100 m; zoom 12 is stretched further in
+      tileLoadFunction: (tile, src) => {
+        const [z, x, y] = tile.getTileCoord();
+        const img = (tile as ImageTile).getImage() as HTMLImageElement;
+        const esri = new Image();
+        esri.onload = () => { img.src = EMPTY_TILE; };
+        esri.onerror = () => { img.src = src; };
+        esri.src = basemapSource(OCEAN).getUrls()![0].replace("{z}", `${z}`).replace("{x}", `${x}`).replace("{y}", `${y}`);
+      },
+    }),
+  });
+}
+
 // Owns which Esri basemap tile source is active (plus the picker's open/
 // closed state), and swaps the already-built basemap TileLayer's source
 // whenever the selection changes. Same split as useBathymetry: the
@@ -37,6 +70,7 @@ export const basemapPreload = (bm: Basemap) => (bm.fillGaps ? 3 : 0);
 // basemapLayerRef.current there -- this hook only owns the reactive part.
 export function useBasemap() {
   const basemapLayerRef = useRef<TileLayer | null>(null);
+  const oceanFillLayerRef = useRef<TileLayer | null>(null);
   const [basemap, setBasemap] = useState("esri-ocean");
   const [basemapOpen, setBasemapOpen] = useState(true);
 
@@ -46,7 +80,8 @@ export function useBasemap() {
     if (!bm) return;
     basemapLayerRef.current.setPreload(basemapPreload(bm));
     basemapLayerRef.current.setSource(basemapSource(bm));
+    oceanFillLayerRef.current?.setVisible(bm.id === OCEAN.id);
   }, [basemap]);
 
-  return { basemapLayerRef, basemap, setBasemap, basemapOpen, setBasemapOpen };
+  return { basemapLayerRef, oceanFillLayerRef, basemap, setBasemap, basemapOpen, setBasemapOpen };
 }

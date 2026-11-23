@@ -43,6 +43,11 @@ services:
       # its precomputed transmission-loss model data -- mounted at the same
       # absolute host path since noise_impact.py's SITES hardcodes it.
       - /home/shared/pileDrivingSoundPropagation:/home/shared/pileDrivingSoundPropagation:ro
+      # seabed depth files for the cursor depth readout (analysis/bathymetry.py)
+      - /home/shared/bathymetry:/home/shared/bathymetry:ro
+      # Ocean basemap fill tiles (pipeline/make_bathymetry_tiles.py), kept in
+      # the live folder
+      - ./pipeline/bathy_tiles:/app/pipeline/bathy_tiles:ro
     depends_on:
       db:
         condition: service_healthy

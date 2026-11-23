@@ -8,6 +8,9 @@ is identical regardless of which backend is running.
 - **`noise.py`** — loads noise GeoTIFFs, renders map overlays. Only
   `combined_noise` is currently supported; a requested (freq, depth) must
   match an already-converted GeoTIFF exactly, no fallback if it doesn't.
+- **`bathymetry.py`** — water depth at a point for the map's cursor
+  readout, read from the seabed depth files in `/home/shared/bathymetry`
+  (same sources and gap rule as `pipeline/make_bathymetry_tiles.py`).
 - **`plots.py`** — region-stats plotting (vessel types, speed, density) for
   the region analysis panel.
 - **`noise_impact.py`** — wraps the `ns_pile_driving_noise_mapping` package

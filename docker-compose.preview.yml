@@ -35,6 +35,11 @@ services:
       # this clone's own copy of Wilfried's package (see docker-compose.yml)
       - ./noise_impact_code:/app/noise_impact_code:ro
       - /home/shared/pileDrivingSoundPropagation:/home/shared/pileDrivingSoundPropagation:ro
+      # seabed depth files for the cursor depth readout (analysis/bathymetry.py)
+      - /home/shared/bathymetry:/home/shared/bathymetry:ro
+      # Ocean basemap fill tiles (pipeline/make_bathymetry_tiles.py), kept in
+      # the live folder and read from there
+      - /home/shared/vessel-tracks/pipeline/bathy_tiles:/app/pipeline/bathy_tiles:ro
     restart: unless-stopped
 
   frontend:

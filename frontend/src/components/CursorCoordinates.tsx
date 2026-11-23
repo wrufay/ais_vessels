@@ -4,11 +4,15 @@ const boxClass =
 function CursorCoordinates({
   lat,
   lon,
+  depth = null,
   leftOffset,
   zoneLabels = [],
 }: {
   lat: number | null;
   lon: number | null;
+  // Water depth (m) under the cursor; null while moving, over land or
+  // outside the bathymetry data (see useCursorDepth).
+  depth?: number | null;
   // IconBar is a permanent full-height left sidebar and the noise-impact
   // params panel can extend past it -- without this the readout sits at
   // literal x=0 and ends up hidden underneath both. Animated so it slides
@@ -34,7 +38,7 @@ function CursorCoordinates({
         </div>
       )}
       <div className={boxClass}>
-        {lat.toFixed(4)}°, {lon.toFixed(4)}°
+        {lat.toFixed(4)}°, {lon.toFixed(4)}°{depth !== null && ` · ${depth} m deep`}
       </div>
     </div>
   );

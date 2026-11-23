@@ -67,8 +67,9 @@ import { useDragResize } from "./useDragResize";
 import { useStateRef } from "./useStateRef";
 import { useNoiseLayer, NOISE_EXTENT } from "./useNoiseLayer";
 import { useBathymetry } from "./useBathymetry";
+import { useCursorDepth } from "./useCursorDepth";
 import { useMeasureTool } from "./useMeasureTool";
-import { useBasemap, BASEMAPS, basemapPreload, basemapSource } from "./useBasemap";
+import { useBasemap, BASEMAPS, basemapPreload, basemapSource, oceanFillLayer } from "./useBasemap";
 import { useTour } from "./useTour";
 import { useNewFeedback } from "./useNewFeedback";
 import { trackUsage } from "./usage";
@@ -277,6 +278,7 @@ function ShipMap() {
   // Name(s) of the noise-impact zone under the cursor, shown above the
   // lat/lon readout (see zoneLabelsAt).
   const [hoverZoneLabels, setHoverZoneLabels] = useState<string[]>([]);
+  const { depth: cursorDepth, cursorMoved: cursorDepthMoved } = useCursorDepth();
   const [showVesselPanel, setShowVesselPanel] = useState(false);
   const [showRegionPanel, setShowRegionPanel] = useState(false);
   const [showMooringPanel, setShowMooringPanel] = useState(false);
@@ -357,6 +359,7 @@ function ShipMap() {
   } = useNoiseLayer(API);
   const {
     basemapLayerRef,
+    oceanFillLayerRef,
     basemap, setBasemap,
     basemapOpen, setBasemapOpen,
   } = useBasemap();
@@ -862,6 +865,12 @@ function ShipMap() {
           basemapLayerRef.current = layer;
           return layer;
         })(),
+        (() => {
+          const layer = oceanFillLayer();
+          layer.setVisible(basemap === "esri-ocean");
+          oceanFillLayerRef.current = layer;
+          return layer;
+        })(),
         bathyLayer,
         noiseLayer,
         chaFillLayer,
@@ -1091,6 +1100,7 @@ function ShipMap() {
     map.on("pointermove", (e) => {
       const [lon, lat] = toLonLat(e.coordinate);
       setCursorCoord({ lat, lon });
+      cursorDepthMoved(lat, lon);
       setHoverZoneLabels(zoneLabelsAt(e.coordinate));
 
       if (measuringRef.current) {
@@ -1599,6 +1609,7 @@ function ShipMap() {
       <CursorCoordinates
         lat={cursorCoord?.lat ?? null}
         lon={cursorCoord?.lon ?? null}
+        depth={cursorDepth}
         leftOffset={iconBarWidth + (showParamsPanel ? paramsPanelWidth : 0)}
         zoneLabels={hoverZoneLabels}
       />
@@ -1815,7 +1826,7 @@ function ShipMap() {
             noiseAvailable,
             noiseDates,
           }}
-          basemapState={{ basemapLayerRef, basemap, setBasemap, basemapOpen, setBasemapOpen }}
+          basemapState={{ basemapLayerRef, oceanFillLayerRef, basemap, setBasemap, basemapOpen, setBasemapOpen }}
         />
       </SidePanel>
 

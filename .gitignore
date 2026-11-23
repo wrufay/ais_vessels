@@ -16,6 +16,7 @@ pgdata_backup*.tar.gz
 pipeline/*.log
 pipeline/noise_data/
 pipeline/bathy_tiles/
+pipeline/bathymetry/
 
 # Personal mock-API dev tool, not part of the shared project -- kept
 # locally (MacBook) only, gitignored. analysis/noise_impact.py no longer

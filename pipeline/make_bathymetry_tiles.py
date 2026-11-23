@@ -45,7 +45,7 @@ import numpy as np
 from PIL import Image
 from pyproj import Transformer
 from scipy.io import netcdf_file
-from scipy.ndimage import binary_opening, gaussian_filter, map_coordinates
+from scipy.ndimage import binary_dilation, binary_opening, gaussian_filter, map_coordinates
 
 SRC_DIR = "/home/shared/bathymetry"
 NL_FILE = "nl_bioregion_compilation_2023.nc"
@@ -78,7 +78,7 @@ DEPTH_BANDS = [
 ]
 
 SMOOTH_CELLS = 1.0   # Gaussian sigma in source grid cells (~100 m for NL)
-GAP_MIN_M = 300      # NL gaps narrower than this are coastline noise, not filled
+GAP_MIN_M = 300      # near a coast (this close to land in both files) only the NL file is used
 VERT_EXAG = 3.0      # hillshade: exaggerate slopes so the gentle shelf shows
 SHADE_STRENGTH = 0.9 # hillshade: how much a slope lightens/darkens the colour
 LIGHT_AZ, LIGHT_ALT = 315.0, 45.0  # light from the north-west, like Esri
@@ -198,17 +198,25 @@ def make_block(sources, z, bx, by, x_max, y_max, dst, overwrite, quality):
 
     nl, ea = sources
     depth, sea = nl.sample(lon, lat)
-    # Where the NL file has no data, use the eastern Canada file -- but only
-    # for real gaps (e.g. Saint-Pierre waters). Thin strips along the coast
-    # are just the two files' coastlines disagreeing, and mixing the files
-    # there puts e.g. 2 m next to 22 m, which hillshading draws as dark specks.
-    gap = sea == 0
-    if gap.any():
+    # Where the NL file has no data over a wide area (its open-sea edge,
+    # Saint-Pierre waters), use the eastern Canada file. Not along coasts
+    # (NL sea, and land in the eastern file, within GAP_MIN_M): the two
+    # files' coastlines disagree a little there. Not in the NL file's tiny
+    # holes either. In both cases the files differ by a few metres, which
+    # hillshading draws as dark specks. Pixels next to a wide gap that the
+    # NL file covers only partly are blended, so no see-through line shows
+    # where the two files meet.
+    part = sea < 0.999
+    if part.any():
         d2, s2 = np.zeros(sea.shape), np.zeros(sea.shape)
-        d2[gap], s2[gap] = ea.sample(lon[gap], lat[gap])
+        d2[part], s2[part] = ea.sample(lon[part], lat[part])
         px_m = EARTH_M_PER_PX_Z0 / 2**z * math.cos(math.radians(lat_1d.mean()))
-        use = binary_opening(s2 > 0, iterations=max(1, round(GAP_MIN_M / px_m)))
-        depth[use], sea[use] = d2[use], s2[use]
+        r = max(1, round(GAP_MIN_M / px_m))
+        coast = binary_dilation(sea > 0, iterations=r) & binary_dilation(part & (s2 < 0.5), iterations=r)
+        wide_gap = binary_opening((sea == 0) & (s2 > 0) & ~coast, iterations=r)
+        fill = part & (s2 > 0) & ~coast & binary_dilation(wide_gap, iterations=r + 2)
+        depth[fill] = (depth[fill] * sea[fill] + d2[fill] * s2[fill]) / (sea[fill] + s2[fill])
+        sea[fill] = np.maximum(sea[fill], s2[fill])
     if not (sea > 0).any():
         return 0, 0
     # Give land pixels next to the coast the nearby sea depth, so hillshading
