@@ -18,6 +18,10 @@ for the shared docstring convention and resumability pattern these follow.
 - **`noise_to_geotiff.py`** — converts the ocean noise model's daily
   NetCDFs into GeoTIFFs the backend serves as map overlays. Slow (sshfs
   network reads, ~2h for a full combo) — run in tmux/background.
+- **`make_bathymetry_tiles.py`** — makes zoom 11–12 map tiles from the
+  seabed depth files in `/home/shared/bathymetry`, to fill the zoom levels
+  Esri's Ocean basemap doesn't have offshore. Output goes to `bathy_tiles/`
+  (gitignored).
 
 ## Output
 
