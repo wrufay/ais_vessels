@@ -10,8 +10,8 @@ function CursorCoordinates({
 }: {
   lat: number | null;
   lon: number | null;
-  // Water depth (m) under the cursor; null while moving, over land or
-  // outside the bathymetry data (see useCursorDepth).
+  // Water depth (m) under the cursor; null over land or outside the
+  // bathymetry data (see useCursorDepth).
   depth?: number | null;
   // IconBar is a permanent full-height left sidebar and the noise-impact
   // params panel can extend past it -- without this the readout sits at
