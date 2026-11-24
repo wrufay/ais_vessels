@@ -49,6 +49,7 @@ import HeatMapLegend from "./components/HeatMapLegend";
 import CursorCoordinates from "./components/CursorCoordinates";
 import ClosePanelBtn from "./components/ClosePanelBtn";
 import MapPopup from "./components/MapPopup";
+import ZonePopup from "./components/noise-impact/ZonePopup";
 import PopupRow from "./components/PopupRow";
 import UploadModal from "./components/UploadModal";
 import ResultsModal from "./components/ResultsModal";
@@ -240,6 +241,14 @@ function ShipMap() {
     x: number;
     y: number;
     mooring: Mooring;
+  } | null>(null);
+  // The clicked noise-impact zone(s) (zoneKey) and where the click was.
+  const [zonePopup, setZonePopup] = useState<{
+    x: number;
+    y: number;
+    lon: number;
+    lat: number;
+    keys: string[];
   } | null>(null);
   const [regionStats, setRegionStats] = useState<RegionStats | null>(null);
   const [regionLoading, setRegionLoading] = useState(false);
@@ -577,6 +586,7 @@ function ShipMap() {
     const fmt = new GeoJSON();
     noiseImpactSourceRef.current.clear();
     setHoverZoneLabels([]);
+    setZonePopup(null);
     if (!noiseImpactResult) return;
     // Smaller zones draw on top of bigger ones (see the layer's style
     // callback), so every zone keeps a visible, clickable part: rank 1 is
@@ -683,6 +693,7 @@ function ShipMap() {
   // on close, rather than leaving the user stuck on it.
   useEffect(() => {
     noiseImpactLayerRef.current?.setVisible(showNoiseImpact);
+    if (!showNoiseImpact) setZonePopup(null);
   }, [showNoiseImpact]);
 
   // Turn on bathymetry and zoom to the WEA whenever a new noise-impact
@@ -1003,7 +1014,27 @@ function ShipMap() {
         return;
       }
 
-      // check CHA click first — select it as active region. Deliberately
+      // A noise-impact zone first, as zones are drawn over everything
+      // else. Any other click closes the zone popup.
+      const zoneFeatures = zoneFeaturesAt(e.coordinate);
+      if (zoneFeatures.length > 0) {
+        const [lon, lat] = toLonLat(e.coordinate);
+        setPopup(null);
+        setMooringPopup(null);
+        setZonePopup({
+          x: e.pixel[0],
+          y: e.pixel[1],
+          lon,
+          lat,
+          keys: zoneFeatures.map((f) =>
+            zoneKey({ hearing_group: f.get("hearingGroup"), impact: f.get("impact"), metric: f.get("metric") })
+          ),
+        });
+        return;
+      }
+      setZonePopup(null);
+
+      // then CHA click — select it as active region. Deliberately
       // does NOT touch any panel's open/closed state, matching
       // handleRegionCheckboxClick (the Regions list's own click handler)
       // -- selecting a region from the list never opens/closes a panel
@@ -1060,12 +1091,13 @@ function ShipMap() {
       }) ?? (setPopup(null), setMooringPopup(null));
     });
 
-    // Name(s) of the noise-impact zone under the cursor: the smallest
-    // shape there wins, "without mitigation" shapes included (by their own
-    // size, hit only on their ring while the zone is shown), so a
+    // The noise-impact zone(s) under the cursor, for the hover name and
+    // the click popup: the smallest shape there wins, "without
+    // mitigation" shapes included (by their own size, hit only on their
+    // ring while the zone is shown), so a
     // "without" ring isn't hidden by a bigger zone drawn over it. Zones
     // with exactly the same shape all count, so none is hidden.
-    function zoneLabelsAt(coordinate: number[]): string[] {
+    function zoneFeaturesAt(coordinate: number[]): Feature[] {
       if (!noiseImpactLayerRef.current?.getVisible()) return [];
       const hits: { area: number; feature: Feature }[] = [];
       for (const feature of noiseImpactSourceRef.current.getFeatures()) {
@@ -1085,15 +1117,19 @@ function ShipMap() {
             Math.abs(h.area - smallest.area) <= smallest.area * 1e-6 &&
             h.feature.getGeometry()!.getExtent().join() === extent
         )
-        .map(({ feature }) =>
-          zoneShortLabel(
-            feature.get("hearingGroup"),
-            feature.get("impact"),
-            feature.get("metric"),
-            feature.get("customIndex") !== null,
-            feature.get("isWithout")
-          )
-        );
+        .map(({ feature }) => feature);
+    }
+
+    function zoneLabelsAt(coordinate: number[]): string[] {
+      return zoneFeaturesAt(coordinate).map((feature) =>
+        zoneShortLabel(
+          feature.get("hearingGroup"),
+          feature.get("impact"),
+          feature.get("metric"),
+          feature.get("customIndex") !== null,
+          feature.get("isWithout")
+        )
+      );
     }
 
     // hover cursor on moorings and CHA polygons
@@ -1101,7 +1137,8 @@ function ShipMap() {
       const [lon, lat] = toLonLat(e.coordinate);
       setCursorCoord({ lat, lon });
       cursorDepthMoved(lat, lon);
-      setHoverZoneLabels(zoneLabelsAt(e.coordinate));
+      const zoneLabels = zoneLabelsAt(e.coordinate);
+      setHoverZoneLabels(zoneLabels);
 
       if (measuringRef.current) {
         handleMeasurePointerMove(e.coordinate);
@@ -1134,7 +1171,7 @@ function ShipMap() {
         }
       });
 
-      map.getTargetElement().style.cursor = overClickable
+      map.getTargetElement().style.cursor = overClickable || zoneLabels.length > 0
         ? "pointer"
         : "crosshair";
     });
@@ -2007,6 +2044,23 @@ function ShipMap() {
           <PopupRow label="Distance">{noSignalHover.km} km, no pings heard</PopupRow>
         </MapPopup>
       )}
+
+      {/* Noise-impact zone popup */}
+      {zonePopup && noiseImpactResult && (() => {
+        const zones = zonePopup.keys
+          .map((key) => noiseImpactResult.zones.find((z) => zoneKey(z) === key))
+          .filter((z) => z !== undefined);
+        return zones.length > 0 && (
+          <ZonePopup
+            x={zonePopup.x}
+            y={zonePopup.y}
+            zones={zones}
+            lon={zonePopup.lon}
+            lat={zonePopup.lat}
+            source={noiseImpactResult.source}
+          />
+        );
+      })()}
 
       {/* Point popup */}
       {popup && (
